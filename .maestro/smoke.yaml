@@ -60,8 +60,16 @@ appId: ${APP_ID}
 #
 # Recording is a label over the fix stream, not a second subscription, so it
 # must work whether or not tracking is running. This asserts exactly that.
+#
+# Tapping Record straight after typing, with the keyboard still up, is the
+# point of this sequence and not an accident of the flow. React Native's
+# ScrollView defaults to `keyboardShouldPersistTaps="never"`, which swallows
+# that first tap to dismiss the keyboard — so the recording silently does not
+# start until you tap again. The Today screen sets `handled` to prevent it, and
+# this is what would catch a regression.
 - tapOn: 'Activity name'
 - inputText: 'Smoke walk'
+- assertVisible: 'Smoke walk'
 - tapOn: 'Start recording'
 - assertVisible: 'Stop recording Smoke walk'
 - tapOn: 'Stop recording Smoke walk'

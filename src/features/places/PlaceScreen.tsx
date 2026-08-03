@@ -74,7 +74,7 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <Text style={styles.cardLabel}>RECOGNISED WITHIN</Text>
           <Text style={styles.cardValue}>{formatDistance(place.radiusM)}</Text>

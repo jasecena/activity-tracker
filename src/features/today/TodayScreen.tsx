@@ -57,7 +57,12 @@ export function TodayScreen({
         }
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* `handled`, not the default `never`. With the default, the first tap
+          anywhere outside a focused TextInput is swallowed to dismiss the
+          keyboard — so typing a name and then tapping Record does nothing the
+          first time, and the second tap is what actually starts the recording.
+          Found by the smoke test, which tapped once and got no recording. */}
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {!settings.tracking ? (
           <Pressable
             onPress={() => settings.setTracking(true)}
