@@ -51,6 +51,12 @@ appId: ${APP_ID}
 - tapOn: 'History tab'
 - assertVisible: 'Finished days appear here after midnight.'
 
+# Places is where the SVG renderer and the place store first get exercised.
+- tapOn: 'Places tab'
+- assertVisible: 'Places'
+- tapOn: 'Sort by Visits'
+- tapOn: 'Sort by Name'
+
 - tapOn: 'Settings tab'
 - assertVisible: 'Track my day'
 - assertVisible: 'Balanced'

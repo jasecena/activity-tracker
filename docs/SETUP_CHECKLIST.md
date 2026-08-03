@@ -12,7 +12,7 @@ No Apple account needed.
 - [ ] **Node 20.19 or later.** `node -v`
 - [ ] `npm install`
 - [ ] `cp .env.example .env`
-- [ ] `npm run verify` — typecheck, lint, format, 230 tests. Should pass in well
+- [ ] `npm run verify` — typecheck, lint, format, 248 tests. Should pass in well
       under a minute, entirely on Linux or macOS.
 - [ ] _(optional)_ Install [gitleaks](https://github.com/gitleaks/gitleaks) so
       the pre-commit hook can scan staged changes. CI enforces it either way.

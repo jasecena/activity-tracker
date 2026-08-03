@@ -15,4 +15,17 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+// The mock store is module state, so it survives from one test to the next
+// within a file. Left alone, a test that starts a recording leaves it running
+// for every test after it — which reads as an unrelated assertion failing three
+// tests later, and is genuinely hard to trace back.
+afterEach(async () => {
+  // The package's jest mock is plain CommonJS (`module.exports = asMock`), so
+  // there is no `.default` on it — unlike the app's own import, which babel's
+  // interop synthesises one for.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mock = require('@react-native-async-storage/async-storage/jest/async-storage-mock');
+  await mock.clear();
+});
+
 export {};

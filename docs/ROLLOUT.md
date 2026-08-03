@@ -29,7 +29,7 @@ cp .env.example .env
 npm run verify
 ```
 
-**Done when:** 230 tests pass in well under a minute. This is the whole engine —
+**Done when:** 248 tests pass in well under a minute. This is the whole engine —
 segmentation, classification, places, calories, encryption — verified without a
 phone, a simulator or a network.
 
@@ -108,7 +108,7 @@ builds without plugging in a cable.
 **Needs:** the repository on GitHub. Independent of Stages 1–3 — do it whenever.
 
 Push. `ci.yml` and `security.yml` run with **no configuration and no secrets**:
-typecheck, lint, format, 230 tests, `expo-doctor`, gitleaks over full history,
+typecheck, lint, format, 248 tests, `expo-doctor`, gitleaks over full history,
 `npm audit`, CodeQL, and a job that fails if any action is not pinned to a commit
 SHA.
 

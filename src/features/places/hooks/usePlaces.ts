@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { normalizePlaces, placeFromStay, removePlace, upsertPlace, type Place } from '@/core/places';
+import { normalizePlaces, placeFromStay, removePlace, upsertPlace, widenToInclude, type Place } from '@/core/places';
 import type { StaySegment } from '@/core/segments';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
@@ -9,6 +9,9 @@ export interface UsePlaces {
   places: readonly Place[];
   /** Name a stay. Every future stay within its radius is then recognised as here. */
   name: (stay: StaySegment, name: string) => void;
+  /** "This stay is that place." Widens the place if the stay fell outside it. */
+  link: (stay: StaySegment, place: Place) => void;
+  rename: (id: string, name: string) => void;
   forget: (id: string) => void;
 }
 
@@ -53,7 +56,26 @@ export function usePlaces(): UsePlaces {
     [persist, places],
   );
 
+  const link = useCallback(
+    (stay: StaySegment, place: Place) => {
+      // Widening rather than creating a second place with the same name: two
+      // identical rows in the timeline with the totals split between them is
+      // the outcome nobody wants and everybody gets.
+      persist(upsertPlace(places, widenToInclude(place, stay)));
+    },
+    [persist, places],
+  );
+
+  const rename = useCallback(
+    (id: string, label: string) => {
+      const trimmed = label.trim();
+      if (trimmed.length === 0) return;
+      persist(places.map((place) => (place.id === id ? { ...place, name: trimmed } : place)));
+    },
+    [persist, places],
+  );
+
   const forget = useCallback((id: string) => persist(removePlace(places, id)), [persist, places]);
 
-  return { ready, places, name, forget };
+  return { ready, places, name, link, rename, forget };
 }

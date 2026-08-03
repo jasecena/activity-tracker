@@ -83,6 +83,25 @@ export function formatPace(metresPerSecond: number): string {
   return `${minutes}'${pad(seconds)}"/km`;
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/**
+ * A day's heading: "Monday 5 Jan".
+ *
+ * Here rather than in the two screens that show it, so the History list and the
+ * day page it opens cannot drift into disagreeing about what the same day is
+ * called.
+ *
+ * Reads UTC components off an instant already shifted into local time — the same
+ * trick, and the same reason, as `core/day/dayKeyOf`. Asking for local
+ * components would apply the runtime's own zone a second time.
+ */
+export function formatDayTitle(at: number, tzOffsetMinutes: number): string {
+  const local = new Date(at + tzOffsetMinutes * MS_PER_MINUTE);
+  return `${WEEKDAYS[local.getUTCDay()] ?? ''} ${local.getUTCDate()} ${MONTHS[local.getUTCMonth()] ?? ''}`;
+}
+
 const MODE_LABELS: Readonly<Record<ActivityMode, string>> = {
   walk: 'Walk',
   run: 'Run',

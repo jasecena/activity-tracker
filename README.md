@@ -29,9 +29,11 @@ made, classifying each journey as a walk, run, ride or drive from its speed. You
 open the app to see what already happened.
 
 **Lets you name the parts that matter.** Tap a stay to name the place — every
-future stay within about 120 m is then recognised as the same place. Press Record
-to name a journey; that does not start a second GPS subscription, it labels the
-stream that is already there.
+future stay within about 120 m is then recognised as the same place. When more
+than one named place covers a spot, or when a stay lands just outside one, the
+app shows you the candidates with distances and visit counts and asks, rather
+than guessing. Press Record to name a journey; that does not start a second GPS
+subscription, it labels the stream that is already there.
 
 **Counts what it can honestly count.** Distance, moving time, average and top
 speed per segment, per-point speed along a route, and an active-calorie estimate
@@ -80,8 +82,9 @@ src/core/        pure TypeScript. No React, no Expo, no clock, no I/O.
   energy/        calories, from a MET model
   format/        every string the UI shows for a number
 src/services/    the only files that touch a native module or ask the time
-src/features/    screens and their hooks
+src/features/    screens and their hooks — today, history, places, record, settings
 src/components/  shared UI
+src/shell/       four tabs and a minimal page stack, no router
 ```
 
 The whole engine is a fold — `(state, fix) => state` — with no clock, no entropy

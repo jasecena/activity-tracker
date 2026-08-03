@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 230
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 248
 tests, in well under a minute.
 
 **Refs may not be read during render.** `react-hooks/refs` is an error, not a
@@ -120,9 +120,23 @@ written because the handler was busy segmenting the last one.
 `storage.ts` and `motion.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
-**No navigation library.** Three tabs need no router. Every screen stays mounted
-with the inactive ones hidden — not an optimisation, but so that switching tabs
-cannot throw away a running recording.
+**No navigation library.** Four tabs and one level of detail below two of them.
+`shell/usePageStack.ts` is an array and three functions, against a router that
+would bring a native screen container, a navigation state tree and a
+serialisation format. Every tab stays mounted with the inactive ones hidden, and
+a detail page renders _over_ its tab rather than replacing it — not an
+optimisation, but so that switching tabs or opening a day cannot throw away a
+running recording or a timeline that was just derived. This reasoning survives a
+fourth tab and one level of depth; it would not survive a fifth level, deep links
+or modal routes.
+
+**Naming a place asks rather than guesses.** `matchPlace` returns one place
+because a timeline row needs one label, but `rankPlaceCandidates` returns all of
+them with distances, and the picker offers the list whenever more than one named
+place covers a stay. Confirming a stay that fell _outside_ a place widens that
+place (`widenToInclude`) rather than creating a second one with the same name —
+two identical rows with the totals split between them is the outcome nobody
+wants and everybody gets.
 
 **The Jest suite is pinned to UTC** in `jest.config.js`, before the workers fork.
 A "day" is a wall-clock concept, so without it `jest.setSystemTime` means a

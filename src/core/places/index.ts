@@ -55,6 +55,24 @@ export function placeFromStay(stay: StaySegment, name: string, radiusM = DEFAULT
 }
 
 /**
+ * Widen an existing place to take in a stay that fell outside it.
+ *
+ * What "this is the same place" means when you say it about a stay 200 m from
+ * somewhere already named. The alternative — creating a second place with the
+ * same name — leaves the timeline showing two identical rows and the totals
+ * split between them.
+ *
+ * The centre does not move. It came from a visit and is as good as any other;
+ * dragging it towards each new stay would let a place wander down the street
+ * over a year of visits.
+ */
+export function widenToInclude(place: Place, stay: StaySegment, marginM = 20): Place {
+  const away = distanceM(stay.center, place);
+  if (away <= place.radiusM) return place;
+  return { ...place, radiusM: away + marginM };
+}
+
+/**
  * Which place a stay happened at, if any.
  *
  * Nearest wins. Overlapping radii are normal — a café inside a shopping centre
@@ -73,6 +91,76 @@ export function matchPlace(stay: StaySegment, places: readonly Place[]): Place |
     }
   }
   return best;
+}
+
+export interface PlaceCandidate {
+  readonly place: Place;
+  readonly distanceM: number;
+  /**
+   * Inside this place's own radius — meaning `matchPlace` would have picked it
+   * automatically, given the chance.
+   */
+  readonly withinRadius: boolean;
+}
+
+/**
+ * How far out to offer places that did not match automatically.
+ *
+ * Wider than a place's own radius on purpose: the useful question when naming a
+ * stay is not only "which of these did I match" but "is this the same place as
+ * one just outside the circle". A café you named from a visit with good signal
+ * can easily be 150 m from the same café recorded from indoors.
+ */
+export const CANDIDATE_SEARCH_RADIUS_M = 400;
+
+export interface CandidateOptions {
+  readonly searchRadiusM?: number;
+  readonly limit?: number;
+}
+
+/**
+ * Every place this stay could plausibly be, nearest first.
+ *
+ * `matchPlace` answers with one place because the timeline needs a single label
+ * for a row. This answers with the whole list, because *naming* a stay is a
+ * decision only the person who was there can make: two named places can overlap
+ * — a café inside a shopping centre — and the app picking the nearer one is a
+ * guess presented as a fact.
+ *
+ * The result includes places the stay falls outside of, flagged as such. The UI
+ * offers them as "or is this the same as…" rather than filtering them out,
+ * because a place recorded from indoors and the same place recorded outside can
+ * sit a couple of hundred metres apart.
+ */
+export function rankPlaceCandidates(
+  stay: StaySegment,
+  places: readonly Place[],
+  options: CandidateOptions = {},
+): readonly PlaceCandidate[] {
+  const searchRadiusM = options.searchRadiusM ?? CANDIDATE_SEARCH_RADIUS_M;
+
+  const candidates: PlaceCandidate[] = [];
+  for (const place of places) {
+    const away = distanceM(stay.center, place);
+    // Either near enough to be worth offering, or inside a place whose own
+    // radius is wider than the search — a named shopping centre, say.
+    if (away > searchRadiusM && away > place.radiusM) continue;
+    candidates.push({ place, distanceM: away, withinRadius: away <= place.radiusM });
+  }
+
+  candidates.sort((a, b) => a.distanceM - b.distanceM);
+  return options.limit === undefined ? candidates : candidates.slice(0, options.limit);
+}
+
+/**
+ * Would picking one of these automatically be a guess?
+ *
+ * True when more than one named place claims this stay. The timeline still has
+ * to show something — `matchPlace` takes the nearest — but the naming UI asks
+ * rather than assuming, and this is the signal it asks on.
+ */
+export function isAmbiguous(candidates: readonly PlaceCandidate[]): boolean {
+  return candidates.filter((candidate) => candidate.withinRadius).length > 1;
 }
 
 /** Add a place, or replace the one already at that spot. */

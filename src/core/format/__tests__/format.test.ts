@@ -1,4 +1,12 @@
-import { formatClockTime, formatDistance, formatDuration, formatPace, formatSpeed, modeLabel } from '../index';
+import {
+  formatClockTime,
+  formatDayTitle,
+  formatDistance,
+  formatDuration,
+  formatPace,
+  formatSpeed,
+  modeLabel,
+} from '../index';
 
 describe('formatDistance', () => {
   it.each([
@@ -95,6 +103,22 @@ describe('formatPace', () => {
 
   it('refuses a pace too slow to be meaningful', () => {
     expect(formatPace(0.11)).toBe('—');
+  });
+});
+
+describe('formatDayTitle', () => {
+  it('names the weekday and the date', () => {
+    expect(formatDayTitle(Date.UTC(2026, 0, 5, 12), 0)).toBe('Monday 5 Jan');
+    expect(formatDayTitle(Date.UTC(2026, 11, 25, 12), 0)).toBe('Friday 25 Dec');
+  });
+
+  // 22:00 UTC is already tomorrow in Sydney. The History list and the day page
+  // it opens both call this, so if it were wrong they would at least be wrong
+  // together — which is exactly why it lives in one place.
+  it('names the day in the zone it is given', () => {
+    const evening = Date.UTC(2026, 0, 5, 22, 0, 0);
+    expect(formatDayTitle(evening, 0)).toBe('Monday 5 Jan');
+    expect(formatDayTitle(evening, 600)).toBe('Tuesday 6 Jan');
   });
 });
 

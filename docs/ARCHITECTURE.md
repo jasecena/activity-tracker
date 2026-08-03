@@ -13,7 +13,7 @@ from React, React Native, Expo or `src/services`, and ESLint makes that an error
 rather than a convention.
 
 The obvious reason is testability: an app about being in motion is otherwise
-untestable on a CI runner that is bolted to a rack. 230 tests run in about three
+untestable on a CI runner that is bolted to a rack. 248 tests run in about three
 seconds on Linux, including property tests over generated fix streams.
 
 The less obvious reason is the persistence design. Because folding is
@@ -306,19 +306,48 @@ thing this app is built not to do.
 
 ---
 
-## 13. UI: no navigation library, one fold for three tabs
+## 13. UI: no navigation library, one fold for four tabs
 
-Three tabs need no router, no navigation state and no native screen container.
-`shell/TabShell.tsx` is one file, and every screen stays **mounted** with the
-inactive ones hidden. Not an optimisation: unmounting Today would throw away a
-running recording and the timeline it had just derived.
+Four tabs — Today, History, Places, Settings — with one level of detail below two
+of them. `shell/usePageStack.ts` is an array and three functions, against a
+router that would bring a native screen container, a navigation state tree and a
+serialisation format to solve the same problem.
+
+This revises an earlier version of this decision, which read "three tabs need no
+router". The reasoning survives a fourth tab and one level of depth. It would not
+survive a fifth level, deep links or modal routes, and at that point a router is
+the right answer rather than a heavier one.
+
+Every tab stays **mounted**, with the inactive ones hidden, and a detail page
+renders _over_ its tab rather than replacing it. Both for the same reason: Today
+holds a running recording and a timeline it just derived, and neither should be
+lost because you opened a place you visited in March.
 
 The hooks live in the shell rather than in the screens because they are shared —
-the timeline needs the manual windows and the segmentation settings, and Settings
-needs the rejection counts the timeline produced. Lifting them is what keeps a
-single fold serving all three tabs.
+the timeline needs the manual windows and the segmentation settings, Settings
+needs the rejection counts the timeline produced, and Places needs every segment
+ever recorded. Lifting them is what keeps a single fold serving all four tabs.
 
----
+### Naming a place asks rather than guesses
+
+`matchPlace` returns one place, because a timeline row needs one label. But two
+named places can overlap — a café inside a shopping centre you also named — and
+picking the nearer one is a guess presented as a fact.
+
+So `rankPlaceCandidates` returns the whole list with distances, and
+`isAmbiguous` is true when more than one claims the stay. The picker shows the
+candidates with what the engine actually knows about each: how far, whether it
+currently matches, and how many times you have been. Only the person who was
+there can settle it.
+
+Candidates deliberately include places the stay fell _outside_ of, flagged as
+such, because a place named from a visit with good signal and the same place
+recorded from indoors can sit a couple of hundred metres apart. Confirming one of
+those calls `widenToInclude`, which grows the existing place rather than creating
+a second one with the same name — two identical rows with the totals split
+between them being the outcome nobody wants and everybody gets. The centre never
+moves: dragging it towards each new stay would let a place wander down the street
+over a year of visits.
 
 ## 14. What is deliberately absent
 
