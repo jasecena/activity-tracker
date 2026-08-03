@@ -14,6 +14,23 @@
 # about segmentation is asserted in `npx jest --selectProjects core` instead —
 # which is the reason the engine is pure TypeScript.
 #
+# ---------------------------------------------------------------------------
+# EVERY STRING BELOW IS AN ACCESSIBILITY LABEL, NOT THE TEXT ON SCREEN.
+#
+# Maestro reads the accessibility tree, and iOS *collapses* an element that has
+# an `accessibilityLabel` — its children stop existing as far as XCUITest is
+# concerned. So the notice that reads "Tracking is off" over two lines of body
+# text is one element labelled `Start tracking`, and the tile showing "0 m"
+# under the word DISTANCE is one element labelled `Distance: 0 m`. Asserting on
+# what you can see in a screenshot is how the v0.1.0 release failed: the app was
+# rendering perfectly and the flow was looking for text nothing exposes.
+#
+# Matches are also whole-string, not fragments. To find the real label for
+# something, run the flow, then read
+# `.maestro/tests/*/smoke/screen-hierarchy/*.json` from the uploaded artifact —
+# `accessibilityText` is the field that matters.
+# ---------------------------------------------------------------------------
+#
 # ${APP_ID} is substituted by the CI job from vars.IOS_BUNDLE_IDENTIFIER.
 
 appId: ${APP_ID}
@@ -21,19 +38,25 @@ appId: ${APP_ID}
 - launchApp:
     clearState: true
 
-# --- Launched, and rendering a fresh install -----------------------------
+# --- Launched, and rendering a fresh install ------------------------------
 #
-# A fresh install has no fixes, so the day is empty and tracking is off. Both
-# strings are asserted in full: fragment matching is what silently stops
-# matching the first time a label gains a word.
-- assertVisible: 'Tracking is off'
+# The header is a bare Text with `accessibilityRole="header"`, so it is exposed
+# as itself. The subtitle proves the timeline hook resolved rather than hanging
+# on the store read.
+- assertVisible: 'Today'
+- assertVisible: '0 journeys · 0 stops'
+
+# The tracking notice. Labelled by its Pressable, so this string — not the
+# "Tracking is off" heading inside it — is what exists.
+- assertVisible: 'Start tracking'
 - assertVisible: 'Nothing recorded yet today.'
 
-# The vault generated a key and the store round-tripped. If the keychain call
-# threw, the app would be stuck before this renders.
-- assertVisible: '0 m'
+# The vault generated a key and the store round-tripped. If the keychain call or
+# the cipher threw, the app would be stuck before this renders.
+- assertVisible: 'Distance: 0 m'
+- assertVisible: 'Calories: 0'
 
-# --- The record bar works without the GPS being on -----------------------
+# --- The record bar works without the GPS being on ------------------------
 #
 # Recording is a label over the fix stream, not a second subscription, so it
 # must work whether or not tracking is running. This asserts exactly that.
@@ -42,28 +65,42 @@ appId: ${APP_ID}
 - tapOn: 'Start recording'
 - assertVisible: 'Stop recording Smoke walk'
 - tapOn: 'Stop recording Smoke walk'
-- assertVisible: 'Record'
+- assertVisible: 'Start recording'
 
-# --- The other tabs render -----------------------------------------------
+# --- The other tabs render ------------------------------------------------
 # Worth the extra seconds: these screens pull in the icon font, the SVG renderer
 # and the settings store, and a missing native module shows up as a blank screen
 # here rather than as a crash on launch.
 - tapOn: 'History tab'
+- assertVisible: 'History'
 - assertVisible: 'Finished days appear here after midnight.'
 
-# Places is where the SVG renderer and the place store first get exercised.
+# Places is where the place store and the sort controls first get exercised.
 - tapOn: 'Places tab'
 - assertVisible: 'Places'
 - tapOn: 'Sort by Visits'
 - tapOn: 'Sort by Name'
+- tapOn: 'Sort by Time spent'
 
 - tapOn: 'Settings tab'
+- assertVisible: 'Settings'
 - assertVisible: 'Track my day'
-- assertVisible: 'Balanced'
-- assertVisible: 'Battery saver'
+# Each preset row is one collapsed element labelled "<name>. <detail>", built in
+# services/location.ts. Change a preset's `detail` and this must change with it.
+- assertVisible: 'Balanced. ~10 m accuracy, a point every 25 m'
+- assertVisible: 'Battery saver. ~100 m accuracy, a point every 100 m'
 
-# --- Erase is present and asks first -------------------------------------
-# The one irreversible action in the app. It must never be a single tap.
+# --- Erase is present and asks first --------------------------------------
+# The one irreversible action in the app — it destroys the encryption key. It
+# must never be a single tap.
+#
+# Scrolled to rather than tapped directly: it sits at the bottom of a long
+# ScrollView, and Maestro's `tapOn` does not scroll to find its target — it
+# fails on an element that exists but is off-screen.
+- scrollUntilVisible:
+    element:
+      text: 'Erase everything'
+    direction: DOWN
 - tapOn: 'Erase everything'
 - assertVisible: 'Erase everything?'
 - tapOn: 'Cancel'
