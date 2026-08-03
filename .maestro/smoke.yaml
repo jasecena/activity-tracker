@@ -75,6 +75,13 @@ appId: ${APP_ID}
 - tapOn: 'Stop recording Smoke walk'
 - assertVisible: 'Start recording'
 
+# The recording became a segment. A manual window with no fixes behind it still
+# gets a row — see core/segments/manual.ts — so the day now holds one journey
+# and no stops. Asserting the header subtitle rather than the row itself:
+# it is a bare Text, so it is exposed whole, and it proves the window went
+# through storage and back out of the engine rather than merely rendering.
+- assertVisible: '1 journey · 0 stops'
+
 # --- The other tabs render ------------------------------------------------
 # Worth the extra seconds: these screens pull in the icon font, the SVG renderer
 # and the settings store, and a missing native module shows up as a blank screen
@@ -114,4 +121,7 @@ appId: ${APP_ID}
 - tapOn: 'Cancel'
 
 - tapOn: 'Today tab'
-- assertVisible: 'Nothing recorded yet today.'
+# Still one journey after a tour of every other tab. Today was never unmounted,
+# which is the guarantee that stops a running recording being thrown away when
+# you glance somewhere else.
+- assertVisible: '1 journey · 0 stops'
