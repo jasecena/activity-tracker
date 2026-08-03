@@ -1,0 +1,56 @@
+# Gitleaks configuration.
+#
+# Extends the upstream default ruleset (AWS keys, GitHub tokens, private keys,
+# and ~150 others) and adds rules for the credential types specific to iOS
+# release engineering.
+
+title = "activity-tracker"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "app-store-connect-private-key"
+description = "App Store Connect API key (.p8). Must only ever exist in GitHub Secrets."
+regex = '''-----BEGIN PRIVATE KEY-----'''
+tags = ["apple", "credential"]
+
+[[rules]]
+id = "apple-provisioning-profile"
+description = "Embedded provisioning profile"
+regex = '''<key>ProvisionedDevices</key>'''
+tags = ["apple", "credential"]
+
+[[rules]]
+id = "apple-team-id-in-source"
+description = "Hard-coded Apple Team ID — belongs in repository variables, not source"
+regex = '''(?i)(team[_-]?id)['"\s:=]+[A-Z0-9]{10}\b'''
+tags = ["apple", "config"]
+
+# This app records where its owner has been. A committed fixture of real
+# coordinates is not a credential, but it is the same class of mistake: a
+# personal detail that cannot be un-published once it is in the objects.
+# Test fixtures are synthetic and belong near (0, 0) or in the plainly-fictional
+# ranges the suite uses — see src/core/segments/__tests__/fixtures.ts.
+[[rules]]
+id = "plausible-home-coordinates"
+description = "Latitude/longitude pair that looks like a real place — use synthetic fixtures, not your own tracks"
+regex = '''(?i)\b(lat|latitude)['"\s:=]+-?(?:[1-8][0-9]|[1-9])\.\d{4,}'''
+tags = ["privacy"]
+
+[allowlist]
+description = "Paths that legitimately contain credential-shaped or coordinate-shaped text"
+paths = [
+  # Documents the *names* of secrets and shows placeholder values.
+  '''docs/DEPLOYMENT\.md''',
+  '''\.env\.example''',
+  '''\.gitleaks\.toml''',
+  # Placeholder identifiers, never real ones.
+  '''\.github/workflows/.*\.yml''',
+  # Synthetic fixtures, reviewed for exactly this.
+  '''src/core/.*/__tests__/.*''',
+]
+regexes = [
+  '''com\.example\.''',
+  '''ABCDE12345''',
+]

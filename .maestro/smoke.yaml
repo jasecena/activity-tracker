@@ -1,0 +1,66 @@
+# Smoke test — does the built app actually launch and run?
+#
+# This is the only test that exercises the real binary on a real iOS runtime.
+# Jest can prove the segmentation logic is right; it cannot tell you the app
+# crashes on launch because of a native module, a missing Info.plist key or a
+# keychain call that throws. That is what this catches, and it runs before the
+# TestFlight upload.
+#
+# Deliberately shallow. Deep UI assertions belong in the Jest component suite,
+# which is faster, runs on Linux and does not flake.
+#
+# What it cannot cover: anything involving actual movement. A simulator has no
+# GPS, and background location does not survive backgrounding there. Every claim
+# about segmentation is asserted in `npx jest --selectProjects core` instead —
+# which is the reason the engine is pure TypeScript.
+#
+# ${APP_ID} is substituted by the CI job from vars.IOS_BUNDLE_IDENTIFIER.
+
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+
+# --- Launched, and rendering a fresh install -----------------------------
+#
+# A fresh install has no fixes, so the day is empty and tracking is off. Both
+# strings are asserted in full: fragment matching is what silently stops
+# matching the first time a label gains a word.
+- assertVisible: 'Tracking is off'
+- assertVisible: 'Nothing recorded yet today.'
+
+# The vault generated a key and the store round-tripped. If the keychain call
+# threw, the app would be stuck before this renders.
+- assertVisible: '0 m'
+
+# --- The record bar works without the GPS being on -----------------------
+#
+# Recording is a label over the fix stream, not a second subscription, so it
+# must work whether or not tracking is running. This asserts exactly that.
+- tapOn: 'Activity name'
+- inputText: 'Smoke walk'
+- tapOn: 'Start recording'
+- assertVisible: 'Stop recording Smoke walk'
+- tapOn: 'Stop recording Smoke walk'
+- assertVisible: 'Record'
+
+# --- The other tabs render -----------------------------------------------
+# Worth the extra seconds: these screens pull in the icon font, the SVG renderer
+# and the settings store, and a missing native module shows up as a blank screen
+# here rather than as a crash on launch.
+- tapOn: 'History tab'
+- assertVisible: 'Finished days appear here after midnight.'
+
+- tapOn: 'Settings tab'
+- assertVisible: 'Track my day'
+- assertVisible: 'Balanced'
+- assertVisible: 'Battery saver'
+
+# --- Erase is present and asks first -------------------------------------
+# The one irreversible action in the app. It must never be a single tap.
+- tapOn: 'Erase everything'
+- assertVisible: 'Erase everything?'
+- tapOn: 'Cancel'
+
+- tapOn: 'Today tab'
+- assertVisible: 'Nothing recorded yet today.'

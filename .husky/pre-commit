@@ -1,0 +1,19 @@
+# Fast checks only — anything slower than a couple of seconds gets bypassed with
+# --no-verify and then stops protecting anything. The full suite runs in CI.
+
+# Lint and format only the staged files.
+npx lint-staged
+
+# The timer engine is the part that must not silently break, and its suite runs
+# in ~1s on plain Node, so it is cheap enough to gate every commit.
+npx jest --selectProjects core --silent
+
+# Last line of defence against committing a credential. CI scans full history
+# too, but by then a leaked key is already pushed and must be rotated rather
+# than merely unstaged.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --config .gitleaks.toml
+else
+  echo "note: gitleaks not installed — skipping local secret scan (CI still enforces it)."
+  echo "      install: https://github.com/gitleaks/gitleaks#installing"
+fi

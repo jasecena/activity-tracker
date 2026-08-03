@@ -1,0 +1,123 @@
+### Security scanning — secrets, dependencies and static analysis.
+#
+# Runs on every pull request and on a weekly schedule. The schedule matters: a
+# dependency that is safe today can have a CVE published against it next week
+# without a single line of this repository changing.
+
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays, 03:00 UTC.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Gitleaks scans history, not just the tip — a credential that was
+          # committed and then "removed" is still in the objects and still
+          # compromised.
+          fetch-depth: 0
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Named explicitly rather than relying on auto-discovery. The config
+          # allowlists docs/DEPLOYMENT.md, which contains a truncated example
+          # `-----BEGIN PRIVATE KEY-----` block for illustration — without the
+          # config loading, that example alone would fail every scan.
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      # Fails the build on high/critical only. Moderate findings in build-time
+      # tooling would otherwise block every release for something that never
+      # ships in the app binary; they are still reported below.
+      - name: Audit (fail on high or critical)
+        run: npm audit --audit-level=high
+
+      - name: Report all advisories
+        if: ${{ always() }}
+        run: npm audit || true
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Required so CodeQL can publish findings to the Security tab.
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+
+  # Guards the supply chain of the pipeline itself: a third-party action
+  # referenced by a mutable tag can be repointed at malicious code without any
+  # change here, and this job is what stops that landing unnoticed.
+  actions-pinning:
+    name: Actions are SHA-pinned
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check every `uses:` is pinned to a full commit SHA
+        run: |
+          set -euo pipefail
+          violations=0
+          while IFS= read -r line; do
+            file="${line%%:*}"
+            ref="$(printf '%s' "$line" | sed -E 's/.*uses:[[:space:]]*//; s/[[:space:]]*(#.*)?$//')"
+            # Local (./path) and docker:// references have no SHA to pin.
+            case "$ref" in ./*|docker://*) continue ;; esac
+            if ! printf '%s' "$ref" | grep -Eq '@[0-9a-f]{40}$'; then
+              echo "::error file=${file}::Action '${ref}' is not pinned to a full 40-character commit SHA."
+              violations=$((violations + 1))
+            fi
+          # Anchored to a real YAML key, so prose and shell code that merely
+          # mention the word are not mistaken for action references.
+          done < <(grep -rnE '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]' .github/workflows/)
+
+          if (( violations > 0 )); then
+            echo "${violations} unpinned action reference(s). Pin with: uses: owner/repo@<sha> # vX"
+            exit 1
+          fi
+          echo "All action references are SHA-pinned."

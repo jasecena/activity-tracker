@@ -1,0 +1,245 @@
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+
+import type { RejectionReason } from '@/core/geo';
+import type { Place } from '@/core/places';
+import { TRACKING_PRESETS, type TrackingPresetId } from '@/services/location';
+import { colors, radius, spacing, typography } from '@/theme/tokens';
+
+import type { UseSettings } from './hooks/useSettings';
+
+interface SettingsScreenProps {
+  readonly settings: UseSettings;
+  readonly places: readonly Place[];
+  readonly onForgetPlace: (id: string) => void;
+  readonly rejected: Readonly<Record<RejectionReason, number>> | null;
+}
+
+const PERMISSION_TEXT: Readonly<Record<string, string>> = {
+  always: 'Always — records with the app closed',
+  'when-in-use': 'While Using — gaps whenever the app is closed',
+  denied: 'Denied — nothing is being recorded',
+  unknown: 'Not asked yet',
+};
+
+const RETENTION_CHOICES: readonly { readonly label: string; readonly days: number | null }[] = [
+  { label: 'Keep everything', days: null },
+  { label: '1 year', days: 365 },
+  { label: '90 days', days: 90 },
+  { label: '30 days', days: 30 },
+];
+
+export function SettingsScreen({ settings, places, onForgetPlace, rejected }: SettingsScreenProps) {
+  const { settings: values } = settings;
+
+  const confirmErase = () => {
+    Alert.alert(
+      'Erase everything?',
+      'This destroys the encryption key, which makes every recorded day permanently unreadable. There is no copy anywhere else.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Erase', style: 'destructive', onPress: () => void settings.eraseAll() },
+      ],
+    );
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.content}>
+      <Text style={styles.heading} accessibilityRole="header">
+        Settings
+      </Text>
+
+      <View style={styles.card}>
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Track my day</Text>
+            <Text style={styles.rowDetail}>{PERMISSION_TEXT[settings.permission] ?? ''}</Text>
+          </View>
+          <Switch
+            value={settings.tracking}
+            onValueChange={settings.setTracking}
+            accessibilityLabel="Track my day"
+            trackColor={{ true: colors.move, false: colors.border }}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionLabel}>ACCURACY &amp; BATTERY</Text>
+      <View style={styles.card}>
+        {(Object.keys(TRACKING_PRESETS) as TrackingPresetId[]).map((id) => {
+          const preset = TRACKING_PRESETS[id];
+          const selected = values.preset === id;
+          return (
+            <Pressable
+              key={id}
+              onPress={() => settings.setPreset(id)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${preset.label}. ${preset.detail}`}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            >
+              <View style={styles.rowText}>
+                <Text style={[styles.rowTitle, selected && styles.selected]}>{preset.label}</Text>
+                <Text style={styles.rowDetail}>{preset.detail}</Text>
+              </View>
+              {selected ? <Text style={styles.tick}>✓</Text> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+      {/* The honest version of "does this drain my battery". */}
+      <Text style={styles.footnote}>
+        The GPS is only woken when you have moved by the distance above, so standing still costs nothing. Location
+        updates are never paused automatically — iOS does not reliably resume them, and a day missing from a diary is
+        worse than a percent of battery.
+      </Text>
+
+      <Text style={styles.sectionLabel}>CALORIES</Text>
+      <View style={styles.card}>
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Weight</Text>
+            <Text style={styles.rowDetail}>{values.weightKg} kg — used for the calorie estimate</Text>
+          </View>
+          <View style={styles.stepper}>
+            <Pressable
+              onPress={() => settings.setWeightKg(values.weightKg - 1)}
+              accessibilityRole="button"
+              accessibilityLabel="Decrease weight"
+              style={({ pressed }) => [styles.stepperButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.stepperText}>−</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => settings.setWeightKg(values.weightKg + 1)}
+              accessibilityRole="button"
+              accessibilityLabel="Increase weight"
+              style={({ pressed }) => [styles.stepperButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.stepperText}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+
+      <Text style={styles.sectionLabel}>HISTORY</Text>
+      <View style={styles.card}>
+        {RETENTION_CHOICES.map((choice) => {
+          const selected = values.retentionDays === choice.days;
+          return (
+            <Pressable
+              key={choice.label}
+              onPress={() => settings.setRetentionDays(choice.days)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              accessibilityLabel={choice.label}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            >
+              <Text style={[styles.rowTitle, selected && styles.selected]}>{choice.label}</Text>
+              {selected ? <Text style={styles.tick}>✓</Text> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {places.length > 0 ? (
+        <>
+          <Text style={styles.sectionLabel}>PLACES</Text>
+          <View style={styles.card}>
+            {places.map((place) => (
+              <View key={place.id} style={styles.row}>
+                <Text style={styles.rowTitle} numberOfLines={1}>
+                  {place.name}
+                </Text>
+                <Pressable
+                  onPress={() => onForgetPlace(place.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Forget ${place.name}`}
+                  style={({ pressed }) => [pressed && styles.pressed]}
+                >
+                  <Text style={styles.forget}>Forget</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {/* Not a debug panel. "Two thirds of today's fixes were too vague to use"
+          is the difference between a broken app and a day spent indoors. */}
+      {rejected ? (
+        <>
+          <Text style={styles.sectionLabel}>SIGNAL TODAY</Text>
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <Text style={styles.rowDetail}>Too vague to use</Text>
+              <Text style={styles.rowDetail}>{rejected.inaccurate}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowDetail}>Impossible jumps discarded</Text>
+              <Text style={styles.rowDetail}>{rejected.teleport}</Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      <Text style={styles.sectionLabel}>PRIVACY</Text>
+      <View style={styles.card}>
+        <Text style={styles.privacy}>
+          Everything is encrypted on this phone with a key held in the iOS keychain and marked so it never enters a
+          backup. The app makes no network requests of any kind — there is no server to send anything to.
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={confirmErase}
+        accessibilityRole="button"
+        accessibilityLabel="Erase everything"
+        style={({ pressed }) => [styles.erase, pressed && styles.pressed]}
+      >
+        <Text style={styles.eraseText}>Erase everything</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xxl },
+  heading: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.xs },
+  sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.md },
+  card: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  rowText: { flex: 1, gap: 2 },
+  rowTitle: { ...typography.body, color: colors.textPrimary },
+  rowDetail: { ...typography.caption, color: colors.textSecondary },
+  selected: { color: colors.move, fontWeight: '600' },
+  tick: { ...typography.body, color: colors.move },
+  footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
+  stepper: { flexDirection: 'row', gap: spacing.xs },
+  stepperButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperText: { ...typography.title, fontSize: 20, color: colors.textPrimary },
+  forget: { ...typography.caption, color: colors.danger },
+  privacy: { ...typography.caption, color: colors.textSecondary, paddingVertical: spacing.md },
+  erase: {
+    marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  eraseText: { ...typography.body, color: colors.danger, fontWeight: '600' },
+  pressed: { opacity: 0.6 },
+});

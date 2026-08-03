@@ -1,0 +1,26 @@
+# Code owners for Activity Tracker.
+#
+# Every path is owned by the repository owner. GitHub requests review from the
+# owner automatically on any pull request touching a matching path.
+#
+# Note: a code owner cannot approve their own pull request. Keep
+# "Require review from Code Owners" OFF in branch protection while this is a
+# solo repository, or you will be unable to merge your own work.
+
+# Everything.
+* @jasecena
+
+# Release pipeline and security posture — the parts where a bad change is
+# expensive and the blast radius reaches Apple credentials.
+/.github/workflows/  @jasecena
+/.github/scripts/    @jasecena
+/.gitleaks.toml      @jasecena
+/SECURITY.md         @jasecena
+
+# The segmentation engine. All correctness lives here; it is the one place
+# where a subtle change is worth reading twice.
+/src/core/           @jasecena
+
+# The only file that may touch Core Location, and the one whose bugs cost
+# battery rather than pixels.
+/src/services/       @jasecena

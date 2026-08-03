@@ -1,0 +1,83 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Metro
+.metro-health-check*
+
+# build output
+coverage/
+*.ipa
+*.xcarchive
+*.dSYM.zip
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# typescript
+*.tsbuildinfo
+
+# Generated native projects.
+# `expo prebuild` recreates these from app.config.ts on every build, so they are
+# output, not source. Committing them means the config and the native project
+# can silently diverge. If you ever need custom native code, delete these two
+# lines and commit ios/ deliberately — see docs/ARCHITECTURE.md.
+/ios
+/android
+
+# ---------------------------------------------------------------------------
+# Credentials. Nothing matching these patterns may ever enter the repository.
+# CI reads all of it from GitHub Secrets instead; see docs/DEPLOYMENT.md.
+# ---------------------------------------------------------------------------
+
+# Signing material
+*.p8
+*.p12
+*.pem
+*.key
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+*.jks
+*.keystore
+
+# App Store Connect API keys, wherever they land
+AuthKey_*.p8
+private_keys/
+.appstoreconnect/
+
+# Local environment. `.env.example` is committed as the template; real values
+# never are.
+.env
+.env.*
+!.env.example
+
+# Notes containing account-specific values (Team ID, bundle id, portal state).
+# The committed docs use placeholders; anything with a real identifier in it
+# gets this suffix and stays here.
+*.local.md
+
+# Personal editor/tool state. `.claude/settings.json` is shared project config
+# and is committed; the `.local.` variant holds per-developer overrides.
+.claude/settings.local.json
+.vscode/
+.idea/
+
+# Xcode local state, in case a native project is ever committed
+*.xcuserstate
+xcuserdata/
+*.orig.*
+.kotlin/
