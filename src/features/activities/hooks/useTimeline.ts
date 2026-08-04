@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { groupByDay, type DayGroup } from '@/core/day';
+import type { Fix, RejectionReason } from '@/core/geo';
 import { applyManualWindows, segmentFixes, type ManualWindow, type Segment } from '@/core/segments';
-import type { RejectionReason } from '@/core/geo';
 import { now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { freezeFinishedDays } from '@/services/dayLog';
 import { readBuffer } from '@/services/fixBuffer';
@@ -16,6 +16,14 @@ export interface Timeline {
   history: readonly DayGroup[];
   /** Why fixes were dropped while deriving the live day. Shown in Settings. */
   rejected: Readonly<Record<RejectionReason, number>> | null;
+  /**
+   * The raw fix buffer, as read this refresh.
+   *
+   * Held so the Data screen can show what actually exists and export it. Note
+   * what it is *not*: all of history. Once a day is frozen its raw fixes are
+   * pruned and only the derived segments survive — see `services/dayLog.ts`.
+   */
+  fixes: readonly Fix[];
   now: number;
   tzOffsetMinutes: number;
   refresh: () => void;
@@ -46,6 +54,7 @@ export function useTimeline(settings: Settings, windows: readonly ManualWindow[]
   const [today, setToday] = useState<readonly Segment[]>([]);
   const [history, setHistory] = useState<readonly DayGroup[]>([]);
   const [rejected, setRejected] = useState<Timeline['rejected']>(null);
+  const [fixes, setFixes] = useState<readonly Fix[]>([]);
   const [ready, setReady] = useState(false);
   const [now, setNow] = useState(readNow);
   const [tzOffsetMinutes, setTzOffset] = useState(readTzOffset);
@@ -89,6 +98,7 @@ export function useTimeline(settings: Settings, windows: readonly ManualWindow[]
       setNow(at);
       setTzOffset(offset);
       setRejected(dropped);
+      setFixes(buffered);
       setToday(labelled);
       setHistory(groupByDay(log, offset));
       setReady(true);
@@ -112,5 +122,5 @@ export function useTimeline(settings: Settings, windows: readonly ManualWindow[]
     };
   }, [refresh]);
 
-  return { ready, today, history, rejected, now, tzOffsetMinutes, refresh };
+  return { ready, today, history, rejected, fixes, now, tzOffsetMinutes, refresh };
 }

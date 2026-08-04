@@ -83,6 +83,23 @@ export function formatPace(metresPerSecond: number): string {
   return `${minutes}'${pad(seconds)}"/km`;
 }
 
+/**
+ * A full ISO 8601 instant with the offset spelled out: `2026-08-04T10:34:05+10:00`.
+ *
+ * For export, where a bare local time is ambiguous and a bare `Z` throws away
+ * the thing you most want to know about a diary entry — what time it felt like
+ * where you were. Spreadsheets, GPX tools and pandas all read this form.
+ */
+export function formatIsoWithOffset(at: number, tzOffsetMinutes: number): string {
+  const local = new Date(at + tzOffsetMinutes * MS_PER_MINUTE);
+  const date = `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}`;
+  const time = `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(local.getUTCSeconds())}`;
+
+  const sign = tzOffsetMinutes < 0 ? '-' : '+';
+  const total = Math.abs(tzOffsetMinutes);
+  return `${date}T${time}${sign}${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 

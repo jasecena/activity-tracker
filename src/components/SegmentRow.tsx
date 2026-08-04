@@ -21,8 +21,8 @@ interface SegmentRowProps {
   readonly segment: Segment;
   readonly places: readonly Place[];
   readonly tzOffsetMinutes: number;
-  /** Only stays are nameable, and only from Today. */
-  readonly onNamePlace?: (segment: Segment) => void;
+  /** Opens the segment's own page. Omitted where the timeline is read-only. */
+  readonly onOpen?: (segment: Segment) => void;
 }
 
 /**
@@ -31,52 +31,41 @@ interface SegmentRowProps {
  * The three numbers a row carries are the ones that answer a question you would
  * actually ask about it: how far, how long, how fast. Speed is the *average*
  * over the segment rather than the peak, because a peak is a single sample that
- * a bad fix can invent, and the average is consistent with the distance
- * printed beside it.
+ * a bad fix can invent, and the average is consistent with the distance printed
+ * beside it. Everything else the app holds — per-point speeds, the fix count,
+ * the identifier — is one tap away rather than crammed in here.
  */
-export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMinutes, onNamePlace }: SegmentRowProps) {
+export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMinutes, onOpen }: SegmentRowProps) {
   const startedAt = formatClockTime(segment.startedAt, tzOffsetMinutes);
   const elapsed = formatDuration(durationMs(segment));
 
-  if (segment.kind === 'stay') {
-    const place = matchPlace(segment, places);
-    const title = place?.name ?? 'Unnamed place';
+  const isStay = segment.kind === 'stay';
+  const place = isStay ? matchPlace(segment, places) : null;
+  const title = isStay ? (place?.name ?? 'Unnamed place') : (segment.label ?? modeLabel(segment.mode));
 
-    return (
-      <Pressable
-        onPress={() => onNamePlace?.(segment)}
-        disabled={!onNamePlace}
-        accessibilityRole={onNamePlace ? 'button' : undefined}
-        accessibilityLabel={`${title}, ${elapsed}, from ${startedAt}${onNamePlace ? '. Tap to name.' : ''}`}
-        style={({ pressed }) => [styles.row, pressed && onNamePlace ? styles.pressed : null]}
-      >
-        <Text style={styles.clock}>{startedAt}</Text>
-        <View style={[styles.dot, { backgroundColor: colors.stay }]} />
-        <View style={styles.body}>
-          <Text style={[styles.title, !place && styles.untitled]} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.detail}>{elapsed}</Text>
-        </View>
-        {!place && onNamePlace ? <Ionicons name="pricetag-outline" size={16} color={colors.textMuted} /> : null}
-      </Pressable>
-    );
-  }
+  const label = isStay
+    ? `${title}, ${elapsed}, from ${startedAt}`
+    : `${title}, ${formatDistance(segment.distanceM)}, ${elapsed}, averaging ${formatSpeed(averageSpeedMps(segment))}, from ${startedAt}`;
 
-  const color = modeColors[segment.mode];
-  const title = segment.label ?? modeLabel(segment.mode);
-  const average = averageSpeedMps(segment);
-
-  return (
-    <View
-      style={styles.row}
-      accessibilityLabel={`${title}, ${formatDistance(segment.distanceM)}, ${elapsed}, averaging ${formatSpeed(average)}, from ${startedAt}`}
-    >
+  const body = isStay ? (
+    <>
       <Text style={styles.clock}>{startedAt}</Text>
-      <View style={[styles.bar, { backgroundColor: color }]} />
-      <View style={styles.body}>
+      <View style={[styles.dot, { backgroundColor: colors.stay }]} />
+      <View style={styles.content}>
+        <Text style={[styles.title, !place && styles.untitled]} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.detail}>{elapsed}</Text>
+      </View>
+      {!place && onOpen ? <Ionicons name="pricetag-outline" size={16} color={colors.textMuted} /> : null}
+    </>
+  ) : (
+    <>
+      <Text style={styles.clock}>{startedAt}</Text>
+      <View style={[styles.bar, { backgroundColor: modeColors[segment.mode] }]} />
+      <View style={styles.content}>
         <View style={styles.titleRow}>
-          <Ionicons name={MODE_ICONS[segment.mode]} size={15} color={color} />
+          <Ionicons name={MODE_ICONS[segment.mode]} size={15} color={modeColors[segment.mode]} />
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
@@ -87,11 +76,30 @@ export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMi
           ) : null}
         </View>
         <Text style={styles.detail}>
-          {formatDistance(segment.distanceM)} · {elapsed} · {formatSpeed(average)}
+          {formatDistance(segment.distanceM)} · {elapsed} · {formatSpeed(averageSpeedMps(segment))}
         </Text>
       </View>
-      <RouteSparkline path={segment.path} color={color} />
-    </View>
+      <RouteSparkline path={segment.path} color={modeColors[segment.mode]} />
+    </>
+  );
+
+  if (!onOpen) {
+    return (
+      <View style={styles.row} accessibilityLabel={label}>
+        {body}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={() => onOpen(segment)}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+    >
+      {body}
+    </Pressable>
   );
 });
 
@@ -103,7 +111,7 @@ const styles = StyleSheet.create({
   // before the words do.
   dot: { width: 10, height: 10, borderRadius: radius.pill, marginHorizontal: 4 },
   bar: { width: 4, height: 30, borderRadius: radius.sm, marginHorizontal: 7 },
-  body: { flex: 1, gap: 2 },
+  content: { flex: 1, gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   title: { ...typography.body, color: colors.textPrimary, flexShrink: 1 },
   untitled: { color: colors.textSecondary, fontStyle: 'italic' },

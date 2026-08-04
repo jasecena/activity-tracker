@@ -10,6 +10,7 @@ import type { UseSettings } from './hooks/useSettings';
 interface SettingsScreenProps {
   readonly settings: UseSettings;
   readonly rejected: Readonly<Record<RejectionReason, number>> | null;
+  readonly onOpenData: () => void;
 }
 
 const PERMISSION_TEXT: Readonly<Record<string, string>> = {
@@ -26,7 +27,7 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
   { label: '30 days', days: 30 },
 ];
 
-export function SettingsScreen({ settings, rejected }: SettingsScreenProps) {
+export function SettingsScreen({ settings, rejected, onOpenData }: SettingsScreenProps) {
   const { settings: values } = settings;
 
   const confirmErase = () => {
@@ -138,23 +139,23 @@ export function SettingsScreen({ settings, rejected }: SettingsScreenProps) {
           })}
         </View>
 
-        {/* Not a debug panel. "Two thirds of today's fixes were too vague to use"
-          is the difference between a broken app and a day spent indoors. */}
-        {rejected ? (
-          <>
-            <Text style={styles.sectionLabel}>SIGNAL TODAY</Text>
-            <View style={styles.card}>
-              <View style={styles.row}>
-                <Text style={styles.rowDetail}>Too vague to use</Text>
-                <Text style={styles.rowDetail}>{rejected.inaccurate}</Text>
-              </View>
-              <View style={styles.row}>
-                <Text style={styles.rowDetail}>Impossible jumps discarded</Text>
-                <Text style={styles.rowDetail}>{rejected.teleport}</Text>
-              </View>
+        <Text style={styles.sectionLabel}>DATA</Text>
+        <View style={styles.card}>
+          <Pressable
+            onPress={onOpenData}
+            accessibilityRole="button"
+            accessibilityLabel="Raw data and export"
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Raw data &amp; export</Text>
+              <Text style={styles.rowDetail}>
+                {rejected ? `What is stored, why fixes were dropped, and CSV export` : 'What is stored, and CSV export'}
+              </Text>
             </View>
-          </>
-        ) : null}
+            <Text style={styles.tick}>›</Text>
+          </Pressable>
+        </View>
 
         <Text style={styles.sectionLabel}>PRIVACY</Text>
         <View style={styles.card}>

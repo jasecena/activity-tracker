@@ -4,7 +4,7 @@ import { summarizeDay, type DayGroup } from '@/core/day';
 import { activeCalories } from '@/core/energy';
 import { formatDistance, formatDuration, modeLabel } from '@/core/format';
 import { visitsByPlace, type Place } from '@/core/places';
-import { ACTIVITY_MODES } from '@/core/segments';
+import { ACTIVITY_MODES, type Segment } from '@/core/segments';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SegmentRow } from '@/components/SegmentRow';
 import { StatTile } from '@/components/StatTile';
@@ -17,10 +17,11 @@ interface DayScreenProps {
   readonly tzOffsetMinutes: number;
   readonly title: string;
   readonly onBack: () => void;
+  readonly onOpenSegment: (segment: Segment) => void;
 }
 
 /** One finished day, in full. */
-export function DayScreen({ day, places, weightKg, tzOffsetMinutes, title, onBack }: DayScreenProps) {
+export function DayScreen({ day, places, weightKg, tzOffsetMinutes, title, onBack, onOpenSegment }: DayScreenProps) {
   const summary = summarizeDay(day.segments);
   const visits = visitsByPlace(day.segments, places);
   const calories = activeCalories(day.segments, weightKg);
@@ -81,7 +82,13 @@ export function DayScreen({ day, places, weightKg, tzOffsetMinutes, title, onBac
         <Text style={styles.sectionLabel}>TIMELINE</Text>
         <View style={styles.timeline}>
           {day.segments.map((segment) => (
-            <SegmentRow key={segment.id} segment={segment} places={places} tzOffsetMinutes={tzOffsetMinutes} />
+            <SegmentRow
+              key={segment.id}
+              segment={segment}
+              places={places}
+              tzOffsetMinutes={tzOffsetMinutes}
+              onOpen={onOpenSegment}
+            />
           ))}
         </View>
       </ScrollView>

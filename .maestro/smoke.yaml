@@ -105,6 +105,20 @@ appId: ${APP_ID}
 - assertVisible: 'Balanced. ~10 m accuracy, a point every 25 m'
 - assertVisible: 'Battery saver. ~100 m accuracy, a point every 100 m'
 
+# --- The raw data page opens ----------------------------------------------
+# Exercises the page stack and the counts. Deliberately does NOT tap an export
+# button: that opens the iOS share sheet, which has no Maestro affordance and
+# would hang the run waiting for a human.
+- scrollUntilVisible:
+    element:
+      text: 'Raw data and export'
+    direction: DOWN
+- tapOn: 'Raw data and export'
+- assertVisible: 'Raw data'
+- assertVisible: 'Route points (all history): 0'
+- tapOn: 'Back'
+- assertVisible: 'Settings'
+
 # --- Erase is present and asks first --------------------------------------
 # The one irreversible action in the app — it destroys the encryption key. It
 # must never be a single tap.

@@ -124,3 +124,72 @@ describe('naming a place', () => {
     expect(screen.queryByRole('header', { name: 'Name this place' })).not.toBeOnTheScreen();
   });
 });
+
+describe('raw data and export', () => {
+  it('is reachable from Settings and says what is stored', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Raw data and export');
+
+    expect(await screen.findByRole('header', { name: 'Raw data' })).toBeOnTheScreen();
+    // A fresh install holds nothing, and the screen says so rather than
+    // showing three zeroes and leaving you to guess why.
+    expect(screen.getByLabelText('Raw fixes (current window): 0')).toBeOnTheScreen();
+    expect(screen.getByText(/No raw fixes held/)).toBeOnTheScreen();
+  });
+
+  it('offers all three exports, disabled while there is nothing to export', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Raw data and export');
+
+    expect(screen.getByLabelText('Export raw fixes as CSV')).toBeDisabled();
+    expect(screen.getByLabelText('Export route points as CSV')).toBeDisabled();
+    expect(screen.getByLabelText('Export timeline as CSV')).toBeDisabled();
+  });
+
+  // Said before the button is used, not after: an export is the one copy the
+  // app's encryption does not cover.
+  it('warns that an exported file is plaintext', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Raw data and export');
+
+    expect(screen.getByText(/An exported file is plain text/)).toBeOnTheScreen();
+  });
+
+  it('goes back to Settings', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Raw data and export');
+    await press('Back');
+
+    expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
+  });
+});
+
+describe('a segment page', () => {
+  it('opens from a recorded journey and shows what is stored', async () => {
+    await render(<TabShell />);
+
+    await act(async () => {
+      fireEvent.changeText(await screen.findByLabelText('Activity name'), 'Smoke walk');
+    });
+    await press('Start recording');
+    await press('Stop recording Smoke walk');
+
+    // The row's label is assembled from every number it shows.
+    const row = await screen.findByLabelText(/^Smoke walk, 0 m,/);
+    await act(async () => {
+      fireEvent.press(row);
+    });
+
+    expect(screen.getByRole('header', { name: 'Smoke walk' })).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Mode: Walk \(yours\)/)).toBeOnTheScreen();
+    expect(screen.getByText('ROUTE POINTS')).toBeOnTheScreen();
+  });
+});

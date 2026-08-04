@@ -1,16 +1,13 @@
-import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { summarizeDay } from '@/core/day';
 import { activeCalories } from '@/core/energy';
 import { formatDistance, formatDuration } from '@/core/format';
-import { visitsByPlace } from '@/core/places';
-import type { Segment, StaySegment } from '@/core/segments';
+import type { Place } from '@/core/places';
+import type { Segment } from '@/core/segments';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SegmentRow } from '@/components/SegmentRow';
 import { StatTile } from '@/components/StatTile';
-import { PlacePicker } from '@/features/places/components/PlacePicker';
-import type { UsePlaces } from '@/features/places/hooks/usePlaces';
 import { RecordBar } from '@/features/record/components/RecordBar';
 import type { UseRecording } from '@/features/record/hooks/useRecording';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
@@ -18,9 +15,8 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 interface TodayScreenProps {
   readonly segments: readonly Segment[];
-  /** Today plus history, so the picker can say how often you have been somewhere. */
-  readonly allSegments: readonly Segment[];
-  readonly places: UsePlaces;
+  readonly places: readonly Place[];
+  readonly onOpenSegment: (segment: Segment) => void;
   readonly recording: UseRecording;
   readonly settings: UseSettings;
   readonly now: number;
@@ -30,21 +26,16 @@ interface TodayScreenProps {
 
 export function TodayScreen({
   segments,
-  allSegments,
   places,
+  onOpenSegment,
   recording,
   settings,
   now,
   tzOffsetMinutes,
   ready,
 }: TodayScreenProps) {
-  const [naming, setNaming] = useState<StaySegment | null>(null);
-
   const summary = summarizeDay(segments);
   const calories = activeCalories(segments, settings.settings.weightKg);
-  const visits = visitsByPlace(allSegments, places.places);
-
-  const closePicker = () => setNaming(null);
 
   return (
     <View style={styles.screen}>
@@ -112,33 +103,14 @@ export function TodayScreen({
               <SegmentRow
                 key={segment.id}
                 segment={segment}
-                places={places.places}
+                places={places}
                 tzOffsetMinutes={tzOffsetMinutes}
-                onNamePlace={(candidate) => {
-                  if (candidate.kind !== 'stay') return;
-                  setNaming(candidate);
-                }}
+                onOpen={onOpenSegment}
               />
             ))
           )}
         </View>
       </ScrollView>
-
-      <PlacePicker
-        stay={naming}
-        places={places.places}
-        visits={visits}
-        tzOffsetMinutes={tzOffsetMinutes}
-        onPickExisting={(place) => {
-          if (naming) places.link(naming, place);
-          closePicker();
-        }}
-        onCreate={(name) => {
-          if (naming) places.name(naming, name);
-          closePicker();
-        }}
-        onClose={closePicker}
-      />
     </View>
   );
 }
