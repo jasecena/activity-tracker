@@ -121,45 +121,53 @@ appId: ${APP_ID}
     direction: DOWN
 - assertVisible: 'Off — routes are drawn without tiles'
 
-# Places lost its tab to Replay and Capture, so this is also what proves the
-# page stack still reaches it. The sort controls exercise the place store.
+# --- Everything below the fold, from one scroll -----------------------------
+#
+# Scroll to the *last* element in the screen once, then tap the rows that are
+# now sitting comfortably above it. Every tab in this app keeps its scroll
+# position when a detail page opens over it and closes again, so one scroll
+# serves all three.
+#
+# `scrollUntilVisible` stops the moment its target is visible, which leaves that
+# target flush against the bottom edge of the scroll view — and the tab bar sits
+# directly under that edge. Scrolling *past* the rows we want is what makes this
+# independent of how many rows happen to be above them.
+#
+# The v0.2.0 release failed exactly here. Adding the Places row pushed "Raw data
+# & export" to bounds ending at y=788 with the tab bar starting at 786; the tap
+# reported success and the screen never changed.
 - scrollUntilVisible:
     element:
-      text: 'Places'
+      text: 'Erase everything'
     direction: DOWN
+
+# Places lost its tab to Replay and Capture, so this is also what proves the
+# page stack still reaches it. The sort controls exercise the place store.
+#
+# Asserted on a sort control rather than on "Places": that string is also the
+# label of the Settings row that was just tapped, so it stays visible whether or
+# not anything opened — an assertion that cannot fail is worse than none.
 - tapOn: 'Places'
-- assertVisible: 'Places'
+- assertVisible: 'Sort by Time spent'
 - tapOn: 'Sort by Visits'
 - tapOn: 'Sort by Name'
 - tapOn: 'Sort by Time spent'
 - tapOn: 'Back'
-- assertVisible: 'Settings'
+- assertVisible: 'Track my day'
 
 # --- The raw data page opens ----------------------------------------------
 # Exercises the page stack and the counts. Deliberately does NOT tap an export
 # button: that opens the iOS share sheet, which has no Maestro affordance and
 # would hang the run waiting for a human.
-- scrollUntilVisible:
-    element:
-      text: 'Raw data and export'
-    direction: DOWN
 - tapOn: 'Raw data and export'
 - assertVisible: 'Raw data'
 - assertVisible: 'Route points (all history): 0'
 - tapOn: 'Back'
-- assertVisible: 'Settings'
+- assertVisible: 'Track my day'
 
 # --- Erase is present and asks first --------------------------------------
 # The one irreversible action in the app — it destroys the encryption key. It
 # must never be a single tap.
-#
-# Scrolled to rather than tapped directly: it sits at the bottom of a long
-# ScrollView, and Maestro's `tapOn` does not scroll to find its target — it
-# fails on an element that exists but is off-screen.
-- scrollUntilVisible:
-    element:
-      text: 'Erase everything'
-    direction: DOWN
 - tapOn: 'Erase everything'
 - assertVisible: 'Erase everything?'
 - tapOn: 'Cancel'
