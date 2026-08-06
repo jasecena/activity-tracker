@@ -179,6 +179,18 @@ function splitAll(segments: readonly Segment[], at: number): Segment[] {
  * the coalesced segment spans them — they just do not appear as a separate row
  * saying you stopped.
  */
+/**
+ * The id the segment for a recording will have.
+ *
+ * Namespaced by the window rather than by an instant, so a recording keeps its
+ * identity while it is still running and its end is moving with the clock. It
+ * is also how the UI finds the row a recording produced without re-deriving
+ * anything: `applyManualWindows` emits exactly one segment per window.
+ */
+export function manualSegmentId(window: ManualWindow): string {
+  return `manual-${window.id}`;
+}
+
 function coalesce(inside: readonly Segment[], window: ManualWindow, from: number, to: number): MoveSegment {
   const path: PathPoint[] = [];
   let distance = 0;
@@ -200,9 +212,7 @@ function coalesce(inside: readonly Segment[], window: ManualWindow, from: number
 
   return {
     kind: 'move',
-    // Namespaced by the window, not by the instant: a recording keeps its
-    // identity while it is running, even as its end moves with the clock.
-    id: `manual-${window.id}`,
+    id: manualSegmentId(window),
     startedAt: from,
     endedAt: to,
     fixCount,

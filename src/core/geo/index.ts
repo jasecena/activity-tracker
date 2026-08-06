@@ -8,4 +8,15 @@
 export { bearingDeg, centroid, distanceM, EARTH_RADIUS_M, pathLengthM } from './distance';
 export { judgeFix } from './filter';
 export type { FixFilterConfig, FixVerdict, RejectionReason } from './filter';
+export {
+  boundsOf,
+  centerOf,
+  niceScaleMetres,
+  padBounds,
+  projectToBox,
+  spanMetresOf,
+  unionBounds,
+  zoomForBounds,
+} from './project';
+export type { Bounds, Box, Point } from './project';
 export type { Fix, LatLon, PathPoint } from './types';

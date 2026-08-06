@@ -43,6 +43,16 @@ const WHEN_IN_USE_REASON =
 const ALWAYS_REASON =
   'Keeps logging your walks, rides and drives while the app is closed, so your day is recorded as it happens. Every fix stays on this phone and is never uploaded.';
 
+/**
+ * Capture. Same rule as the location strings: name what is recorded and where
+ * it goes, because "this app uses your camera" is the sentence that gets a
+ * review rejection rather than an approval.
+ */
+const CAMERA_REASON =
+  'Takes the photos and videos you attach to a day in your diary. They are encrypted on this phone and are never uploaded.';
+const MICROPHONE_REASON =
+  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They are encrypted on this phone and are never uploaded.';
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: VARIANT_NAME[VARIANT],
@@ -85,6 +95,49 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         isIosBackgroundLocationEnabled: true,
       },
     ],
+    [
+      // Photo and video capture. `microphonePermission` here covers the audio
+      // track of a video; expo-audio below covers a voice note. Both write the
+      // same Info.plist key, so the two strings must agree — iOS shows
+      // whichever one landed in the plist, not the one belonging to the API
+      // that happened to ask.
+      'expo-camera',
+      {
+        cameraPermission: CAMERA_REASON,
+        microphonePermission: MICROPHONE_REASON,
+        // No barcode scanning here, and leaving it on links a framework and a
+        // required-reason API for a feature this app does not have.
+        barcodeScannerEnabled: false,
+      },
+    ],
+    [
+      // Both background flags off, and this is not a detail.
+      //
+      // `enableBackgroundPlayback` defaults to **true**, which pushes `audio`
+      // into `UIBackgroundModes`. This app plays a voice note while you are
+      // looking at it and nothing else, so that would be claiming a background
+      // capability it never uses — and an unused background mode is a review
+      // rejection on an app whose whole submission argument is that it asks for
+      // exactly one, for a reason it can name.
+      'expo-audio',
+      {
+        microphonePermission: MICROPHONE_REASON,
+        enableBackgroundPlayback: false,
+        enableBackgroundRecording: false,
+      },
+    ],
+    [
+      // Apple Maps. `requestLocationPermission` is false deliberately: the app
+      // already holds its own always-on permission and asks for it with a
+      // string that explains background tracking. Letting the map plugin ask
+      // again would put a second, vaguer prompt in front of the same person
+      // for the same capability.
+      //
+      // This module is the one place the app touches the network, and only
+      // when `settings.mapsEnabled` is on — see MapCanvas and ARCHITECTURE §12.
+      'expo-maps',
+      { requestLocationPermission: false },
+    ],
   ],
 
   ios: {
@@ -94,10 +147,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     buildNumber: process.env.IOS_BUILD_NUMBER || '1',
     supportsTablet: false,
     infoPlist: {
-      // The app is entirely offline: no analytics, no telemetry, no remote
-      // config, no crash reporting upload, and — the one that matters for a
-      // location app — no endpoint that a fix could be sent to. Declaring no
-      // exception domains means App Transport Security stays fully enforced.
+      // No analytics, no telemetry, no remote config, no crash reporting
+      // upload, and — the one that matters for a location app — no endpoint
+      // that a fix could be sent to. Nothing this app records ever leaves it.
+      //
+      // The single exception is map imagery, which MapKit fetches from Apple,
+      // and only while `settings.mapsEnabled` is on. It is off until you turn
+      // it on, it carries the region you are looking at and never the track
+      // (that is drawn as an overlay on this device), and it is the reason
+      // this key is now load-bearing rather than moot: declaring no exception
+      // domains keeps App Transport Security fully enforced over it.
       NSAppTransportSecurity: { NSAllowsArbitraryLoads: false },
       // Declares we use no non-exempt encryption, which skips the export
       // compliance questionnaire on every single upload.
@@ -120,8 +179,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           // CA92.1 — access to data written by this app itself.
           NSPrivacyAccessedAPITypeReasons: ['CA92.1'],
         },
+        {
+          // Media capture reads the size and modification time of files this
+          // app wrote, to show what a recording costs on disk.
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryFileTimestamp',
+          // C617.1 — files created by, or provided to, this app.
+          NSPrivacyAccessedAPITypeReasons: ['C617.1'],
+        },
+        {
+          // Refusing a video capture that would not fit is better than one
+          // that fails halfway through and leaves a truncated file.
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryDiskSpace',
+          // E174.1 — to display space to the user, or to decide whether an
+          // operation can proceed.
+          NSPrivacyAccessedAPITypeReasons: ['E174.1'],
+        },
       ],
-      // Nothing leaves the device, so there is nothing to declare as collected.
+      // Still nothing to declare as collected. Photos, video and voice notes
+      // are encrypted on this device and have no upload path; map imagery is
+      // a request *to* Apple for tiles, not data collected *by* this app.
       NSPrivacyCollectedDataTypes: [],
       NSPrivacyTracking: false,
     },

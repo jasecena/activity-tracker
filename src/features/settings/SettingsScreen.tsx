@@ -11,6 +11,12 @@ interface SettingsScreenProps {
   readonly settings: UseSettings;
   readonly rejected: Readonly<Record<RejectionReason, number>> | null;
   readonly onOpenData: () => void;
+  /**
+   * Places used to be a tab. It moved here when Replay and Capture arrived and
+   * the bar ran out of room — it is a reference list you consult, not somewhere
+   * you glance at several times a day.
+   */
+  readonly onOpenPlaces: () => void;
 }
 
 const PERMISSION_TEXT: Readonly<Record<string, string>> = {
@@ -27,7 +33,7 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
   { label: '30 days', days: 30 },
 ];
 
-export function SettingsScreen({ settings, rejected, onOpenData }: SettingsScreenProps) {
+export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }: SettingsScreenProps) {
   const { settings: values } = settings;
 
   const confirmErase = () => {
@@ -91,6 +97,31 @@ export function SettingsScreen({ settings, rejected, onOpenData }: SettingsScree
           worse than a percent of battery.
         </Text>
 
+        <Text style={styles.sectionLabel}>MAPS</Text>
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Show routes on a map</Text>
+              <Text style={styles.rowDetail}>
+                {values.mapsEnabled ? 'On — map imagery is fetched from Apple' : 'Off — routes are drawn without tiles'}
+              </Text>
+            </View>
+            <Switch
+              value={values.mapsEnabled}
+              onValueChange={settings.setMapsEnabled}
+              accessibilityLabel="Show routes on a map"
+              trackColor={{ true: colors.move, false: colors.border }}
+            />
+          </View>
+        </View>
+        {/* The only place in the app that costs a network request, so it is the
+            only place that has to be spelled out rather than assumed. */}
+        <Text style={styles.footnote}>
+          This is the one thing in the app that talks to the internet. Turning it on lets Apple see which part of the
+          map you are looking at. Your route is never sent — it is drawn on top, on this phone. With it off, journeys
+          are drawn from your own coordinates with a scale bar and no map underneath.
+        </Text>
+
         <Text style={styles.sectionLabel}>CALORIES</Text>
         <View style={styles.card}>
           <View style={styles.row}>
@@ -142,6 +173,18 @@ export function SettingsScreen({ settings, rejected, onOpenData }: SettingsScree
         <Text style={styles.sectionLabel}>DATA</Text>
         <View style={styles.card}>
           <Pressable
+            onPress={onOpenPlaces}
+            accessibilityRole="button"
+            accessibilityLabel="Places"
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Places</Text>
+              <Text style={styles.rowDetail}>Everywhere you have named, and how long you spent there</Text>
+            </View>
+            <Text style={styles.tick}>›</Text>
+          </Pressable>
+          <Pressable
             onPress={onOpenData}
             accessibilityRole="button"
             accessibilityLabel="Raw data and export"
@@ -159,9 +202,16 @@ export function SettingsScreen({ settings, rejected, onOpenData }: SettingsScree
 
         <Text style={styles.sectionLabel}>PRIVACY</Text>
         <View style={styles.card}>
+          {/* This paragraph has to track the switch above it. "No network
+              requests of any kind" was true of every build until maps existed,
+              and leaving it there once they do would make the one screen that
+              promises honesty the one screen that is wrong. */}
           <Text style={styles.privacy}>
-            Everything is encrypted on this phone with a key held in the iOS keychain and marked so it never enters a
-            backup. The app makes no network requests of any kind — there is no server to send anything to.
+            Everything — days, places, photos, video and voice notes — is encrypted on this phone with a key held in the
+            iOS keychain and marked so it never enters a backup.{' '}
+            {values.mapsEnabled
+              ? 'Map imagery is the one exception: it is fetched from Apple while you look at a map. Nothing you have recorded is sent with it, and nothing else in the app talks to a network.'
+              : 'The app makes no network requests of any kind — there is no server to send anything to.'}
           </Text>
         </View>
 

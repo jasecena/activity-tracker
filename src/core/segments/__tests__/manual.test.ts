@@ -1,6 +1,7 @@
 import {
   applyManualWindows,
   DEFAULT_SEGMENT_CONFIG,
+  manualSegmentId,
   segmentFixes,
   splitSegment,
   type ManualWindow,
@@ -189,6 +190,9 @@ describe('applyManualWindows', () => {
     const idOf = (list: readonly Segment[]) => list.find((segment) => segment.kind === 'move' && segment.label)?.id;
     expect(idOf(earlier)).toBe(idOf(later));
     expect(idOf(earlier)).toBe('manual-w1');
+    // The same answer the UI gets without re-deriving anything, which is how a
+    // recording finds its own row.
+    expect(manualSegmentId(open)).toBe(idOf(earlier));
   });
 
   // Two recordings that overlap force the second to cut through a segment the

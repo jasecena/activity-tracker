@@ -42,17 +42,48 @@ describe('the shell', () => {
     expect(await screen.findByText('Nothing recorded yet today.')).toBeOnTheScreen();
   });
 
-  it('shows all four tabs and switches between them', async () => {
+  it('shows all five tabs and switches between them', async () => {
     await render(<TabShell />);
 
     await press('History tab');
     expect(screen.getByText('Finished days appear here after midnight.')).toBeOnTheScreen();
 
-    await press('Places tab');
-    expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
+    await press('Replay tab');
+    expect(screen.getByRole('header', { name: 'Replay' })).toBeOnTheScreen();
+
+    await press('Capture tab');
+    expect(screen.getByRole('header', { name: 'Capture' })).toBeOnTheScreen();
 
     await press('Settings tab');
     expect(screen.getByText('Track my day')).toBeOnTheScreen();
+  });
+
+  // Places lost its tab to Replay and Capture; it is a reference list you
+  // consult rather than somewhere you glance several times a day.
+  it('reaches Places through Settings and comes back', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Places');
+
+    expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
+
+    await press('Back');
+    expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
+  });
+
+  // The camera holds hardware, so it is the one screen that does not stay
+  // mounted behind the others.
+  it('mounts the camera only while Capture is showing', async () => {
+    await render(<TabShell />);
+
+    expect(screen.queryByLabelText('Camera preview', { includeHiddenElements: true })).not.toBeOnTheScreen();
+
+    await press('Capture tab');
+    expect(screen.getByLabelText('Camera preview')).toBeOnTheScreen();
+
+    await press('Today tab');
+    expect(screen.queryByLabelText('Camera preview', { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
   // Every screen stays mounted so switching tabs cannot throw away a running
@@ -98,14 +129,16 @@ describe('the shell', () => {
   it('tells you how to name a place before you have named any', async () => {
     await render(<TabShell />);
 
-    await press('Places tab');
+    await press('Settings tab');
+    await press('Places');
     expect(screen.getByText(/Nothing named yet\. Tap a stay on Today to give it a name/)).toBeOnTheScreen();
   });
 
   it('sorts places by time, visits or name', async () => {
     await render(<TabShell />);
 
-    await press('Places tab');
+    await press('Settings tab');
+    await press('Places');
     await press('Sort by Visits');
     await press('Sort by Name');
 

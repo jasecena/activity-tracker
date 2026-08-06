@@ -17,6 +17,7 @@ interface TodayScreenProps {
   readonly segments: readonly Segment[];
   readonly places: readonly Place[];
   readonly onOpenSegment: (segment: Segment) => void;
+  readonly onOpenRecordings: () => void;
   readonly recording: UseRecording;
   readonly settings: UseSettings;
   readonly now: number;
@@ -28,6 +29,7 @@ export function TodayScreen({
   segments,
   places,
   onOpenSegment,
+  onOpenRecordings,
   recording,
   settings,
   now,
@@ -95,6 +97,19 @@ export function TodayScreen({
 
         <RecordBar active={recording.active} now={now} onStart={recording.start} onStop={recording.stop} />
 
+        {recording.windows.length > 0 ? (
+          <Pressable
+            onPress={onOpenRecordings}
+            accessibilityRole="button"
+            accessibilityLabel="All recordings"
+            style={({ pressed }) => [styles.link, pressed && styles.pressed]}
+          >
+            <Text style={styles.linkText}>
+              {recording.windows.length === 1 ? '1 recording' : `${recording.windows.length} recordings`} ›
+            </Text>
+          </Pressable>
+        ) : null}
+
         <View style={styles.timeline}>
           {segments.length === 0 ? (
             <Text style={styles.empty}>{ready ? 'Nothing recorded yet today.' : 'Reading your day…'}</Text>
@@ -131,5 +146,7 @@ const styles = StyleSheet.create({
   },
   noticeTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   noticeBody: { ...typography.caption, color: colors.textSecondary },
+  link: { alignItems: 'flex-end', paddingHorizontal: spacing.xs },
+  linkText: { ...typography.caption, color: colors.move },
   pressed: { opacity: 0.6 },
 });

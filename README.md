@@ -5,9 +5,10 @@ nowhere else.
 
 Leave it running and it keeps a diary: two hours at a restaurant, a walk to the
 shops, a drive to the beach — each with the distance, the duration, the speed and
-the shape of the route. Press Record when you want a stretch named. Nothing is
-uploaded, because there is nothing to upload to: the app makes no network
-requests of any kind.
+the shape of the route. Press Record when you want a stretch named, play a day
+back to watch it happen, and attach a photo, a clip or a voice note to the moment
+it belongs to. Nothing you record is uploaded, because there is nothing to upload
+to.
 
 ```
 Today
@@ -40,19 +41,37 @@ speed per segment, per-point speed along a route, and an active-calorie estimate
 from a MET model. Rest is not counted as calories; unrecorded hours are not
 counted as time spent standing still.
 
-**Keeps everything encrypted, on one device.** Every stored byte is sealed with
-XChaCha20-Poly1305 under a key generated on first launch, held in the iOS
-keychain and marked so it never enters an iCloud or iTunes backup. "Erase
-everything" destroys that key.
+**Plays a day back.** Pick a day, press play, and watch the icon travel the route
+at up to 1200×. Where the fixes stopped, so does the icon — the player says "No
+signal" rather than sliding smoothly through two hours it knows nothing about.
+
+**Captures the moment, not the coordinate.** A photo, a video from either camera,
+or a voice note records _when_ it was taken and nothing else. Where it happened is
+worked out afterwards from the day's own fixes, so pressing the shutter never
+touches the GPS — and a photo taken with no signal honestly has no position.
+
+**Shows a route on a map, if you want one.** Off by default. The offline canvas
+draws the route, the stops, a scale bar and north from your own coordinates and
+nothing else; one switch in Settings swaps in Apple Maps underneath, and says
+plainly what that costs.
+
+**Keeps everything encrypted, on one device.** Every stored byte — days, places,
+photos, video, voice notes — is sealed with XChaCha20-Poly1305 under a key
+generated on first launch, held in the iOS keychain and marked so it never enters
+an iCloud or iTunes backup. "Erase everything" destroys that key.
 
 ## What it does not do
 
-- **No map.** Routes are drawn as a shape, not on tiles. A map means a request
-  per route carrying your coordinates to somebody else's server.
+- **No map imagery unless you turn it on.** A fresh install draws routes from
+  your own coordinates and asks nobody. With the switch on, Apple sees which part
+  of the map you are looking at — never your track, which is drawn on the phone.
+  It is the only network request in the app.
 - **No geocoding.** A place has no name until you type one. There is nothing to
   ask.
+- **Nothing in the camera roll.** Captures stay in this app's encrypted store
+  rather than syncing to iCloud Photos.
 - **No accounts, no sync, no analytics, no crash reporting.** App Transport
-  Security stays fully enforced because there is nothing for it to permit.
+  Security stays fully enforced.
 - **No Core Motion activity classification** — yet. See _Known limits_.
 
 ## Getting started
@@ -81,10 +100,13 @@ src/core/        pure TypeScript. No React, no Expo, no clock, no I/O.
   places/        matching a stay to a place you named
   energy/        calories, from a MET model
   format/        every string the UI shows for a number
+  replay/        where the day was at an instant, and where it has no idea
+  media/         captures on the timeline, placed by time alone
 src/services/    the only files that touch a native module or ask the time
-src/features/    screens and their hooks — today, history, places, record, settings
-src/components/  shared UI
-src/shell/       four tabs and a minimal page stack, no router
+src/features/    screens and their hooks — today, history, replay, capture, places,
+                 record, settings
+src/components/  shared UI, including the map and its offline canvas
+src/shell/       five tabs and a minimal page stack, no router
 ```
 
 The whole engine is a fold — `(state, fix) => state` — with no clock, no entropy

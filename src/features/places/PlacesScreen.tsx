@@ -12,6 +12,11 @@ interface PlacesScreenProps {
   /** Everything known, today and history, so visit counts cover the whole diary. */
   readonly allSegments: readonly Segment[];
   readonly onOpen: (place: Place) => void;
+  /**
+   * Places is a page under Settings rather than a tab of its own since Replay
+   * and Capture arrived, so it now has somewhere to go back to.
+   */
+  readonly onBack: () => void;
 }
 
 type SortKey = 'time' | 'visits' | 'name';
@@ -30,7 +35,7 @@ const SORTS: readonly { readonly key: SortKey; readonly label: string }[] = [
  * but have not been back to since still appear, with a zero — the list is what
  * you have named, not what the diary happened to match this week.
  */
-export function PlacesScreen({ places, allSegments, onOpen }: PlacesScreenProps) {
+export function PlacesScreen({ places, allSegments, onOpen, onBack }: PlacesScreenProps) {
   const [sort, setSort] = useState<SortKey>('time');
 
   const visits = visitsByPlace(allSegments, places);
@@ -49,7 +54,11 @@ export function PlacesScreen({ places, allSegments, onOpen }: PlacesScreenProps)
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Places" subtitle={places.length === 1 ? '1 named' : `${places.length} named`} />
+      <ScreenHeader
+        title="Places"
+        subtitle={places.length === 1 ? '1 named' : `${places.length} named`}
+        onBack={onBack}
+      />
 
       <View style={styles.sorts}>
         {SORTS.map(({ key, label }) => {

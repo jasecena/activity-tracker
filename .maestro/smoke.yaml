@@ -90,12 +90,19 @@ appId: ${APP_ID}
 - assertVisible: 'History'
 - assertVisible: 'Finished days appear here after midnight.'
 
-# Places is where the place store and the sort controls first get exercised.
-- tapOn: 'Places tab'
-- assertVisible: 'Places'
-- tapOn: 'Sort by Visits'
-- tapOn: 'Sort by Name'
-- tapOn: 'Sort by Time spent'
+# Replay mounts the offline map canvas — SVG, the projection, the scrubber. With
+# maps off (the default) this must render without MapKit being involved at all.
+- tapOn: 'Replay tab'
+- assertVisible: 'Replay'
+
+# Capture is the one screen that touches the camera, and the only place a
+# missing native module would surface as a blank rectangle rather than a crash.
+# Deliberately does NOT press the shutter: that writes a file and, on a fresh
+# install, raises the permission dialog, which has no Maestro affordance here.
+- tapOn: 'Capture tab'
+- assertVisible: 'Capture'
+- tapOn: 'Voice'
+- tapOn: 'Photo'
 
 - tapOn: 'Settings tab'
 - assertVisible: 'Settings'
@@ -104,6 +111,29 @@ appId: ${APP_ID}
 # services/location.ts. Change a preset's `detail` and this must change with it.
 - assertVisible: 'Balanced. ~10 m accuracy, a point every 25 m'
 - assertVisible: 'Battery saver. ~100 m accuracy, a point every 100 m'
+
+# The one switch in the app that permits a network request. It must be off on a
+# fresh install — that is the whole design, and a default that silently flipped
+# would be the most consequential regression this app could ship.
+- scrollUntilVisible:
+    element:
+      text: 'Show routes on a map'
+    direction: DOWN
+- assertVisible: 'Off — routes are drawn without tiles'
+
+# Places lost its tab to Replay and Capture, so this is also what proves the
+# page stack still reaches it. The sort controls exercise the place store.
+- scrollUntilVisible:
+    element:
+      text: 'Places'
+    direction: DOWN
+- tapOn: 'Places'
+- assertVisible: 'Places'
+- tapOn: 'Sort by Visits'
+- tapOn: 'Sort by Name'
+- tapOn: 'Sort by Time spent'
+- tapOn: 'Back'
+- assertVisible: 'Settings'
 
 # --- The raw data page opens ----------------------------------------------
 # Exercises the page stack and the counts. Deliberately does NOT tap an export

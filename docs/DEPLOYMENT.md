@@ -83,12 +83,20 @@ using push notifications, where `expo-notifications` writes an `aps-environment`
 entitlement and cloud signing cannot issue a profile unless Push Notifications is
 enabled on the App ID.
 
-What the app does declare, all written by the `expo-location` plugin from
+The same is true of the camera, the microphone and Apple Maps: all three are
+gated by usage strings and the user's answer, not by anything ticked on the App
+ID.
+
+What the app does declare, all written by config plugins from
 [`app.config.ts`](../app.config.ts):
 
-- `NSLocationWhenInUseUsageDescription`
-- `NSLocationAlwaysAndWhenInUseUsageDescription`
-- `UIBackgroundModes: ['location']`
+- `NSLocationWhenInUseUsageDescription` (expo-location)
+- `NSLocationAlwaysAndWhenInUseUsageDescription` (expo-location)
+- `UIBackgroundModes: ['location']` (expo-location)
+- `NSCameraUsageDescription` (expo-camera)
+- `NSMicrophoneUsageDescription` (expo-camera and expo-audio — both write the
+  same key, so the two strings in `app.config.ts` must agree; iOS shows whichever
+  landed in the plist, not the one belonging to the API that asked)
 
 Setup:
 
@@ -113,16 +121,35 @@ strings must be specific — "this app uses your location" is what gets rejected
 naming what is recorded, and that it stays on the phone, is what does not. The
 strings in `app.config.ts` are written for this.
 
-**Privacy nutrition label: Data Not Collected.** Apple defines "collect" as
-transmitted off device. Nothing leaves the phone, so that is the accurate answer
-— but you have to be able to defend it, which is why the strict-ATS, no-network,
-no-analytics posture is worth keeping intact.
+**Camera and microphone.** Same rule as location: the strings must name what is
+recorded and where it goes. Both say the capture is encrypted on the phone and
+never uploaded, which is true — see § 12b of the architecture doc for the
+container it goes into.
 
-**Required-reason APIs.** `ios.privacyManifests` in `app.config.ts` declares
-`NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`, because
-AsyncStorage is UserDefaults underneath. Missing this is an automatic rejection
-email rather than a review finding. Location is _not_ a required-reason API — it
-is permission-gated — and has no entry to make.
+**Privacy nutrition label: Data Not Collected.** Apple defines "collect" as
+transmitted off device. Nothing the app records leaves the phone, so that is the
+accurate answer. Map imagery does not change it: a request _to_ Apple for tiles
+is not this app collecting anything, and the track is an overlay drawn on device.
+You still have to be able to defend the claim, which is why the strict-ATS,
+no-analytics posture is worth keeping intact — and why maps are a switch that
+starts off rather than a default.
+
+**Required-reason APIs.** `ios.privacyManifests` in `app.config.ts` declares:
+
+- `NSPrivacyAccessedAPICategoryUserDefaults` / `CA92.1` — AsyncStorage is
+  UserDefaults underneath.
+- `NSPrivacyAccessedAPICategoryFileTimestamp` / `C617.1` — the media store reads
+  the size and timestamps of files this app wrote.
+- `NSPrivacyAccessedAPICategoryDiskSpace` / `E174.1` — refusing a capture that
+  would not fit beats one that fails halfway through.
+
+Missing any of these is an automatic rejection email rather than a review
+finding. Location, camera and microphone are _not_ required-reason APIs — they
+are permission-gated — and have no entry to make.
+
+**A dev client is now required for development.** `expo-camera`, `expo-audio`,
+`expo-video` and `expo-maps` are native modules, so stock Expo Go will not run
+this app.
 
 ---
 

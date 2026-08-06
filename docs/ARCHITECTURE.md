@@ -289,44 +289,168 @@ than a test failure.
 
 ---
 
-## 12. No map, no network
+## 12. One network request, and only when you ask for it
 
-The app makes no HTTP request of any kind. There is no analytics, no telemetry,
-no crash reporting upload, no remote config, no geocoder and no map tile server —
-and therefore no endpoint a coordinate could be sent to, deliberately or by
-accident. `NSAllowsArbitraryLoads` is false and there are no exception domains,
-because there is nothing for App Transport Security to permit.
+The app makes no HTTP request of any kind on its own. There is no analytics, no
+telemetry, no crash reporting upload, no remote config and no geocoder — and
+therefore no endpoint a fix, a photo or a place name could be sent to,
+deliberately or by accident.
 
-Routes are drawn as an SVG sparkline (`components/RouteSparkline.tsx`), scaled by
-`cos(latitude)` so the shape is not stretched sideways. The shape alone is enough
-to recognise a journey you took — the loop round the park, the dogleg to the
-shops — which is what a timeline row actually needs. A map would mean a request
-per route carrying your coordinates to someone else's server, which is the one
-thing this app is built not to do.
+**The single exception is map imagery.** `settings.mapsEnabled` is false on a
+fresh install, and while it stays false the app behaves exactly as every earlier
+version did: nothing it holds leaves the phone and nothing it draws comes from
+anywhere else. Turning it on lets MapKit fetch tiles for the region being looked
+at.
+
+This revises an earlier version of this decision, which read "no map, no
+network", and it is worth being precise about what changed and what did not:
+
+- **Your track is never sent.** The route is an overlay, drawn on this device
+  from coordinates that stay on it. What Apple learns is which part of the world
+  is on screen — which, at the zoom a day's travel implies, is not nothing, and
+  is why this is a switch rather than a default.
+- **`NSAllowsArbitraryLoads` stays false with no exception domains.** Apple's
+  tile endpoints are HTTPS, so the key that used to be moot because there was no
+  traffic is now load-bearing over the only traffic there is.
+- **Nothing else gained a network path.** The privacy manifest still declares no
+  collected data types, because a request _to_ Apple for imagery is not this app
+  collecting anything.
+- **The Settings screen's own copy changes with the switch.** It used to say
+  "makes no network requests of any kind" unconditionally; leaving that there
+  once maps existed would make the one screen that promises honesty the one
+  screen that lies.
+
+`components/MapCanvas.tsx` is the only file that imports `expo-maps`, and it
+presents both backends behind one prop shape so no caller branches on the
+setting. With imagery off it draws the **offline canvas**: the same polylines and
+stops, plus a scale bar and a north mark, projected by `core/geo/project.ts` —
+equirectangular with longitude scaled by `cos(latitude)`, or a route at 55° comes
+out nearly twice as wide as it was. That projection is shared with
+`components/RouteSparkline.tsx`, which still draws the shape of a journey in the
+space of a timeline row, because a row needs "which journey was this" rather than
+streets.
+
+Keeping `expo-maps` behind one file matters more than usual: it is alpha and
+documents frequent breaking changes.
 
 ---
 
-## 13. UI: no navigation library, one fold for four tabs
+## 12a. Replay: the player must not invent a journey
 
-Four tabs — Today, History, Places, Settings — with one level of detail below two
-of them. `shell/usePageStack.ts` is an array and three functions, against a
-router that would bring a native screen container, a navigation state tree and a
-serialisation format to solve the same problem.
+`core/replay` flattens a day into one ordered path through time and answers
+"where was I at twenty past two". It stores nothing: the track comes from the
+segments, the position comes from the track and the playhead.
 
-This revises an earlier version of this decision, which read "three tabs need no
-router". The reasoning survives a fourth tab and one level of depth. It would not
+`positionAt` returns **null across a hole**, and that is the whole point of the
+module. A player is where the temptation to interpolate is strongest — an icon
+that stops dead looks like a bug and one that glides looks correct — and a smooth
+line across two hours indoors is § 2's four-kilometre walk through a building,
+animated. The screen says "No signal" and the scrubber draws the gap.
+
+The hole is found structurally rather than by a threshold. The timeline is
+contiguous (§ 2), so two consecutive track points belonging to different segments
+and separated by real time can only mean the segmenter closed one and opened the
+next with nothing in between. There is no `gapMs` to pass in and no way for this
+to disagree with the config the day was folded under.
+
+The corollary is that the duplicated boundary instant must be **kept**: a segment
+ends exactly where the next begins, so every transition produces two points
+stamped the same moment. Dropping one leaves the old segment's last point beside
+the new segment's _second_ point, separated by real time — which is exactly the
+shape read as a hole, and the timeline would sprout a gap at every change of
+activity.
+
+---
+
+## 12b. Capture stores a time, never a position
+
+Photos, video and voice notes record `capturedAt` and nothing about where they
+were taken. Where is derived on read, by asking the day's own track where you
+were at that instant — `core/media`'s `placeMedia`, over `core/replay`.
+
+This is § 4's decision applied again. Reading Core Location at the shutter would
+mean a second consumer of the fix stream, a second answer to "where was I", and a
+photo whose pin disagrees with the route drawn under it. It also means a photo
+taken in a lift with no signal has _no_ position, which is the honest answer
+rather than the last one that happened to be lying around.
+
+The link from a capture to a timeline row is derived the same way
+(`attachToSegments`) rather than written onto a segment. Segments are re-derived
+from the fix buffer every time they are needed (§ 1); a stored link would orphan
+every photo the first time a day was folded under a different config.
+
+### The bytes: a container of their own
+
+The vault seals _values_ — short strings bound for AsyncStorage. A minute of
+1080p is forty megabytes, which does not go through `JSON.stringify` and should
+not be turned into hex. So `services/mediaStore.ts` seals media into its own
+file format under the same device key:
+
+```
+"AVM1"                       4-byte magic and format version
+repeated until EOF:
+  length   4 bytes, big-endian, of the sealed chunk that follows
+  sealed   24-byte nonce || ciphertext || 16-byte Poly1305 tag
+```
+
+Chunked at a megabyte because sealing a whole video in one call holds three
+copies of it in memory at once. Every chunk is independently authenticated, so a
+file truncated by the phone dying mid-write fails to open rather than decrypting
+into noise — a corrupt video that plays as garbage is worse than one that will
+not play, because it looks like a recording and is not. The length prefix sits
+outside the authenticated bytes and is therefore untrusted input, bounds-checked
+before it is believed.
+
+The plaintext the OS hands over is deleted once sealed, or the container would
+hold an unencrypted copy of everything ever captured. Playback decrypts to the
+**cache** directory for the reason `exportFile.ts` gives, and the copy is deleted
+when the screen closes. Video capture is capped at 60 seconds because the bytes
+are encrypted on the way in and decrypted again to play, and both passes are
+something you would wait for at ten minutes.
+
+"Erase everything" is unchanged in what it guarantees: destroying the key makes
+every sealed file permanently unreadable. Deleting the media directory afterwards
+is housekeeping so the bytes do not sit in the container for the life of the
+install, not the thing that makes them safe.
+
+---
+
+## 13. UI: no navigation library, one fold for five tabs
+
+Five tabs — Today, History, Replay, Capture, Settings — with one level of detail
+below most of them. `shell/usePageStack.ts` is an array and three functions,
+against a router that would bring a native screen container, a navigation state
+tree and a serialisation format to solve the same problem.
+
+This revises the decision twice over. It first read "three tabs need no router",
+then four. The reasoning survives five tabs and one level of depth. It would not
 survive a fifth level, deep links or modal routes, and at that point a router is
 the right answer rather than a heavier one.
+
+**Places lost its tab and is now a page under Settings.** iOS collapses a sixth
+tab into a "More" list, which is worse than either choice available here, so
+something had to give. Replay and Capture are things you _do_; Places is a
+reference list you consult, and it keeps its full screen one tap away.
 
 Every tab stays **mounted**, with the inactive ones hidden, and a detail page
 renders _over_ its tab rather than replacing it. Both for the same reason: Today
 holds a running recording and a timeline it just derived, and neither should be
 lost because you opened a place you visited in March.
 
+**The camera is the one exception**, and it is the exception that proves the
+rule. `CaptureScreen` is told which tab is showing and mounts `CameraView` only
+when it is the visible one. Keeping a capture session alive behind four hidden
+screens costs battery, holds the hardware, and leaves the recording indicator lit
+while you read Settings — the opposite of what "stays mounted" is protecting.
+
 The hooks live in the shell rather than in the screens because they are shared —
 the timeline needs the manual windows and the segmentation settings, Settings
-needs the rejection counts the timeline produced, and Places needs every segment
-ever recorded. Lifting them is what keeps a single fold serving all four tabs.
+needs the rejection counts the timeline produced, Places needs every segment ever
+recorded, and media is written by Capture and read by Replay. Lifting them is
+what keeps a single fold serving all five tabs. The player's selected day lives
+up there too, because History's "Replay this day" chooses it as well, and two
+owners of one selection means one is a copy that renders the wrong day first and
+corrects it afterwards.
 
 ### Naming a place asks rather than guesses
 
@@ -366,11 +490,25 @@ that stays a small piece of work.
 phone comes back in range. See § 15 for what that needs and what it cannot run
 on.
 
+**Map imagery by default.** The offline canvas is what a fresh install draws,
+and it is not a degraded mode — it shows exactly what the app knows and invents
+no streets around it. Apple Maps is one switch away and says what it costs. See
+§ 12.
+
+**Media in the Photos library.** Captures stay in this app's encrypted container
+rather than the camera roll. The roll is synced to iCloud, which is precisely the
+guarantee the vault exists to make — a photo attached to a location diary should
+not be the one thing in it that leaves.
+
 **A committed `ios/` directory.** `expo prebuild` regenerates it from
 `app.config.ts` on every build, so it is output rather than source. Committing it
 means the config and the native project can silently diverge. If custom native
 code ever becomes necessary — the Core Motion module above, or the watch target
 below — delete the two lines from `.gitignore` and commit `ios/` deliberately.
+
+Note that `expo-camera`, `expo-audio`, `expo-video` and `expo-maps` are native
+modules, so the app no longer runs in stock Expo Go: development needs a dev
+client build.
 
 ---
 

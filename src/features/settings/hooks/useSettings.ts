@@ -22,6 +22,8 @@ export interface UseSettings {
   setPreset: (preset: TrackingPresetId) => void;
   setWeightKg: (weightKg: number) => void;
   setRetentionDays: (days: number | null) => void;
+  /** The one switch in this app that permits a network request. Off until you say otherwise. */
+  setMapsEnabled: (enabled: boolean) => void;
   askForPermission: () => void;
   eraseAll: () => Promise<void>;
 }
@@ -112,6 +114,11 @@ export function useSettings(): UseSettings {
     [persist, settings],
   );
 
+  const setMapsEnabled = useCallback(
+    (mapsEnabled: boolean) => persist({ ...settings, mapsEnabled }),
+    [persist, settings],
+  );
+
   const askForPermission = useCallback(() => {
     void requestPermission().then(setPermission);
   }, []);
@@ -133,6 +140,7 @@ export function useSettings(): UseSettings {
     setPreset,
     setWeightKg,
     setRetentionDays,
+    setMapsEnabled,
     askForPermission,
     eraseAll,
   };

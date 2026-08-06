@@ -1,10 +1,12 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { summarizeDay, type DayGroup } from '@/core/day';
 import { activeCalories } from '@/core/energy';
 import { formatDistance, formatDuration, modeLabel } from '@/core/format';
-import { visitsByPlace, type Place } from '@/core/places';
+import { matchPlace, visitsByPlace, type Place } from '@/core/places';
 import { ACTIVITY_MODES, type Segment } from '@/core/segments';
+import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SegmentRow } from '@/components/SegmentRow';
 import { StatTile } from '@/components/StatTile';
@@ -15,16 +17,62 @@ interface DayScreenProps {
   readonly places: readonly Place[];
   readonly weightKg: number;
   readonly tzOffsetMinutes: number;
+  readonly mapsEnabled: boolean;
   readonly title: string;
   readonly onBack: () => void;
   readonly onOpenSegment: (segment: Segment) => void;
+  /** Opens this day in the player. Absent for a day with nothing to play. */
+  readonly onReplay?: () => void;
+}
+
+/**
+ * Everything on one map: a coloured line per journey, a dot per stop.
+ *
+ * Built here rather than in `core` because it is a presentation choice — which
+ * colour, which label — over data `core` already produced.
+ */
+export function dayOverlay(
+  segments: readonly Segment[],
+  places: readonly Place[],
+): { readonly tracks: MapTrack[]; readonly marks: MapMark[] } {
+  const tracks: MapTrack[] = [];
+  const marks: MapMark[] = [];
+
+  for (const segment of segments) {
+    if (segment.kind === 'move') {
+      if (segment.path.length > 1) {
+        tracks.push({ id: segment.id, points: segment.path, color: modeColors[segment.mode] });
+      }
+      continue;
+    }
+    const place = matchPlace(segment, places);
+    marks.push({
+      id: segment.id,
+      at: segment.center,
+      label: place?.name ?? '',
+      kind: place ? 'place' : 'stay',
+    });
+  }
+
+  return { tracks, marks };
 }
 
 /** One finished day, in full. */
-export function DayScreen({ day, places, weightKg, tzOffsetMinutes, title, onBack, onOpenSegment }: DayScreenProps) {
+export function DayScreen({
+  day,
+  places,
+  weightKg,
+  tzOffsetMinutes,
+  mapsEnabled,
+  title,
+  onBack,
+  onOpenSegment,
+  onReplay,
+}: DayScreenProps) {
   const summary = summarizeDay(day.segments);
   const visits = visitsByPlace(day.segments, places);
   const calories = activeCalories(day.segments, weightKg);
+  const overlay = useMemo(() => dayOverlay(day.segments, places), [day.segments, places]);
 
   // Only the modes that actually happened. A row of four zeroes tells you
   // nothing except that the app knows four words.
@@ -44,6 +92,25 @@ export function DayScreen({ day, places, weightKg, tzOffsetMinutes, title, onBac
           <StatTile label="Moving" value={formatDuration(summary.movingMs)} />
           <StatTile label="Calories" value={`${Math.round(calories)}`} accent={colors.success} />
         </View>
+
+        <MapCanvas
+          mapsEnabled={mapsEnabled}
+          tracks={overlay.tracks}
+          marks={overlay.marks}
+          height={240}
+          label={`Map of ${title}`}
+        />
+
+        {onReplay ? (
+          <Pressable
+            onPress={onReplay}
+            accessibilityRole="button"
+            accessibilityLabel={`Replay ${title}`}
+            style={({ pressed }) => [styles.replay, pressed && styles.pressed]}
+          >
+            <Text style={styles.replayText}>▶ Replay this day</Text>
+          </Pressable>
+        ) : null}
 
         {modes.length > 0 ? (
           <View style={styles.card}>
@@ -107,4 +174,12 @@ const styles = StyleSheet.create({
   modeDetail: { ...typography.caption, color: colors.textSecondary },
   sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
   timeline: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
+  replay: {
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  replayText: { ...typography.body, color: colors.move, fontWeight: '600' },
+  pressed: { opacity: 0.6 },
 });

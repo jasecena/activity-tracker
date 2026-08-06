@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { eraseAllMedia } from './mediaStore';
 import { destroyKey, open, seal } from './vault';
 
 /**
@@ -38,6 +39,13 @@ export const STORAGE_KEYS = {
   places: `${PREFIX}places`,
   /** Manual recording windows, including one that may still be running. */
   manualWindows: `${PREFIX}manual-windows`,
+  /**
+   * The index of captured photos, video and voice notes.
+   *
+   * Only the index. The bytes live in `services/mediaStore.ts`, sealed under
+   * the same key — a video does not fit through `JSON.stringify`.
+   */
+  media: `${PREFIX}media`,
   settings: `${PREFIX}settings`,
 } as const;
 
@@ -81,4 +89,8 @@ export async function writeJson(key: StorageKey, value: unknown): Promise<void> 
 export async function eraseEverything(): Promise<void> {
   await destroyKey();
   await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+  // Housekeeping, not protection. The sealed media became unreadable the
+  // instant the key above was destroyed; this stops the bytes sitting in the
+  // container for the life of the install.
+  eraseAllMedia();
 }

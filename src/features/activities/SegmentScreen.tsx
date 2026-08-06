@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatClockTime, formatDistance, formatDuration, formatPace, formatSpeed, modeLabel } from '@/core/format';
 import { matchPlace, type Place } from '@/core/places';
 import { averageSpeedMps, durationMs, type Segment } from '@/core/segments';
-import { RouteSparkline } from '@/components/RouteSparkline';
+import { MapCanvas } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { StatTile } from '@/components/StatTile';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
@@ -12,13 +12,21 @@ interface SegmentScreenProps {
   readonly segment: Segment;
   readonly places: readonly Place[];
   readonly tzOffsetMinutes: number;
+  readonly mapsEnabled: boolean;
   readonly onBack: () => void;
   /** Stays only: opens the place picker. Absent where naming makes no sense. */
   readonly onNamePlace?: () => void;
 }
 
 /** Every field the app holds for one row of the timeline. */
-export function SegmentScreen({ segment, places, tzOffsetMinutes, onBack, onNamePlace }: SegmentScreenProps) {
+export function SegmentScreen({
+  segment,
+  places,
+  tzOffsetMinutes,
+  mapsEnabled,
+  onBack,
+  onNamePlace,
+}: SegmentScreenProps) {
   const span = `${formatClockTime(segment.startedAt, tzOffsetMinutes)}–${formatClockTime(segment.endedAt, tzOffsetMinutes)}`;
   const elapsed = durationMs(segment);
 
@@ -46,6 +54,17 @@ export function SegmentScreen({ segment, places, tzOffsetMinutes, onBack, onName
             <StatTile label="Wander" value={formatDistance(segment.radiusM)} />
             <StatTile label="Fixes" value={`${segment.fixCount}`} />
           </View>
+
+          {/* The ring is the radius drawn to scale, not a decoration: it is the
+              difference between "you were here" and "you were somewhere in
+              here", and a stop recorded indoors is often the latter. */}
+          <MapCanvas
+            mapsEnabled={mapsEnabled}
+            tracks={[]}
+            marks={[{ id: segment.id, at: segment.center, label: place?.name ?? 'Stop', kind: 'stay' }]}
+            circles={[{ id: `${segment.id}-radius`, at: segment.center, radiusM: segment.radiusM }]}
+            label={`Map of ${place?.name ?? 'this stop'}`}
+          />
 
           <Text style={styles.sectionLabel}>WHAT IS STORED</Text>
           <View style={styles.card}>
@@ -83,9 +102,12 @@ export function SegmentScreen({ segment, places, tzOffsetMinutes, onBack, onName
           <StatTile label="Top" value={formatSpeed(segment.topSpeedMps)} />
         </View>
 
-        <View style={styles.routeCard}>
-          <RouteSparkline path={segment.path} color={modeColors[segment.mode]} width={280} height={110} />
-        </View>
+        <MapCanvas
+          mapsEnabled={mapsEnabled}
+          tracks={[{ id: segment.id, points: segment.path, color: modeColors[segment.mode] }]}
+          height={240}
+          label={`Map of this ${modeLabel(segment.mode).toLowerCase()}`}
+        />
 
         <Text style={styles.sectionLabel}>WHAT IS STORED</Text>
         <View style={styles.card}>
@@ -151,12 +173,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
   stats: { flexDirection: 'row', gap: spacing.sm },
-  routeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-  },
   sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.md },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
   field: {

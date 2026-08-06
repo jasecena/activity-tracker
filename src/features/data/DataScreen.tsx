@@ -4,6 +4,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { exportFilename, fixesToCsv, pointsToCsv, segmentsToCsv } from '@/core/export';
 import { formatDistance, formatIsoWithOffset } from '@/core/format';
 import type { Fix, RejectionReason } from '@/core/geo';
+import { totalBytes, type MediaItem } from '@/core/media';
 import type { Place } from '@/core/places';
 import type { Segment } from '@/core/segments';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -15,6 +16,7 @@ interface DataScreenProps {
   readonly fixes: readonly Fix[];
   readonly segments: readonly Segment[];
   readonly places: readonly Place[];
+  readonly media: readonly MediaItem[];
   readonly rejected: Readonly<Record<RejectionReason, number>> | null;
   readonly preset: TrackingPresetId;
   readonly now: number;
@@ -52,6 +54,7 @@ export function DataScreen({
   fixes,
   segments,
   places,
+  media,
   rejected,
   preset,
   now,
@@ -91,6 +94,8 @@ export function DataScreen({
           <Row label="Journeys" value={`${moves.length}`} />
           <Row label="Stops" value={`${stays.length}`} />
           <Row label="Named places" value={`${places.length}`} />
+          <Row label="Photos, video and voice notes" value={`${media.length}`} />
+          <Row label="  Their size on disk" value={`${Math.round(totalBytes(media) / 1024)} kB`} />
         </View>
 
         {first && last ? (

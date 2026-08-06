@@ -11,7 +11,7 @@ imports — ESLint enforces this. The `core` Jest project compiles it with nothi
 but `@babel/preset-typescript`, so any new dependency there breaks the suite.
 That is intentional: it is how a location app is testable on a Linux runner that
 is not, and never will be, moving. Every core domain (`geo`, `segments`, `day`,
-`format`, `places`, `energy`) has its own coverage gate. `core` also reads no
+`format`, `places`, `energy`, `replay`, `media`) has its own coverage gate. `core` also reads no
 clock, no timezone and no entropy source: ids are derived from the data, "what
 time is it" is a parameter, and so is the UTC offset.
 
@@ -31,8 +31,10 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 248
-tests, in well under a minute.
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 354
+tests, in well under a minute. Watch the test _time_ as well as the result: a
+byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
+in Jest's structural equality, and a loop with an early exit costs milliseconds.
 
 **Refs may not be read during render.** `react-hooks/refs` is an error, not a
 warning. A value the render depends on goes in `useState`.
@@ -105,11 +107,30 @@ in the keychain, marked `THIS_DEVICE_ONLY` so it enters no backup. It is
 while the phone is locked in a pocket and a key unreadable then would leave a
 hole in every day. "Erase everything" destroys the key.
 
-**The app makes no network requests, of any kind.** There is no analytics, no
-telemetry, no crash reporting, no geocoder and no map tile server. That is why a
-place has no name until you type one, and why routes are drawn as a sparkline
-rather than on a map. App Transport Security stays fully enforced because there
-is nothing for it to permit.
+Media is too big for that path, so `services/mediaStore.ts` seals it into its own
+chunked container under the same key — a megabyte at a time, each chunk
+independently authenticated, so a truncated file fails to open rather than
+decrypting into noise. The plaintext the OS handed over is deleted once sealed,
+and playback decrypts to the cache directory and cleans up after itself.
+
+**The app makes exactly one kind of network request, and only when you ask.**
+There is no analytics, no telemetry, no crash reporting and no geocoder — that is
+still why a place has no name until you type one. The one exception is Apple Maps
+imagery, behind `settings.mapsEnabled`, which is **off on a fresh install**. Your
+track is never sent: it is an overlay drawn on the device. With it off, every map
+is the offline canvas in `components/MapCanvas.tsx`, which is also the only file
+that may import `expo-maps`. App Transport Security stays fully enforced.
+
+**A capture stores a time, never a position.** Photos, video and voice notes
+record `capturedAt` and nothing else about where you were; where is derived on
+read from the day's own fixes. Reading Core Location at the shutter would be a
+second consumer of the fix stream and a second answer to "where was I". It is
+also why a photo taken with no signal has no position rather than a stale one.
+
+**The player stops at a hole; it never slides across one.** `positionAt` returns
+null wherever the fixes stopped and the screen says "No signal". An icon gliding
+smoothly through two hours indoors is the four-kilometre walk through a building
+that the segmenter already refuses to draw.
 
 **The background task appends fixes and does nothing else.** It has seconds to
 live and can be killed at any point. Everything else the app knows how to do can
@@ -120,15 +141,21 @@ written because the handler was busy segmenting the last one.
 `storage.ts` and `motion.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
-**No navigation library.** Four tabs and one level of detail below two of them.
+**No navigation library.** Five tabs — Today, History, Replay, Capture,
+Settings — and one level of detail below most of them. Places is a page under
+Settings, not a tab: iOS collapses a sixth tab into a "More" list.
 `shell/usePageStack.ts` is an array and three functions, against a router that
 would bring a native screen container, a navigation state tree and a
 serialisation format. Every tab stays mounted with the inactive ones hidden, and
 a detail page renders _over_ its tab rather than replacing it — not an
 optimisation, but so that switching tabs or opening a day cannot throw away a
 running recording or a timeline that was just derived. This reasoning survives a
-fourth tab and one level of depth; it would not survive a fifth level, deep links
+fifth tab and one level of depth; it would not survive a fifth level, deep links
 or modal routes.
+
+The camera is the deliberate exception: `CaptureScreen` mounts `CameraView` only
+while Capture is the visible tab. A capture session running behind four hidden
+screens costs battery and leaves the recording indicator lit.
 
 **Naming a place asks rather than guesses.** `matchPlace` returns one place
 because a timeline row needs one label, but `rankPlaceCandidates` returns all of
@@ -153,6 +180,9 @@ tell apart. `services/motion.ts` uses the pedometer, which is reachable.
 **Export is not built yet.** GPX per activity and a JSON dump are planned, on
 demand and never automatic. `services/dayLog.ts` stores a plain array of
 `Segment` precisely so that stays straightforward.
+
+**Expo Go no longer runs this app.** `expo-camera`, `expo-audio`, `expo-video`
+and `expo-maps` are native modules, so development needs a dev client build.
 
 Architecture rationale: `docs/ARCHITECTURE.md`. Release pipeline:
 `docs/DEPLOYMENT.md`. First-time setup: `docs/SETUP_CHECKLIST.md`.

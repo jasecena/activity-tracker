@@ -99,6 +99,38 @@ export async function seal(plaintext: string): Promise<string> {
 }
 
 /**
+ * Seal raw bytes: `nonce || ciphertext`, and no envelope prefix.
+ *
+ * The string form above is for values that go through `JSON.stringify` into
+ * AsyncStorage, where hex and a version tag are worth their cost. This one is
+ * for a photo or a minute of video, where hex would add 50% to a file measured
+ * in megabytes and there is a container — `services/mediaStore.ts` — that
+ * already carries the version.
+ *
+ * A fresh nonce per call, as ever. Sealing 1 MiB chunks of one video means
+ * several nonces for the same key in a few milliseconds, which is exactly the
+ * situation XChaCha's 24-byte nonce exists to make safe.
+ */
+export async function sealBytes(plaintext: Uint8Array): Promise<Uint8Array> {
+  const key = await deviceKey();
+  const nonce = Crypto.getRandomBytes(NONCE_BYTES);
+  return concatBytes(nonce, xchacha20poly1305(key, nonce).encrypt(plaintext));
+}
+
+/** Open bytes sealed by `sealBytes`, or null if they cannot be read. */
+export async function openBytes(sealed: Uint8Array): Promise<Uint8Array | null> {
+  if (sealed.length <= NONCE_BYTES) return null;
+  try {
+    const key = await deviceKey();
+    const nonce = sealed.subarray(0, NONCE_BYTES);
+    return xchacha20poly1305(key, nonce).decrypt(sealed.subarray(NONCE_BYTES));
+  } catch {
+    // A bad Poly1305 tag. The authentication working, not an error to surface.
+    return null;
+  }
+}
+
+/**
  * Decrypt a stored string, or null if it cannot be read.
  *
  * Null covers three different situations on purpose — not ours, tampered with,

@@ -76,6 +76,8 @@ module.exports = {
     './src/core/places/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/energy/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/export/': { branches: 90, functions: 100, lines: 95, statements: 95 },
+    './src/core/replay/': { branches: 90, functions: 100, lines: 95, statements: 95 },
+    './src/core/media/': { branches: 90, functions: 100, lines: 95, statements: 95 },
   },
   coverageReporters: ['text-summary', 'lcov'],
 };

@@ -16,6 +16,18 @@ export interface Settings {
    * have. A limit is something you choose.
    */
   readonly retentionDays: number | null;
+  /**
+   * Whether routes are drawn over Apple's map imagery.
+   *
+   * **False by default, and the only setting in this app that turns on a
+   * network request.** With it off, every map in the app is the offline canvas
+   * — the route, the stops and a scale bar, drawn from your own coordinates
+   * and nothing else. With it on, MapKit fetches tiles for whatever region you
+   * are looking at. Your track is never sent: it is an overlay drawn on this
+   * device. But the region is a request, and a request is a thing this app
+   * otherwise never makes, so it is a choice rather than a default.
+   */
+  readonly mapsEnabled: boolean;
   readonly segmentation: SegmentConfig;
 }
 
@@ -24,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   weightKg: DEFAULT_WEIGHT_KG,
   trackingEnabled: false,
   retentionDays: null,
+  mapsEnabled: false,
   segmentation: DEFAULT_SEGMENT_CONFIG,
 };
 
@@ -47,6 +60,10 @@ export function normalizeSettings(input: unknown): Settings {
     weightKg: normalizeWeightKg(source.weightKg),
     trackingEnabled: source.trackingEnabled === true,
     retentionDays: normalizeRetentionDays(source.retentionDays),
+    // `=== true`, not truthy: anything unrecognisable in this field must fall
+    // back to *off*, because the failure it guards is a network request nobody
+    // asked for.
+    mapsEnabled: source.mapsEnabled === true,
     segmentation: normalizeSegmentConfig(source.segmentation),
   };
 }
