@@ -504,12 +504,36 @@ install, not the thing that makes them safe.
 
 ---
 
-## 13. UI: no navigation library, one fold for five tabs
+## 13. UI: no navigation library, one fold for three tabs
 
-Five tabs — Today, History, Capture, Replay, Settings — with one level of detail
-below most of them. Capture takes the middle slot: it is the only tab that is a
-thing you _do_ rather than a thing you read, and the only one anyone opens
-one-handed in a hurry. `shell/usePageStack.ts` is an array and three functions,
+Three tabs — Day, Capture, Settings — with one level of detail below each.
+Capture takes the middle slot: it is the only tab that is a thing you _do_
+rather than a thing you read.
+
+It was five. "Today", "History" and "Replay" were all _look at a day_ — the same
+stats, the same timeline, the same map — differing only in which day and whether
+it moved. Three tabs meant three renderers of one thing, a Today that could not
+show yesterday, and a History that could not show today. They are one screen
+now: the day is a parameter, it defaults to today, arrows walk backwards, and
+the full list of days is a page under it rather than a tab beside it.
+
+### Back is a gesture, and it is still not a router
+
+`shell/SwipeBackPage.tsx` gives every detail page the edge swipe an iOS user
+expects: a `PanResponder`, one `Animated.Value`, `useNativeDriver` so the drag
+survives a busy JS thread — which matters here, because opening a day is exactly
+when the fold is running.
+
+**Edge-initiated, not anywhere-initiated.** A page holds horizontal scrollers —
+the mode chips, the speed buttons, the route table — and a gesture that could
+begin anywhere would fight all of them. Starting within 28 points of the left
+edge means the two can never both claim a touch.
+
+The commit thresholds (`beganAtEdge`, `shouldGoBack`) are exported and tested as
+functions. A `PanResponder` computes its gesture state from a touch history the
+test renderer does not maintain, so firing synthetic responder events proves
+nothing about what a finger would do — the decisions are testable even where the
+plumbing is not. `shell/usePageStack.ts` is an array and three functions,
 against a router that would bring a native screen container, a navigation state
 tree and a serialisation format to solve the same problem.
 

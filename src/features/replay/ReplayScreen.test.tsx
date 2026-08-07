@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { DayGroup } from '@/core/day';
+import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { EARTH_RADIUS_M, type PathPoint } from '@/core/geo';
 import type { MoveSegment, Segment, StaySegment } from '@/core/segments';
 
@@ -68,43 +69,63 @@ const DAY_WITH_A_HOLE = dayOf([
   move(T0 + 130 * MINUTE, T0 + 140 * MINUTE, 5_000, 5_800),
 ]);
 
+/** Only the fields the day view reads: tracking notices and the weight. */
+const SETTINGS = {
+  settings: { weightKg: 70 },
+  tracking: true,
+  permission: 'always',
+  savingBattery: false,
+  setTracking: () => undefined,
+  askForPermission: () => undefined,
+} as unknown as UseSettings;
+
 function renderScreen(day: DayGroup) {
   return render(
     <ReplayScreen
       days={[day]}
       places={[]}
       media={[]}
+      settings={SETTINGS}
       tzOffsetMinutes={0}
       mapsEnabled={false}
+      ready
       selectedDayKey={day.key}
       onSelectDay={() => undefined}
+      onOpenSegment={() => undefined}
       onOpenMedia={() => undefined}
+      onOpenAllDays={() => undefined}
     />,
   );
 }
 
 describe('the player', () => {
-  it('says there is nothing to play before anything is recorded', async () => {
+  it('shows today as an empty day before anything is recorded', async () => {
     await render(
       <ReplayScreen
         days={[]}
         places={[]}
         media={[]}
+        settings={SETTINGS}
         tzOffsetMinutes={0}
         mapsEnabled={false}
+        ready
         selectedDayKey={null}
         onSelectDay={() => undefined}
+        onOpenSegment={() => undefined}
         onOpenMedia={() => undefined}
+        onOpenAllDays={() => undefined}
       />,
     );
 
-    expect(screen.getByText(/Once a day has been recorded/)).toBeOnTheScreen();
+    // An empty day is still today: stats, an empty timeline, and no player.
+    expect(screen.getByText('Nothing recorded yet today.')).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Play')).not.toBeOnTheScreen();
   });
 
   it('starts at the beginning of the day, paused', async () => {
     await renderScreen(WHOLE_DAY);
 
-    expect(screen.getByText('08:00')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Showing 08:00')).toBeOnTheScreen();
     expect(screen.getByLabelText('Play')).toBeOnTheScreen();
   });
 
@@ -118,7 +139,7 @@ describe('the player', () => {
   it('reports what you were doing at the instant being shown', async () => {
     await renderScreen(WHOLE_DAY);
 
-    expect(screen.getByText('08:00')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Showing 08:00')).toBeOnTheScreen();
     expect(screen.getByText(/Walk ·/)).toBeOnTheScreen();
   });
 
@@ -184,7 +205,7 @@ describe('the player', () => {
         jest.advanceTimersByTime(2_000);
       });
 
-      expect(screen.queryByText('08:00')).not.toBeOnTheScreen();
+      expect(screen.queryByLabelText('Showing 08:00')).not.toBeOnTheScreen();
     } finally {
       jest.useRealTimers();
     }

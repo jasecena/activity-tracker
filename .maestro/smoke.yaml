@@ -72,14 +72,17 @@ appId: ${APP_ID}
 # Worth the extra seconds: these screens pull in the icon font, the SVG renderer
 # and the settings store, and a missing native module shows up as a blank screen
 # here rather than as a crash on launch.
-- tapOn: 'History tab'
-- assertVisible: 'History'
-- assertVisible: 'Finished days appear here after midnight.'
+# The day view is the app's front page and mounts the offline map canvas — SVG,
+# the projection, the scale bar. With maps off (the default) it must render
+# without MapKit being involved at all.
+- assertVisible: 'Today'
 
-# Replay mounts the offline map canvas — SVG, the projection, the scrubber. With
-# maps off (the default) this must render without MapKit being involved at all.
-- tapOn: 'Replay tab'
-- assertVisible: 'Replay'
+# Every day, one tap away. Today and History used to be separate tabs; they were
+# both "look at a day" and are one screen now, with the list as its page.
+- tapOn: 'All days'
+- assertVisible: 'All days'
+- tapOn: 'Back'
+- assertVisible: 'Today'
 
 # Capture is the one screen that touches the camera, and the only place a
 # missing native module would surface as a blank rectangle rather than a crash.
@@ -172,7 +175,7 @@ appId: ${APP_ID}
 - assertVisible: 'Erase everything?'
 - tapOn: 'Cancel'
 
-- tapOn: 'Today tab'
+- tapOn: 'Day tab'
 # Still an empty day after a tour of every other tab. Today was never unmounted,
 # which is the guarantee that stops a timeline just derived, or a half-typed
 # name, being thrown away when you glance somewhere else.

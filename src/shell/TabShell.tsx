@@ -3,8 +3,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { groupByDay, type DayGroup } from '@/core/day';
-import { formatDayTitle } from '@/core/format';
+import { groupByDay } from '@/core/day';
 import type { MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
@@ -16,7 +15,6 @@ import { CaptureScreen } from '@/features/capture/CaptureScreen';
 import { MediaScreen } from '@/features/capture/MediaScreen';
 import { useMedia } from '@/features/capture/hooks/useMedia';
 import { DataScreen } from '@/features/data/DataScreen';
-import { DayScreen } from '@/features/history/DayScreen';
 import { HistoryScreen } from '@/features/history/HistoryScreen';
 import { PlaceScreen } from '@/features/places/PlaceScreen';
 import { PlacesScreen } from '@/features/places/PlacesScreen';
@@ -28,17 +26,17 @@ import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
-import { TodayScreen } from '@/features/today/TodayScreen';
 import { colors, spacing, typography } from '@/theme/tokens';
 
+import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
 
-type Tab = 'today' | 'history' | 'capture' | 'replay' | 'settings';
+type Tab = 'replay' | 'capture' | 'settings';
 
 /** Pages that can sit above a tab's root. */
 type Page =
   | { readonly kind: 'segment'; readonly segment: Segment }
-  | { readonly kind: 'day'; readonly day: DayGroup }
+  | { readonly kind: 'alldays' }
   | { readonly kind: 'places' }
   | { readonly kind: 'place'; readonly place: Place }
   | { readonly kind: 'journeys' }
@@ -46,13 +44,11 @@ type Page =
   | { readonly kind: 'data' };
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'today', label: 'Today', icon: 'today-outline' },
-  { key: 'history', label: 'History', icon: 'calendar-outline' },
+  { key: 'replay', label: 'Day', icon: 'today-outline' },
   // Capture in the middle, where a thumb reaches without moving the phone. It
   // is the only tab that is a thing you *do* rather than a thing you read, and
   // the only one you would ever open one-handed in a hurry.
   { key: 'capture', label: 'Capture', icon: 'camera-outline' },
-  { key: 'replay', label: 'Replay', icon: 'play-circle-outline' },
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
@@ -86,7 +82,7 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
  * and hoisting means one copy rather than several that might drift.
  */
 export function TabShell() {
-  const [tab, setTab] = useState<Tab>('today');
+  const [tab, setTab] = useState<Tab>('replay');
   const [naming, setNaming] = useState<StaySegment | null>(null);
   const [namingJourney, setNamingJourney] = useState<MoveSegment | null>(null);
   const [replayDayKey, setReplayDayKey] = useState<string | null>(null);
@@ -98,8 +94,6 @@ export function TabShell() {
   const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
 
   const stacks: Record<Tab, ReturnType<typeof usePageStack<Page>>> = {
-    today: usePageStack<Page>(),
-    history: usePageStack<Page>(),
     replay: usePageStack<Page>(),
     capture: usePageStack<Page>(),
     settings: usePageStack<Page>(),
@@ -159,20 +153,18 @@ export function TabShell() {
         />
       );
     }
-    if (page.kind === 'day') {
+    if (page.kind === 'alldays') {
       return (
-        <DayScreen
-          day={page.day}
+        <HistoryScreen
+          days={replayDays}
           places={places.places}
-          weightKg={settings.settings.weightKg}
           tzOffsetMinutes={timeline.tzOffsetMinutes}
-          mapsEnabled={mapsEnabled}
-          title={formatDayTitle(page.day.startedAt, timeline.tzOffsetMinutes)}
           onBack={back}
-          onOpenSegment={openSegment(which)}
-          onReplay={() => {
-            setReplayDayKey(page.day.key);
-            setTab('replay');
+          onOpenDay={(chosen) => {
+            // Chosen from the list, so it becomes the day being shown and the
+            // list closes behind it — the day view is where you were going.
+            setReplayDayKey(chosen.key);
+            back();
           }}
         />
       );
@@ -246,28 +238,6 @@ export function TabShell() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.screens}>
-        <View style={[styles.screen, tab !== 'today' && styles.hidden]}>
-          <TodayScreen
-            segments={timeline.today}
-            places={places.places}
-            onOpenSegment={openSegment('today')}
-            settings={settings}
-            tzOffsetMinutes={timeline.tzOffsetMinutes}
-            ready={timeline.ready}
-          />
-          {stacks.today.current ? <View style={styles.page}>{renderPage('today')}</View> : null}
-        </View>
-
-        <View style={[styles.screen, tab !== 'history' && styles.hidden]}>
-          <HistoryScreen
-            days={timeline.history}
-            places={places.places}
-            tzOffsetMinutes={timeline.tzOffsetMinutes}
-            onOpenDay={(day) => stacks.history.push({ kind: 'day', day })}
-          />
-          {stacks.history.current ? <View style={styles.page}>{renderPage('history')}</View> : null}
-        </View>
-
         <View style={[styles.screen, tab !== 'capture' && styles.hidden]}>
           <CaptureScreen
             media={media}
@@ -275,7 +245,9 @@ export function TabShell() {
             visible={tab === 'capture'}
             onOpenItem={openMedia('capture')}
           />
-          {stacks.capture.current ? <View style={styles.page}>{renderPage('capture')}</View> : null}
+          {stacks.capture.current ? (
+            <SwipeBackPage onBack={stacks.capture.pop}>{renderPage('capture')}</SwipeBackPage>
+          ) : null}
         </View>
 
         <View style={[styles.screen, tab !== 'replay' && styles.hidden]}>
@@ -283,13 +255,19 @@ export function TabShell() {
             days={replayDays}
             places={places.places}
             media={media.items}
+            settings={settings}
             tzOffsetMinutes={timeline.tzOffsetMinutes}
             mapsEnabled={mapsEnabled}
+            ready={timeline.ready}
             selectedDayKey={replayDayKey}
             onSelectDay={setReplayDayKey}
+            onOpenSegment={openSegment('replay')}
             onOpenMedia={openMedia('replay')}
+            onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
           />
-          {stacks.replay.current ? <View style={styles.page}>{renderPage('replay')}</View> : null}
+          {stacks.replay.current ? (
+            <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
+          ) : null}
         </View>
 
         <View style={[styles.screen, tab !== 'settings' && styles.hidden]}>
@@ -300,7 +278,9 @@ export function TabShell() {
             onOpenPlaces={() => stacks.settings.push({ kind: 'places' })}
             onOpenJourneys={() => stacks.settings.push({ kind: 'journeys' })}
           />
-          {stacks.settings.current ? <View style={styles.page}>{renderPage('settings')}</View> : null}
+          {stacks.settings.current ? (
+            <SwipeBackPage onBack={stacks.settings.pop}>{renderPage('settings')}</SwipeBackPage>
+          ) : null}
         </View>
       </View>
 

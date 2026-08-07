@@ -64,13 +64,11 @@ async function press(label: string) {
 }
 
 describe('the shell', () => {
-  it('opens on Today', async () => {
+  it('opens on today', async () => {
     await render(<TabShell />);
 
-    // By role, not by text: "Today" is also the tab label, and a bare text
-    // query matches both.
     expect(await screen.findByRole('header', { name: 'Today' })).toBeOnTheScreen();
-    expect(screen.getByLabelText('Today tab')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Day tab')).toBeOnTheScreen();
   });
 
   it('offers to start tracking when it is off, which it is on a fresh install', async () => {
@@ -83,20 +81,30 @@ describe('the shell', () => {
     expect(await screen.findByText('Nothing recorded yet today.')).toBeOnTheScreen();
   });
 
-  it('shows all five tabs and switches between them', async () => {
+  it('shows all three tabs and switches between them', async () => {
     await render(<TabShell />);
-
-    await press('History tab');
-    expect(screen.getByText('Finished days appear here after midnight.')).toBeOnTheScreen();
-
-    await press('Replay tab');
-    expect(screen.getByRole('header', { name: 'Replay' })).toBeOnTheScreen();
 
     await press('Capture tab');
     expect(screen.getByRole('header', { name: 'Capture' })).toBeOnTheScreen();
 
     await press('Settings tab');
     expect(screen.getByText('Track my day')).toBeOnTheScreen();
+
+    await press('Day tab');
+    expect(screen.getByRole('header', { name: 'Today' })).toBeOnTheScreen();
+  });
+
+  // Today and History were both "look at a day", differing only in which one.
+  // They are the same screen now, and the list of days is a page under it.
+  it('reaches every day from the day view, and comes back', async () => {
+    await seedAWalk();
+    await render(<TabShell />);
+
+    await press('All days');
+    expect(await screen.findByRole('header', { name: 'All days' })).toBeOnTheScreen();
+
+    await press('Back');
+    expect(screen.getByRole('header', { name: 'Today' })).toBeOnTheScreen();
   });
 
   // Order is invisible to every other test here — they all select a tab by its
@@ -106,7 +114,7 @@ describe('the shell', () => {
     await render(<TabShell />);
 
     const labels = screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel);
-    expect(labels).toEqual(['Today tab', 'History tab', 'Capture tab', 'Replay tab', 'Settings tab']);
+    expect(labels).toEqual(['Day tab', 'Capture tab', 'Settings tab']);
   });
 
   // Places lost its tab to Replay and Capture; it is a reference list you
@@ -133,7 +141,7 @@ describe('the shell', () => {
     await press('Capture tab');
     expect(screen.getByLabelText('Camera preview')).toBeOnTheScreen();
 
-    await press('Today tab');
+    await press('Day tab');
     expect(screen.queryByLabelText('Camera preview', { includeHiddenElements: true })).not.toBeOnTheScreen();
   });
 
@@ -145,8 +153,8 @@ describe('the shell', () => {
     await press('Settings tab');
 
     expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
-    // Today is hidden from the accessibility tree — `display: none` — but still
-    // mounted, which is the whole point.
+    // The day view is hidden from the accessibility tree — `display: none` —
+    // but still mounted, which is the whole point.
     expect(screen.queryByRole('header', { name: 'Today' })).not.toBeOnTheScreen();
     expect(screen.getByRole('header', { name: 'Today', includeHiddenElements: true })).toBeOnTheScreen();
   });

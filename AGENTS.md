@@ -165,10 +165,21 @@ written because the handler was busy segmenting the last one.
 `storage.ts` and `motion.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
-**No navigation library.** Five tabs — Today, History, Capture, Replay,
-Settings — and one level of detail below most of them. Capture sits in the
-middle because it is the only tab that is an action rather than a view, and the
-only one reached one-handed in a hurry. Places is a page under
+**No navigation library.** Three tabs — Day, Capture, Settings — and one level
+of detail below each. Capture sits in the middle because it is the only tab that
+is an action rather than a view.
+
+**One screen shows a day, and it defaults to today.** "Today", "History" and
+"Replay" were all _look at a day_, differing only in which one and whether it
+moved — three renderers of one thing, a Today that could not show yesterday and
+a History that could not show today. The day is a parameter now; arrows walk
+backwards and the full list is a page under it.
+
+**Back is a swipe as well as a button.** `shell/SwipeBackPage.tsx` is a
+`PanResponder` and one `Animated.Value`, edge-initiated so it can never fight
+the horizontal scrollers inside a page. Its two decisions are exported and
+tested directly: a `PanResponder` cannot be driven faithfully by synthetic
+events, so testing the gesture through the renderer proves nothing. Places is a page under
 Settings, not a tab: iOS collapses a sixth tab into a "More" list.
 `shell/usePageStack.ts` is an array and three functions, against a router that
 would bring a native screen container, a navigation state tree and a

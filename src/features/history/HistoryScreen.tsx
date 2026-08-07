@@ -11,24 +11,27 @@ interface HistoryScreenProps {
   readonly places: readonly Place[];
   readonly tzOffsetMinutes: number;
   readonly onOpenDay: (day: DayGroup) => void;
+  /** History is a page under the day view now, so it has somewhere to go back to. */
+  readonly onBack: () => void;
 }
 
 /**
- * Finished days, newest first.
+ * Every day, newest first — for going further back than the day view's arrows
+ * are worth using.
  *
- * A summary per day and the places in it, with the full timeline one tap away on
- * its own page. The previous version expanded rows inline, which meant a long
- * day pushed everything below it off the screen and there was no way back to
- * where you had been.
+ * A summary per day and the places in it. Choosing one does not open a page of
+ * its own: it sets the day being shown and closes this list, because the day
+ * view is where you were going and a second renderer of a day is what this
+ * whole restructure removed.
  */
-export function HistoryScreen({ days, places, tzOffsetMinutes, onOpenDay }: HistoryScreenProps) {
+export function HistoryScreen({ days, places, tzOffsetMinutes, onOpenDay, onBack }: HistoryScreenProps) {
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="History" subtitle={days.length === 1 ? '1 day' : `${days.length} days`} />
+      <ScreenHeader title="All days" subtitle={days.length === 1 ? '1 day' : `${days.length} days`} onBack={onBack} />
 
       <ScrollView contentContainerStyle={styles.content}>
         {days.length === 0 ? (
-          <Text style={styles.empty}>Finished days appear here after midnight.</Text>
+          <Text style={styles.empty}>Days appear here as they are recorded.</Text>
         ) : (
           days.map((day) => {
             const summary = summarizeDay(day.segments);
