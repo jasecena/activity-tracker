@@ -1,5 +1,6 @@
 import {
   applyManualWindows,
+  closeAbandonedWindows,
   DEFAULT_SEGMENT_CONFIG,
   manualSegmentId,
   segmentFixes,
@@ -239,5 +240,80 @@ describe('applyManualWindows', () => {
     const labels = result.filter((s) => s.kind === 'move' && s.label).map((s) => (s.kind === 'move' ? s.label : null));
 
     expect(labels).toEqual(['Morning', 'Afternoon']);
+  });
+});
+
+/**
+ * Reported from a real phone: Today showed a journey at 16:37, a time that had
+ * not arrived, for a recording nobody had started that day — and it appeared in
+ * no export, because it had no fixes behind it.
+ *
+ * The cause was a Record pressed the previous day and never stopped. A running
+ * window is closed at `now`, so every subsequent day grew a row spanning from
+ * yesterday's clock time to this moment.
+ */
+describe('a recording nobody stopped', () => {
+  const YESTERDAY_1637 = Date.UTC(2026, 7, 6, 16, 37, 0);
+  const TODAY_1000 = Date.UTC(2026, 7, 7, 10, 0, 0);
+  const MIDNIGHT = Date.UTC(2026, 7, 7, 0, 0, 0);
+
+  const forgotten: ManualWindow = {
+    id: 'w-1',
+    label: 'Walk',
+    mode: 'walk',
+    startedAt: YESTERDAY_1637,
+    endedAt: null,
+  };
+
+  it('is closed at the end of the day it started', () => {
+    const [closed] = closeAbandonedWindows([forgotten], TODAY_1000, 0);
+    expect(closed?.endedAt).toBe(MIDNIGHT);
+  });
+
+  // The symptom itself: without the close, today grows a seventeen-hour row
+  // starting at a clock time that has not arrived.
+  it('no longer leaks a row into the following day', () => {
+    const leaked = applyManualWindows([], [forgotten], TODAY_1000);
+    expect(leaked).toHaveLength(1);
+    expect(leaked[0]?.startedAt).toBe(YESTERDAY_1637);
+
+    const tidied = closeAbandonedWindows([forgotten], TODAY_1000, 0);
+    // Today derives from today's own segments; a window that closed at midnight
+    // no longer reaches into them.
+    const today = applyManualWindows([], tidied, TODAY_1000).filter((segment) => segment.endedAt > MIDNIGHT);
+    expect(today).toEqual([]);
+  });
+
+  it('leaves a recording that is genuinely still running alone', () => {
+    const startedToday: ManualWindow = { ...forgotten, startedAt: Date.UTC(2026, 7, 7, 9, 0, 0) };
+    expect(closeAbandonedWindows([startedToday], TODAY_1000, 0)).toEqual([startedToday]);
+  });
+
+  it('leaves a recording that was properly stopped alone', () => {
+    const stopped: ManualWindow = { ...forgotten, endedAt: YESTERDAY_1637 + 600_000 };
+    expect(closeAbandonedWindows([stopped], TODAY_1000, 0)).toEqual([stopped]);
+  });
+
+  // A day is a wall-clock idea, so which day a recording started on depends on
+  // the offset — the same sign convention as the rest of `core/day`.
+  it('decides which day it started on in local time', () => {
+    const lateEvening = Date.UTC(2026, 7, 6, 23, 30, 0);
+    const window: ManualWindow = { ...forgotten, startedAt: lateEvening };
+    // In UTC that is the 6th, and 10:00 on the 7th is a later day: closed.
+    expect(closeAbandonedWindows([window], TODAY_1000, 0)[0]?.endedAt).toBe(MIDNIGHT);
+    // Ten hours east it is already the 7th, the same day as `now`: left alone.
+    expect(closeAbandonedWindows([window], TODAY_1000, 600)[0]?.endedAt).toBeNull();
+  });
+
+  it('returns the very same array when there is nothing to close, so no write happens', () => {
+    const untouched = [{ ...forgotten, endedAt: YESTERDAY_1637 + 60_000 }];
+    expect(closeAbandonedWindows(untouched, TODAY_1000, 0)).toBe(untouched);
+  });
+
+  it('closes several forgotten recordings, each on its own day', () => {
+    const older: ManualWindow = { ...forgotten, id: 'w-0', startedAt: Date.UTC(2026, 7, 4, 8, 0, 0) };
+    const closed = closeAbandonedWindows([older, forgotten], TODAY_1000, 0);
+    expect(closed[0]?.endedAt).toBe(Date.UTC(2026, 7, 5, 0, 0, 0));
+    expect(closed[1]?.endedAt).toBe(MIDNIGHT);
   });
 });

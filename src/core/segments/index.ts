@@ -23,7 +23,7 @@ export {
   type SegmentationResult,
   type SegmenterState,
 } from './machine';
-export { applyManualWindows, manualSegmentId, splitSegment, type ManualWindow } from './manual';
+export { applyManualWindows, closeAbandonedWindows, manualSegmentId, splitSegment, type ManualWindow } from './manual';
 export {
   ACTIVITY_MODES,
   averageSpeedMps,

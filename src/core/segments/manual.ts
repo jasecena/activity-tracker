@@ -1,3 +1,7 @@
+// Imported from the leaf rather than `../day`: that barrel pulls in
+// `day/summary.ts`, which imports this domain back at runtime. `day/day.ts` has
+// only a type-only import of `Segment`, so this edge is one-way.
+import { startOfLocalDay, type TzOffsetMinutes } from '../day/day';
 import { pathLengthM, type PathPoint } from '../geo';
 
 import { classifyMode } from './classify';
@@ -26,6 +30,49 @@ export interface ManualWindow {
   readonly startedAt: number;
   /** null while the recording is still running. */
   readonly endedAt: number | null;
+}
+
+const MS_PER_DAY = 24 * 60 * 60_000;
+
+/**
+ * Close any recording that was still running when its day ended.
+ *
+ * The bug this exists to prevent, seen on a real phone: press Record, forget to
+ * press Stop, and the window stays open forever. `applyManualWindows` closes a
+ * running window at `now`, so the next day — and every day after — the live
+ * timeline grows a row starting at yesterday's clock time and ending at this
+ * moment. It has no fixes behind it, so it appears in no export, and it reads
+ * as a journey at a time that has not arrived yet.
+ *
+ * A recording left open across a day boundary is a forgotten one, so it is
+ * closed at the end of the day it started. The cost is real and worth stating:
+ * a genuine ride that crosses midnight, on an app relaunched mid-ride, loses
+ * its label after 00:00. That is much the smaller harm — the fixes and the
+ * automatic timeline are untouched, and the alternative is a phantom row on
+ * every future day and a Record button that never stops claiming to record.
+ *
+ * Returns the same array when nothing changed, so a caller can skip a write.
+ */
+export function closeAbandonedWindows(
+  windows: readonly ManualWindow[],
+  now: number,
+  tzOffsetMinutes: TzOffsetMinutes,
+): readonly ManualWindow[] {
+  const today = startOfLocalDay(now, tzOffsetMinutes);
+  let changed = false;
+
+  const closed = windows.map((window) => {
+    if (window.endedAt !== null) return window;
+
+    const startedOn = startOfLocalDay(window.startedAt, tzOffsetMinutes);
+    // Still running on the day it started: genuinely in progress, leave it.
+    if (startedOn >= today) return window;
+
+    changed = true;
+    return { ...window, endedAt: startedOn + MS_PER_DAY };
+  });
+
+  return changed ? closed : windows;
 }
 
 function isMove(segment: Segment): segment is MoveSegment {

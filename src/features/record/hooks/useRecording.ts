@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { ActivityMode, ManualWindow } from '@/core/segments';
-import { now as readNow } from '@/services/clock';
+import { closeAbandonedWindows, type ActivityMode, type ManualWindow } from '@/core/segments';
+import { now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
 export interface UseRecording {
@@ -52,8 +52,18 @@ export function useRecording(): UseRecording {
     let live = true;
     void (async () => {
       const stored = normalizeWindows(await readJson<unknown>(STORAGE_KEYS.manualWindows));
+
+      // A recording left running when its day ended is a forgotten one. Closed
+      // here, at the store, rather than only where the timeline is derived —
+      // otherwise the Record button goes on claiming to record for days, and
+      // every future day grows a phantom row starting at the clock time you
+      // pressed it. See `closeAbandonedWindows`.
+      const at = readNow();
+      const tidied = closeAbandonedWindows(stored, at, readTzOffset(at));
+      if (tidied !== stored) void writeJson(STORAGE_KEYS.manualWindows, tidied);
+
       if (!live) return;
-      if (!touched.current) setWindows(stored);
+      if (!touched.current) setWindows(tidied);
       setReady(true);
     })();
     return () => {
