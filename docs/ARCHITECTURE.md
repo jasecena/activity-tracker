@@ -207,6 +207,49 @@ covers the case it was meant to.
 `showsBackgroundLocationIndicator` is true. Honest, and the fastest way to notice
 tracking was left on.
 
+### Below 20%, the app gives way first
+
+A location app is the thing draining the phone, so it is the thing that should
+yield when the phone is nearly flat. Under 20% and off the charger, tracking
+drops to the `saver` preset — Wi-Fi-class positioning, a point every 100 m —
+which costs a route some detail and buys the rest of the day.
+
+Three properties, each of which is the interesting part:
+
+**It is a lens, not a setting.** `settings.preset` still holds what you chose;
+`effectivePreset(chosen, savingBattery)` derives what actually runs. Nothing is
+persisted, so a phone that reaches a charger goes back to full detail without
+anyone having to remember to put the setting back — the same shape as manual
+recording over the fix stream (§ 4), and for the same reason.
+
+**It only ever coarsens.** A low battery can move `detailed` down to `saver` and
+can do nothing at all to a `saver` you chose yourself. Choosing `detailed` on a
+flat phone stores the choice and keeps running the coarse preset until there is
+charge to honour it.
+
+**It has hysteresis, and that is load-bearing.** `core/power` drops below 20%
+and restores only above 25%. Applying both at one percentage means a phone
+hovering at the threshold restarts Core Location every time the reading
+flickers — and restarting location updates is itself expensive, so the naive
+version spends more battery than it saves at exactly the moment there is none to
+spare. A property test pins that the decision reaches a fixed point for any
+steady reading, which is what makes it safe to run on every event.
+
+Charging suppresses it entirely: a phone at 15% and climbing does not need
+saving. A missing reading — the simulator, or the first moment after launch —
+is not treated as a low one, because "I do not know" is never a reason to record
+less.
+
+It runs while the app is open, since the listeners do not survive suspension and
+re-reading on return to the foreground is cheaper and more honest than
+pretending to know what the battery did meanwhile. What has already been applied
+_does_ survive backgrounding: a phone that hit 15% in your hand is still at 15%
+in your pocket.
+
+Both screens that would otherwise quietly show less say so — Settings above the
+preset list, Today while it is recording. An app that silently records less than
+you asked for is the failure this is guarding against as much as a flat phone.
+
 ---
 
 ## 9. The background task appends and returns

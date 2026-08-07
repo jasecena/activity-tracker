@@ -68,6 +68,18 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }:
         </View>
 
         <Text style={styles.sectionLabel}>ACCURACY &amp; BATTERY</Text>
+        {/* Said before the list, not after: the rows below show your choice
+            still selected, and without this the app would appear to be running
+            a preset it is not. */}
+        {settings.savingBattery ? (
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>Running on Battery saver</Text>
+            <Text style={styles.noticeBody}>
+              The battery is below 20%, so tracking has dropped to a point every 100 m. Your choice below is kept and
+              comes back on its own once the phone is charged past 25%.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.card}>
           {(Object.keys(TRACKING_PRESETS) as TrackingPresetId[]).map((id) => {
             const preset = TRACKING_PRESETS[id];
@@ -83,7 +95,10 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }:
               >
                 <View style={styles.rowText}>
                   <Text style={[styles.rowTitle, selected && styles.selected]}>{preset.label}</Text>
-                  <Text style={styles.rowDetail}>{preset.detail}</Text>
+                  <Text style={styles.rowDetail}>
+                    {preset.detail}
+                    {id === settings.runningPreset && settings.savingBattery ? ' — running now' : ''}
+                  </Text>
                 </View>
                 {selected ? <Text style={styles.tick}>✓</Text> : null}
               </Pressable>
@@ -94,7 +109,8 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }:
         <Text style={styles.footnote}>
           The GPS is only woken when you have moved by the distance above, so standing still costs nothing. Location
           updates are never paused automatically — iOS does not reliably resume them, and a day missing from a diary is
-          worse than a percent of battery.
+          worse than a percent of battery. Below 20% the app drops to Battery saver by itself, since it is the thing
+          draining the phone; on a charger it never does.
         </Text>
 
         <Text style={styles.sectionLabel}>MAPS</Text>
@@ -231,6 +247,16 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }:
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, gap: spacing.sm, paddingBottom: spacing.xxl },
+  notice: {
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.manual,
+  },
+  noticeTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
+  noticeBody: { ...typography.caption, color: colors.textSecondary },
   sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.md },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
   row: {

@@ -11,7 +11,7 @@ imports — ESLint enforces this. The `core` Jest project compiles it with nothi
 but `@babel/preset-typescript`, so any new dependency there breaks the suite.
 That is intentional: it is how a location app is testable on a Linux runner that
 is not, and never will be, moving. Every core domain (`geo`, `segments`, `day`,
-`format`, `places`, `energy`, `replay`, `media`) has its own coverage gate. `core` also reads no
+`format`, `places`, `energy`, `replay`, `media`, `power`) has its own coverage gate. `core` also reads no
 clock, no timezone and no entropy source: ids are derived from the data, "what
 time is it" is a parameter, and so is the UTC offset.
 
@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 354
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 367
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -93,6 +93,14 @@ contradict each other.
 **Calories count movement only.** Including rest would add fifteen hundred
 kilocalories to every day, most of them for being asleep, and drown the walk the
 number is about. This is active energy, like a watch's move ring.
+
+**Below 20% the app coarsens itself, and it is a lens rather than a setting.**
+`core/power` decides; `effectivePreset` derives what runs from what you chose.
+`settings.preset` is never overwritten, so a charged phone returns to full
+detail on its own. It only ever coarsens, never refines. The 20/25% hysteresis
+is not a detail: dropping and restoring at one percentage restarts Core Location
+on every flicker, and restarting costs more than the coarse preset saves.
+Charging suppresses it; a missing reading is not a low reading.
 
 **`pausesUpdatesAutomatically` stays false.** iOS offers to stop location updates
 when it decides you have stopped moving, which sounds exactly like the battery

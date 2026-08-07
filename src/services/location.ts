@@ -74,6 +74,24 @@ export function normalizePresetId(input: unknown): TrackingPresetId {
 }
 
 /**
+ * What Core Location is actually run at, given what you chose and how much
+ * charge is left.
+ *
+ * A low battery **coarsens** and never refines: it can move `detailed` down to
+ * `saver`, and it can do nothing at all to a `saver` you chose yourself. The
+ * app is what is draining the phone, so it is the thing that should give way
+ * first — but only ever in the direction of recording less, never more.
+ *
+ * Derived rather than stored, which is the whole design. Your choice stays your
+ * choice in `settings.preset`; this is a lens over it, so a phone that reaches
+ * a charger goes back to full detail without anyone having to remember to put
+ * the setting back.
+ */
+export function effectivePreset(chosen: TrackingPresetId, savingBattery: boolean): TrackingPresetId {
+  return savingBattery ? 'saver' : chosen;
+}
+
+/**
  * Platform reading to engine fix.
  *
  * The one piece of real translation: Core Location signals "this reading is

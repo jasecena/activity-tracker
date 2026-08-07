@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import * as BatteryModule from 'expo-battery';
 
 import { TabShell } from './TabShell';
 
@@ -143,6 +144,64 @@ describe('the shell', () => {
     await press('Sort by Name');
 
     expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
+  });
+});
+
+describe('a nearly-flat battery', () => {
+  // Narrowed from the module the app itself imported. `requireActual` would
+  // hand back the real expo-battery, and `requireMock` a second instance of the
+  // mock with its own charge — either way the app would never see the change.
+  const battery = BatteryModule as unknown as typeof import('../../__mocks__/expo-battery');
+
+  afterEach(() => {
+    battery.__reset();
+  });
+
+  it('says it has dropped to Battery saver, and keeps your choice selected', async () => {
+    await render(<TabShell />);
+    await press('Settings tab');
+
+    // Comfortably charged: nothing to say.
+    expect(screen.queryByText('Running on Battery saver')).not.toBeOnTheScreen();
+
+    await act(async () => {
+      battery.__setPower({ level: 0.15 });
+    });
+
+    expect(screen.getByText('Running on Battery saver')).toBeOnTheScreen();
+    // The chosen preset is untouched — this is a lens, not a setting.
+    expect(screen.getByLabelText('Balanced. ~10 m accuracy, a point every 25 m')).toBeOnTheScreen();
+  });
+
+  // Hysteresis, end to end: 22% is between the two thresholds, so a phone
+  // recovering from 15% is still saving there and only stops above 25%.
+  it('holds on until the charge is genuinely back', async () => {
+    await render(<TabShell />);
+    await press('Settings tab');
+
+    await act(async () => {
+      battery.__setPower({ level: 0.15 });
+    });
+    await act(async () => {
+      battery.__setPower({ level: 0.22 });
+    });
+    expect(screen.getByText('Running on Battery saver')).toBeOnTheScreen();
+
+    await act(async () => {
+      battery.__setPower({ level: 0.4 });
+    });
+    expect(screen.queryByText('Running on Battery saver')).not.toBeOnTheScreen();
+  });
+
+  it('does nothing at all on a charger', async () => {
+    await render(<TabShell />);
+    await press('Settings tab');
+
+    await act(async () => {
+      battery.__setPower({ level: 0.05, state: battery.BatteryState.CHARGING });
+    });
+
+    expect(screen.queryByText('Running on Battery saver')).not.toBeOnTheScreen();
   });
 });
 

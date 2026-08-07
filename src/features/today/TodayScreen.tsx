@@ -89,6 +89,18 @@ export function TodayScreen({
           </Pressable>
         ) : null}
 
+        {/* The one place you would notice a coarser route without being told
+            why: today's own timeline, while it is being recorded. */}
+        {settings.savingBattery && settings.tracking ? (
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>Saving battery</Text>
+            <Text style={styles.noticeBody}>
+              Under 20% left, so today is being recorded at a point every 100 m. Routes will look coarser until the
+              phone is charged.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.stats}>
           <StatTile label="Distance" value={formatDistance(summary.distanceM)} accent={colors.move} />
           <StatTile label="Moving" value={formatDuration(summary.movingMs)} />
