@@ -43,9 +43,13 @@ export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMi
   const place = isStay ? matchPlace(segment, places) : null;
   const title = isStay ? (place?.name ?? 'Unnamed place') : (segment.label ?? modeLabel(segment.mode));
 
+  // The tag is decorative, so what it means has to reach a screen reader
+  // through the row's own label instead.
+  const named = !isStay && segment.modeIsManual ? ', named by you' : '';
+
   const label = isStay
     ? `${title}, ${elapsed}, from ${startedAt}`
-    : `${title}, ${formatDistance(segment.distanceM)}, ${elapsed}, averaging ${formatSpeed(averageSpeedMps(segment))}, from ${startedAt}`;
+    : `${title}, ${formatDistance(segment.distanceM)}, ${elapsed}, averaging ${formatSpeed(averageSpeedMps(segment))}, from ${startedAt}${named}`;
 
   const body = isStay ? (
     <>
@@ -69,10 +73,13 @@ export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMi
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
+          {/* `modeIsManual` is set in exactly one place — `coalesce` — so it
+              means precisely "this row came from a name you gave it". The tag
+              is the same glyph as the action that creates one, rather than the
+              "REC" pill left over from a Record button that no longer exists
+              and never recorded anything. */}
           {segment.modeIsManual ? (
-            <View style={styles.manualBadge}>
-              <Text style={styles.manualBadgeText}>REC</Text>
-            </View>
+            <Ionicons name="pricetag" size={13} color={colors.manual} accessibilityElementsHidden />
           ) : null}
         </View>
         <Text style={styles.detail}>
@@ -116,11 +123,4 @@ const styles = StyleSheet.create({
   title: { ...typography.body, color: colors.textPrimary, flexShrink: 1 },
   untitled: { color: colors.textSecondary, fontStyle: 'italic' },
   detail: { ...typography.caption, color: colors.textSecondary },
-  manualBadge: {
-    backgroundColor: colors.manual,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 1,
-  },
-  manualBadgeText: { fontSize: 9, fontWeight: '700', color: colors.onAccent, letterSpacing: 0.5 },
 });

@@ -58,8 +58,9 @@ describe('a move', () => {
 
     expect(screen.getByText('Walk to Coles')).toBeOnTheScreen();
     expect(screen.queryByText('Walk')).not.toBeOnTheScreen();
-    // The badge that says a human, not the classifier, decided this one.
-    expect(screen.getByText('REC')).toBeOnTheScreen();
+    // The tag is decorative, so the thing it means has to reach a screen
+    // reader through the row's own label.
+    expect(screen.getByLabelText(/named by you$/)).toBeOnTheScreen();
   });
 
   it('says "Moving" rather than guessing when the mode is unknown', async () => {

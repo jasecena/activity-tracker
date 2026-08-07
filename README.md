@@ -16,7 +16,7 @@ Today
 07:12  ●  Home                        2h 40m
 09:52  ▸  Walk        1.42 km  18m  4.7 km/h
 10:10  ●  abc restaurant              2h 04m
-12:18  ▸  Walk to Coles  0.84 km  11m   REC
+12:18  ▸  Walk to Coles  0.84 km  11m     🏷
 12:29  ●  Coles                          24m
 12:53  ▸  Drive      11.2 km  24m  46 km/h
 13:17  ●  xyz beach                   1h 40m
