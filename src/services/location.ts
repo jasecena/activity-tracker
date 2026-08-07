@@ -215,15 +215,24 @@ export async function stopTracking(): Promise<void> {
 }
 
 /**
- * One fix, now, for the "where am I" line at the top of Today.
+ * One fix, now, asked for rather than waited for.
  *
- * Never fed to the segmenter: a foreground request returns a cached position of
- * unknown age, and threading one into the fold would put a fix out of order in
- * a stream whose ordering the engine depends on.
+ * This **is** fed to the segmenter, which revises the note that used to stand
+ * here — that a foreground request must never reach the fold, because it can
+ * return a cached position of unknown age. The hazard is real and the engine
+ * already handles both halves of it: `judgeFix` drops a reading that is not
+ * newer than the last one as `out-of-order`, and a cold-start position from
+ * where the phone was hours ago, stamped now, as a `teleport`. A stale
+ * heartbeat is discarded, not believed.
+ *
+ * **`Accuracy.High`, not `Balanced`.** Balanced is documented at ~100 m, and
+ * `maxAccuracyM` is 60 — so every reading this returned would have been thrown
+ * away by the filter before reaching a segment, and the feature that depends on
+ * it would have done nothing at all while appearing to work.
  */
 export async function currentFix(): Promise<Fix | null> {
   try {
-    return toFix(await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+    return toFix(await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }));
   } catch {
     return null;
   }

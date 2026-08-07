@@ -10,6 +10,7 @@ import { buildTrack, positionAt } from '@/core/replay';
 import { journeyLabelId } from '@/core/segments';
 import type { MoveSegment, Segment, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
+import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
 import { useTimeline } from '@/features/activities/hooks/useTimeline';
 import { CaptureScreen } from '@/features/capture/CaptureScreen';
 import { MediaScreen } from '@/features/capture/MediaScreen';
@@ -92,6 +93,11 @@ export function TabShell() {
   const places = usePlaces();
   const media = useMedia();
   const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
+
+  // A phone that does not move produces no fixes, so an afternoon at a desk
+  // would otherwise leave the day empty. Only while tracking is on: the switch
+  // being off means the app writes down nowhere you are.
+  useHeartbeat(settings.tracking, timeline.refresh);
 
   const stacks: Record<Tab, ReturnType<typeof usePageStack<Page>>> = {
     replay: usePageStack<Page>(),

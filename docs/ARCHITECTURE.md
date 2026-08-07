@@ -241,6 +241,36 @@ without waking the app: standing still costs nothing. `timeInterval` is set to
 zero — a time-based update would wake the app while it sits on a desk, which is
 most of the day and none of the interesting part of it.
 
+### The cost of that, and the one place it is paid back
+
+A phone that does not move produces **no fixes at all**. That is the saving, and
+it is also a hole: an afternoon at a desk can leave a day with nothing in it, and
+a stay is only a stay if something observed it. It is what made "I sat down and
+it recorded nothing" a real report rather than a misunderstanding.
+
+So `features/activities/hooks/useHeartbeat.ts` asks where the phone is every ten
+minutes — **only while the app is open, and only while tracking is on**. Both
+halves are load-bearing. In the background the distance filter is the whole
+battery argument and a timer there would undo it; and the tracking switch being
+off means the app records nowhere you are, so a heartbeat that ignored it would
+write down your position after you asked it not to.
+
+It reschedules from the moment each fix lands rather than running on an
+interval, so returning to the app after two minutes takes nothing and returning
+after twenty takes one immediately. An interval would fire on a fixed grid and
+take a reading every time you glanced at the screen.
+
+Two details that decide whether it works at all:
+
+- **`Accuracy.High`, not `Balanced`.** Balanced is documented at ~100 m and
+  `maxAccuracyM` is 60, so every heartbeat would have been discarded by
+  `judgeFix` as `inaccurate` — a feature that appears to run and does nothing.
+- **A foreground request can return a cached position**, which is why this used
+  to be forbidden from reaching the fold. The engine already handles both ways
+  that goes wrong: a reading no newer than the last is `out-of-order`, and a
+  cold-start position stamped now from where the phone was hours ago is a
+  `teleport`. A stale heartbeat is discarded, not believed.
+
 **`pausesUpdatesAutomatically` is false, deliberately.** iOS offers to stop
 location updates when it decides you have not moved for a while, which sounds
 exactly like the saving this app wants. It does not reliably resume: the

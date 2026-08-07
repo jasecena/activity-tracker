@@ -118,6 +118,13 @@ is not a detail: dropping and restoring at one percentage restarts Core Location
 on every flicker, and restarting costs more than the coarse preset saves.
 Charging suppresses it; a missing reading is not a low reading.
 
+**A phone that does not move produces no fixes, so the app asks every ten
+minutes while it is open.** `useHeartbeat` — foreground only, and only while
+tracking is on, because the switch being off means the app records nowhere you
+are. It must request `Accuracy.High`: `Balanced` is ~100 m against a 60 m
+`maxAccuracyM`, so every reading would be discarded as `inaccurate` and the
+feature would appear to work while doing nothing.
+
 **`pausesUpdatesAutomatically` stays false.** iOS offers to stop location updates
 when it decides you have stopped moving, which sounds exactly like the battery
 saving this app wants — but it does not reliably resume, and the failure is
