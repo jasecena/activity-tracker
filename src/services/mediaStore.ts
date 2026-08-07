@@ -74,6 +74,26 @@ function readBeUint32(bytes: Uint8Array): number {
   return ((bytes[0] ?? 0) << 24) | ((bytes[1] ?? 0) << 16) | ((bytes[2] ?? 0) << 8) | (bytes[3] ?? 0);
 }
 
+/**
+ * Hand the JS thread back between chunks.
+ *
+ * The reason this exists, reported from a phone: sealing a minute of video was
+ * freezing the app. `await sealBytes(...)` looks like it yields, but awaiting a
+ * resolved promise only drains the *microtask* queue — touches, renders and
+ * timers are macrotasks, so a loop of dozens of megabyte-sized AEAD passes runs
+ * to completion without the UI getting a single frame. The Stop button appeared
+ * dead, and the taps that followed went nowhere.
+ *
+ * `setTimeout(0)` is a macrotask, so the queue drains between chunks. It makes
+ * the whole seal slightly slower in wall-clock and entirely responsive, which
+ * is the right trade for something a person is watching.
+ */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   return a.every((byte, index) => byte === b[index]);
@@ -92,6 +112,8 @@ export async function writeMedia(
   sourceUri: string,
   id: string,
   kind: MediaKind,
+  /** Fraction sealed so far, 0 to 1. Called once per chunk, for a progress bar. */
+  onProgress?: (fraction: number) => void,
 ): Promise<{ readonly fileName: string; readonly byteLength: number }> {
   ensureDirectory();
 
@@ -102,11 +124,13 @@ export async function writeMedia(
   if (destination.exists) destination.delete();
   destination.create();
 
+  const totalBytes = Math.max(1, source.size);
   const input = source.open(FileMode.ReadOnly);
   const output = destination.open(FileMode.WriteOnly);
 
   try {
     output.writeBytes(MAGIC);
+    let read = 0;
 
     for (;;) {
       const plain = input.readBytes(CHUNK_BYTES);
@@ -116,9 +140,16 @@ export async function writeMedia(
       output.writeBytes(beUint32(sealed.length));
       output.writeBytes(sealed);
 
+      read += plain.length;
+      onProgress?.(Math.min(1, read / totalBytes));
+
       // A short read is the last chunk. Asking again would return zero bytes
       // and cost another round trip through the bridge.
       if (plain.length < CHUNK_BYTES) break;
+
+      // Only between chunks, never after the last: the caller is waiting on
+      // this promise and an extra tick before resolving is pure latency.
+      await breathe();
     }
   } catch (error) {
     if (destination.exists) destination.delete();

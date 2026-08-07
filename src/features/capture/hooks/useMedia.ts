@@ -15,7 +15,13 @@ export interface UseMedia {
    * nothing is added, because an index entry pointing at bytes that are not
    * there is worse than no entry at all.
    */
-  keep: (sourceUri: string, kind: MediaKind, durationMs?: number | null) => Promise<MediaItem | null>;
+  keep: (
+    sourceUri: string,
+    kind: MediaKind,
+    durationMs?: number | null,
+    /** Fraction sealed so far, 0 to 1 — a video takes long enough to be worth showing. */
+    onProgress?: (fraction: number) => void,
+  ) => Promise<MediaItem | null>;
   annotate: (id: string, note: string) => void;
   forget: (id: string) => void;
 }

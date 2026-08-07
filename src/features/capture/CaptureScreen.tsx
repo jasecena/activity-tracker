@@ -53,13 +53,27 @@ const KIND_ICONS: Readonly<Record<MediaKind, keyof typeof Ionicons.glyphMap>> = 
 export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: CaptureScreenProps) {
   const [mode, setMode] = useState<Mode>('photo');
   const [facing, setFacing] = useState<CameraType>('back');
-  const [busy, setBusy] = useState(false);
-  const [recordingVideo, setRecordingVideo] = useState(false);
-  const [voiceStartedAt, setVoiceStartedAt] = useState<number | null>(null);
-  // How long the voice note has been running. State fed by a timer rather than
-  // a clock read during render: a read in render does not advance on its own,
-  // and this app keeps values the render depends on in state by rule.
-  const [elapsedVoiceMs, setElapsedVoiceMs] = useState(0);
+
+  /**
+   * Recording and saving are separate states, and conflating them was a bug.
+   *
+   * `recordAsync` resolves only once recording *stops*, so awaiting it and
+   * clearing the flag in a `finally` kept the button showing "recording" for
+   * the whole time the clip was being sealed. Reported from a phone: the Stop
+   * button appeared to do nothing, so it got tapped again, and again.
+   *
+   * Stop now flips the state the instant it is pressed — before the camera has
+   * finished, before a byte is written — because that is when the person
+   * pressing it needs to know it worked.
+   */
+  const [state, setState] = useState<'idle' | 'recording' | 'saving'>('idle');
+  /** When the current recording started, for the elapsed clock. */
+  const [since, setSince] = useState<number | null>(null);
+  // Fed by a timer rather than read during render: a clock read in render does
+  // not advance on its own, and this app keeps what the render depends on in
+  // state by rule.
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [progress, setProgress] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
 
   const [cameraPermission, requestCamera] = useCameraPermissions();
@@ -85,69 +99,83 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
   }, [visible, needsMicrophone]);
 
   useEffect(() => {
-    if (voiceStartedAt === null) return;
-    const timer = setInterval(() => setElapsedVoiceMs(readNow() - voiceStartedAt), 500);
+    if (since === null) return;
+    const timer = setInterval(() => setElapsedMs(readNow() - since), 500);
     return () => clearInterval(timer);
-  }, [voiceStartedAt]);
+  }, [since]);
 
-  // Leaving the tab mid-recording must not leave the microphone open. The state
-  // is cleared in the callback rather than in the effect body: stopping is a
-  // conversation with the recorder, and the app has not stopped recording until
-  // the recorder says so.
+  // Leaving the tab mid-recording must not leave the camera or the microphone
+  // running. The state is cleared in a callback rather than in the effect body:
+  // stopping is a conversation with the hardware, and the app has not stopped
+  // recording until the hardware says so.
   useEffect(() => {
-    if (visible || voiceStartedAt === null) return;
-    void recorder.stop().then(() => setVoiceStartedAt(null));
-  }, [visible, voiceStartedAt, recorder]);
+    if (visible || state !== 'recording') return;
+    camera.current?.stopRecording();
+    void recorder.stop().then(() => setSince(null));
+  }, [visible, state, recorder]);
 
+  /**
+   * Seal what was captured, showing how far along it is.
+   *
+   * Always ends in `idle`, whatever happened: a screen stuck on "Saving…"
+   * because a write threw is worse than one that says it failed.
+   */
   const store = useCallback(
     async (uri: string | null | undefined, kind: MediaKind, durationMs: number | null) => {
-      if (!uri) {
-        setProblem('Nothing was captured.');
-        return;
+      setState('saving');
+      setProgress(0);
+      try {
+        if (!uri) {
+          setProblem('Nothing was captured.');
+          return;
+        }
+        const stored = await media.keep(uri, kind, durationMs, setProgress);
+        setProblem(stored ? null : 'That capture could not be stored, so it was not kept.');
+      } finally {
+        setState('idle');
+        setSince(null);
+        setProgress(0);
       }
-      const stored = await media.keep(uri, kind, durationMs);
-      setProblem(stored ? null : 'That capture could not be stored, so it was not kept.');
     },
     [media],
   );
 
   const takePhoto = useCallback(async () => {
-    setBusy(true);
-    try {
-      const picture = await camera.current?.takePictureAsync({ quality: 0.8, exif: false });
-      await store(picture?.uri, 'photo', null);
-    } finally {
-      setBusy(false);
-    }
+    const picture = await camera.current?.takePictureAsync({ quality: 0.8, exif: false });
+    await store(picture?.uri, 'photo', null);
   }, [store]);
 
   const toggleVideo = useCallback(async () => {
-    if (recordingVideo) {
+    if (state === 'recording') {
+      // Before the camera has finished and before a byte is written. The
+      // person who pressed Stop needs to know now, not in ten seconds.
+      setState('saving');
       camera.current?.stopRecording();
       return;
     }
-    setRecordingVideo(true);
-    try {
-      const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
-      await store(clip?.uri, 'video', null);
-    } finally {
-      setRecordingVideo(false);
-    }
-  }, [recordingVideo, store]);
+
+    setState('recording');
+    setSince(readNow());
+    setElapsedMs(0);
+    const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
+    await store(clip?.uri, 'video', null);
+  }, [state, store]);
 
   const toggleVoice = useCallback(async () => {
-    if (voiceStartedAt !== null) {
-      const startedAt = voiceStartedAt;
-      setVoiceStartedAt(null);
+    if (state === 'recording') {
+      const startedAt = since ?? readNow();
+      setState('saving');
       await recorder.stop();
       await store(recorder.uri, 'audio', readNow() - startedAt);
       return;
     }
+
     await recorder.prepareToRecordAsync();
     recorder.record();
-    setElapsedVoiceMs(0);
-    setVoiceStartedAt(readNow());
-  }, [recorder, store, voiceStartedAt]);
+    setElapsedMs(0);
+    setSince(readNow());
+    setState('recording');
+  }, [recorder, since, state, store]);
 
   const missingPermission =
     (needsCamera && cameraPermission?.granted === false) ||
@@ -170,8 +198,11 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
               <Pressable
                 key={option.key}
                 onPress={() => setMode(option.key)}
+                // Changing what you are capturing halfway through capturing it
+                // would unmount the camera under a running recording.
+                disabled={state !== 'idle'}
                 accessibilityRole="radio"
-                accessibilityState={{ selected }}
+                accessibilityState={{ selected, disabled: state !== 'idle' }}
                 accessibilityLabel={option.label}
                 style={({ pressed }) => [styles.modeChip, selected && styles.modeChipOn, pressed && styles.pressed]}
               >
@@ -214,15 +245,34 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
           ) : (
             <View style={styles.voiceStage}>
               <Ionicons
-                name={voiceStartedAt === null ? 'mic-outline' : 'radio-button-on'}
+                name={state === 'recording' ? 'radio-button-on' : 'mic-outline'}
                 size={44}
-                color={voiceStartedAt === null ? colors.textMuted : colors.danger}
+                color={state === 'recording' ? colors.danger : colors.textMuted}
               />
               <Text style={styles.voiceTime}>
-                {voiceStartedAt === null ? 'Ready' : formatDuration(Math.max(0, elapsedVoiceMs))}
+                {state === 'recording' ? formatDuration(Math.max(0, elapsedMs)) : 'Ready'}
               </Text>
             </View>
           )}
+
+          {/* Over the preview rather than under it. Sealing a minute of video
+              takes seconds, and a screen that looks idle while it happens is
+              what got the Stop button pressed three times. */}
+          {state === 'saving' ? (
+            <View style={styles.saving} accessible accessibilityLabel={`Saving, ${Math.round(progress * 100)}%`}>
+              <Text style={styles.savingText}>Saving… {Math.round(progress * 100)}%</Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+              </View>
+            </View>
+          ) : null}
+
+          {state === 'recording' && needsCamera ? (
+            <View style={styles.recordingBadge}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.controls}>
@@ -245,16 +295,19 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
               else if (mode === 'video') void toggleVideo();
               else void toggleVoice();
             }}
-            disabled={busy}
+            // Ignored while sealing. A tap that does nothing visible is what
+            // taught the last build's user to keep tapping.
+            disabled={state === 'saving'}
             accessibilityRole="button"
-            accessibilityLabel={shutterLabel(mode, recordingVideo, voiceStartedAt !== null)}
+            accessibilityLabel={shutterLabel(mode, state)}
             style={({ pressed }) => [
               styles.shutter,
-              (recordingVideo || voiceStartedAt !== null) && styles.shutterActive,
+              state === 'recording' && styles.shutterActive,
+              state === 'saving' && styles.shutterDisabled,
               pressed && styles.pressed,
             ]}
           >
-            <View style={styles.shutterInner} />
+            <View style={[styles.shutterInner, state === 'recording' && styles.shutterInnerActive]} />
           </Pressable>
 
           <View style={styles.secondaryPlaceholder} />
@@ -305,10 +358,11 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
   );
 }
 
-function shutterLabel(mode: Mode, recordingVideo: boolean, recordingVoice: boolean): string {
+function shutterLabel(mode: Mode, state: 'idle' | 'recording' | 'saving'): string {
+  if (state === 'saving') return 'Saving';
   if (mode === 'photo') return 'Take photo';
-  if (mode === 'video') return recordingVideo ? 'Stop video' : 'Start video';
-  return recordingVoice ? 'Stop voice note' : 'Start voice note';
+  if (mode === 'video') return state === 'recording' ? 'Stop video' : 'Start video';
+  return state === 'recording' ? 'Stop voice note' : 'Start voice note';
 }
 
 const styles = StyleSheet.create({
@@ -363,6 +417,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   shutterActive: { borderColor: colors.danger },
+  shutterDisabled: { opacity: 0.4 },
+  shutterInnerActive: { width: 26, height: 26, borderRadius: radius.sm, backgroundColor: colors.danger },
+  saving: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(11,15,20,0.82)',
+    padding: spacing.lg,
+  },
+  savingText: { ...typography.body, color: colors.textPrimary },
+  progressTrack: {
+    width: '70%',
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    overflow: 'hidden',
+  },
+  progressFill: { height: 4, backgroundColor: colors.move },
+  recordingBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(11,15,20,0.7)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  recordingDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.danger },
+  recordingText: { ...typography.caption, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
   shutterInner: { width: 52, height: 52, borderRadius: radius.pill, backgroundColor: colors.textPrimary },
   notice: {
     backgroundColor: colors.surfaceRaised,

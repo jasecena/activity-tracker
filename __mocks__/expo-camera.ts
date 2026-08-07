@@ -23,9 +23,28 @@ export const takePictureAsync = jest.fn(async () => ({
   height: 1920,
 }));
 
-export const recordAsync = jest.fn(async () => ({ uri: `file:///mock/cache/capture-${++captureCount}.mov` }));
+/**
+ * Resolves when recording *stops*, never before — which is the whole contract.
+ *
+ * A mock that resolved immediately is why a real bug shipped: the screen
+ * awaited this promise and cleared its "recording" flag in a `finally`, so the
+ * button stayed lit for the entire time the clip was being sealed. On a phone
+ * that is seconds of a Stop button that looks dead. Modelling the real
+ * behaviour is what lets a test see it.
+ */
+let finishRecording: ((clip: { uri: string }) => void) | null = null;
 
-export const stopRecording = jest.fn(() => undefined);
+export const recordAsync = jest.fn(
+  () =>
+    new Promise<{ uri: string }>((resolve) => {
+      finishRecording = resolve;
+    }),
+);
+
+export const stopRecording = jest.fn(() => {
+  finishRecording?.({ uri: `file:///mock/cache/capture-${++captureCount}.mov` });
+  finishRecording = null;
+});
 
 export const CameraView = jest.fn((props: Record<string, unknown> & { ref?: Ref<MockCameraView> }) => {
   const { ref, ...rest } = props;
@@ -51,4 +70,5 @@ export const useMicrophonePermissions = jest.fn(() => [
 
 export function __reset(): void {
   captureCount = 0;
+  finishRecording = null;
 }
