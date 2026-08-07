@@ -56,31 +56,17 @@ appId: ${APP_ID}
 - assertVisible: 'Distance: 0 m'
 - assertVisible: 'Calories: 0'
 
-# --- The record bar works without the GPS being on ------------------------
+# --- Nothing is conjured out of nothing -----------------------------------
 #
-# Recording is a label over the fix stream, not a second subscription, so it
-# must work whether or not tracking is running. This asserts exactly that.
+# There is no Record button. Tracking is either on or it is not, and a journey
+# exists because fixes were recorded — never because something was pressed.
 #
-# Tapping Record straight after typing, with the keyboard still up, is the
-# point of this sequence and not an accident of the flow. React Native's
-# ScrollView defaults to `keyboardShouldPersistTaps="never"`, which swallows
-# that first tap to dismiss the keyboard — so the recording silently does not
-# start until you tap again. The Today screen sets `handled` to prevent it, and
-# this is what would catch a regression.
-- tapOn: 'Activity name'
-- inputText: 'Smoke walk'
-- assertVisible: 'Smoke walk'
-- tapOn: 'Start recording'
-- assertVisible: 'Stop recording Smoke walk'
-- tapOn: 'Stop recording Smoke walk'
-- assertVisible: 'Start recording'
-
-# The recording became a segment. A manual window with no fixes behind it still
-# gets a row — see core/segments/manual.ts — so the day now holds one journey
-# and no stops. Asserting the header subtitle rather than the row itself:
-# it is a bare Text, so it is exposed whole, and it proves the window went
-# through storage and back out of the engine rather than merely rendering.
-- assertVisible: '1 journey · 0 stops'
+# A simulator does not move, so on a fresh install the day is genuinely empty
+# and stays that way. That *is* the assertion: the previous version of this flow
+# pressed Record and asserted a row appeared, which is precisely the fiction
+# that put a journey on the wrong day at a time that had not arrived.
+- assertVisible: 'Nothing recorded yet today.'
+- assertVisible: '0 journeys · 0 stops'
 
 # --- The other tabs render ------------------------------------------------
 # Worth the extra seconds: these screens pull in the icon font, the SVG renderer
@@ -158,6 +144,14 @@ appId: ${APP_ID}
 # Not 'Settings' either — that is the tab label, visible from anywhere.
 - assertVisible: 'Erase everything'
 
+# Named journeys is where the label store is exercised. Empty on a fresh
+# install, which is what it should say rather than showing nothing at all.
+- tapOn: 'Named journeys'
+- assertVisible: 'Named journeys'
+- assertVisible: 'Nothing named yet. Open a journey from the timeline and give it a name.'
+- tapOn: 'Back'
+- assertVisible: 'Erase everything'
+
 # --- The raw data page opens ----------------------------------------------
 # Exercises the page stack and the counts. Deliberately does NOT tap an export
 # button: that opens the iOS share sheet, which has no Maestro affordance and
@@ -179,7 +173,7 @@ appId: ${APP_ID}
 - tapOn: 'Cancel'
 
 - tapOn: 'Today tab'
-# Still one journey after a tour of every other tab. Today was never unmounted,
-# which is the guarantee that stops a running recording being thrown away when
-# you glance somewhere else.
-- assertVisible: '1 journey · 0 stops'
+# Still an empty day after a tour of every other tab. Today was never unmounted,
+# which is the guarantee that stops a timeline just derived, or a half-typed
+# name, being thrown away when you glance somewhere else.
+- assertVisible: '0 journeys · 0 stops'

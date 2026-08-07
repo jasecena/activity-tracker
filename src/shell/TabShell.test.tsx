@@ -1,7 +1,47 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as BatteryModule from 'expo-battery';
 
+import { EARTH_RADIUS_M, type Fix } from '@/core/geo';
+import { STORAGE_KEYS, writeJson } from '@/services/storage';
+
 import { TabShell } from './TabShell';
+
+/**
+ * Put a day's worth of fixes in the store before the app reads it.
+ *
+ * Journeys used to be conjured by pressing Record, which is gone — and was
+ * never a journey anyway, only a label with nothing behind it. Seeding the
+ * buffer exercises the real vault, the real fold and the real thresholds, which
+ * is what a timeline is actually made of.
+ *
+ * At the equator, longitude 0: a plausible latitude in a committed file is a
+ * record of where its author was, and `.gitleaks.toml` fails the build over one.
+ */
+const DEG_PER_METRE_LAT = 1 / ((EARTH_RADIUS_M * Math.PI) / 180);
+
+async function seedAWalk(): Promise<void> {
+  const start = Date.now() - 40 * 60_000;
+  const fixes: Fix[] = [];
+
+  // Ten minutes still, then twenty walking north at 1.4 m/s — enough to clear
+  // minStayMs, minMoveMs and minMoveDistanceM, so the fold emits a stop
+  // followed by a walk rather than absorbing either.
+  for (let elapsed = 0; elapsed <= 10 * 60_000; elapsed += 60_000) {
+    fixes.push({ lat: 0, lon: 0, at: start + elapsed, accuracyM: 8, reportedSpeedMps: null, altitudeM: null });
+  }
+  for (let elapsed = 0; elapsed <= 20 * 60_000; elapsed += 10_000) {
+    fixes.push({
+      lat: ((1.4 * elapsed) / 1000) * DEG_PER_METRE_LAT,
+      lon: 0,
+      at: start + 10 * 60_000 + elapsed,
+      accuracyM: 8,
+      reportedSpeedMps: null,
+      altitudeM: null,
+    });
+  }
+
+  await writeJson(STORAGE_KEYS.fixBuffer, fixes);
+}
 
 /**
  * The app, end to end, with the store and Core Location mocked.
@@ -111,20 +151,11 @@ describe('the shell', () => {
     expect(screen.getByRole('header', { name: 'Today', includeHiddenElements: true })).toBeOnTheScreen();
   });
 
-  it('names a recording and starts it', async () => {
+  it('shows a journey the fold produced from real fixes', async () => {
+    await seedAWalk();
     await render(<TabShell />);
 
-    await act(async () => {
-      fireEvent.changeText(await screen.findByLabelText('Activity name'), 'Walk to Coles');
-    });
-    await press('Start recording');
-
-    // The name appears twice, and both are correct: once in the record bar as
-    // the running recording, and once in the timeline as the row it created. A
-    // recording with no fixes behind it still gets a row — see
-    // core/segments/manual.ts.
-    expect(await screen.findAllByText('Walk to Coles')).toHaveLength(2);
-    expect(screen.getByLabelText('Stop recording Walk to Coles')).toBeOnTheScreen();
+    expect(await screen.findByLabelText(/^Walk, /)).toBeOnTheScreen();
   });
 
   it('offers the battery presets in Settings', async () => {
@@ -274,24 +305,53 @@ describe('raw data and export', () => {
   });
 });
 
-describe('a segment page', () => {
-  it('opens from a recorded journey and shows what is stored', async () => {
+describe('naming a journey', () => {
+  it('names one from its page, and the name reaches the timeline', async () => {
+    await seedAWalk();
     await render(<TabShell />);
 
     await act(async () => {
-      fireEvent.changeText(await screen.findByLabelText('Activity name'), 'Smoke walk');
+      fireEvent.press(await screen.findByLabelText(/^Walk, /));
     });
-    await press('Start recording');
-    await press('Stop recording Smoke walk');
+    await press('Name this journey');
 
-    // The row's label is assembled from every number it shows.
-    const row = await screen.findByLabelText(/^Smoke walk, 0 m,/);
     await act(async () => {
-      fireEvent.press(row);
+      fireEvent.changeText(screen.getByLabelText('Journey name'), 'Walk to Coles');
+    });
+    await press('Save this name');
+    await press('Back');
+
+    // On the row, which means it went through the store and back out of the
+    // fold rather than merely being held in the sheet.
+    expect(await screen.findByLabelText(/^Walk to Coles, /)).toBeOnTheScreen();
+  });
+
+  // Naming a stop is the place picker's job, and the two must not be offered
+  // for the same row — a stop has no mode to correct.
+  it('offers naming a journey only on a journey', async () => {
+    await seedAWalk();
+    await render(<TabShell />);
+
+    await act(async () => {
+      fireEvent.press(await screen.findByLabelText(/^Unnamed place, /));
     });
 
-    expect(screen.getByRole('header', { name: 'Smoke walk' })).toBeOnTheScreen();
-    expect(screen.getByLabelText(/^Mode: Walk \(yours\)/)).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Name this journey')).not.toBeOnTheScreen();
+    expect(screen.getByLabelText('Name this place')).toBeOnTheScreen();
+  });
+});
+
+describe('a segment page', () => {
+  it('opens from a journey and shows what is stored', async () => {
+    await seedAWalk();
+    await render(<TabShell />);
+
+    await act(async () => {
+      fireEvent.press(await screen.findByLabelText(/^Walk, /));
+    });
+
+    // Inferred, not yours: nothing has overruled the classifier here.
+    expect(screen.getByLabelText(/^Mode: Walk \(inferred\)/)).toBeOnTheScreen();
     expect(screen.getByText('ROUTE POINTS')).toBeOnTheScreen();
   });
 });

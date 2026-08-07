@@ -5,7 +5,7 @@ nowhere else.
 
 Leave it running and it keeps a diary: two hours at a restaurant, a walk to the
 shops, a drive to the beach — each with the distance, the duration, the speed and
-the shape of the route. Press Record when you want a stretch named, play a day
+the shape of the route. Name a journey afterwards if it deserves one, play a day
 back to watch it happen, and attach a photo, a clip or a voice note to the moment
 it belongs to. Nothing you record is uploaded, because there is nothing to upload
 to.
@@ -33,8 +33,10 @@ open the app to see what already happened.
 future stay within about 120 m is then recognised as the same place. When more
 than one named place covers a spot, or when a stay lands just outside one, the
 app shows you the candidates with distances and visit counts and asks, rather
-than guessing. Press Record to name a journey; that does not start a second GPS
-subscription, it labels the stream that is already there.
+than guessing. A journey is named the same way, after it happened: tap it and
+say what it was. There is no Record button — the app is already recording, and
+asking you to declare a journey before it has happened only invites naming one
+that never took place.
 
 **Counts what it can honestly count.** Distance, moving time, average and top
 speed per segment, per-point speed along a route, and an active-calorie estimate
@@ -168,7 +170,7 @@ Reporting a vulnerability: [`SECURITY.md`](SECURITY.md).
 **Mode is inferred from speed alone.** `CMMotionActivityManager`, the Core Motion
 classifier that reports walking/running/automotive with a confidence, has no Expo
 binding — it needs a custom native module. A slow cycle and a fast walk are
-genuinely hard to tell apart, which is what the Record button is for. The
+genuinely hard to tell apart, which is why you can correct the mode by hand. The
 pedometer _is_ reachable and is used in `src/services/motion.ts`.
 
 **A stay is only as accurate as indoor GPS.** Fixes taken inside are often 65 m

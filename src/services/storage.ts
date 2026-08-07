@@ -37,8 +37,8 @@ export const STORAGE_KEYS = {
   dayLog: `${PREFIX}day-log`,
   /** Places you have named. */
   places: `${PREFIX}places`,
-  /** Manual recording windows, including one that may still be running. */
-  manualWindows: `${PREFIX}manual-windows`,
+  /** Names you gave journeys, as time ranges. See `core/segments/manual.ts`. */
+  journeyLabels: `${PREFIX}journey-labels`,
   /**
    * The index of captured photos, video and voice notes.
    *
@@ -50,6 +50,26 @@ export const STORAGE_KEYS = {
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
+
+/**
+ * Keys the app used to write and no longer reads.
+ *
+ * Removed once on launch rather than left to rot. A retired key is not
+ * harmless: `manual-windows` held the old Record button's open-ended windows,
+ * which is exactly the data that produced a journey on the wrong day at a time
+ * that had not arrived. Leaving it would also leave an encrypted blob nobody
+ * can account for, and "erase everything" would still have to know about it.
+ */
+const RETIRED_KEYS: readonly string[] = [`${PREFIX}manual-windows`];
+
+/** Drop what older builds wrote. Cheap, idempotent, and safe to call on every launch. */
+export async function dropRetiredKeys(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([...RETIRED_KEYS]);
+  } catch (error) {
+    console.warn('Could not remove retired storage keys', error);
+  }
+}
 
 /** Reads, decrypts and parses a stored value, or null if it is missing or unusable. */
 export async function readJson<T>(key: StorageKey): Promise<T | null> {
@@ -88,7 +108,7 @@ export async function writeJson(key: StorageKey, value: unknown): Promise<void> 
  */
 export async function eraseEverything(): Promise<void> {
   await destroyKey();
-  await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+  await AsyncStorage.multiRemove([...Object.values(STORAGE_KEYS), ...RETIRED_KEYS]);
   // Housekeeping, not protection. The sealed media became unreadable the
   // instant the key above was destroyed; this stops the bytes sitting in the
   // container for the life of the install.

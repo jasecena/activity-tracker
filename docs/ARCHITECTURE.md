@@ -105,20 +105,66 @@ spent indoors.
 
 ---
 
-## 4. One fix stream. Manual recording is a lens over it
+## 4. One fix stream, and no Record button
 
-Pressing Record does **not** start a second location subscription. It writes down
-an instant and a name; `core/segments/manual.ts` applies the window to the
-automatic timeline when it is read.
+Tracking is on or it is off. While it is on, everything is recorded; there is
+nothing to start and nothing to stop. Naming a journey happens **afterwards**:
+tap a journey the app already recorded and say what it was.
 
-Two subscriptions would mean twice the battery, two answers to "how far did I
-walk today", and no principled way to choose between them for the daily total.
-The lens approach also gives two things for free:
+This revises the decision that stood here, which was that manual recording was a
+lens over the fix stream rather than a second source. The lens was right — two
+subscriptions would mean twice the battery, two answers to "how far did I walk
+today", and no principled way to choose between them. What was wrong was the
+button on top of it. It said "Record", with a red pulse and a Stop, over an app
+that was already recording, and it asked you to declare a journey before it had
+happened.
 
-- Starting a recording cannot fail. There is no permission to check at that
-  moment and no hardware to spin up.
-- You can stop a recording you forgot to start. The fixes were being collected
-  anyway; only the label was missing.
+That was not merely misleading, and the bill arrived from a real phone: a
+journey appeared on Today at 16:37, a time that had not arrived, with no fixes
+behind it and so absent from every export. The cause was a window with one end
+left open. Because `applyManualWindows` closed a running window at _now_, and
+emitted a row even when it covered nothing, a name from one day printed a hollow
+row on every day after it — and a recording properly stopped did the same, so
+forgetting to press Stop was not even required.
+
+### What the shape change buys
+
+`JourneyLabel` is the old window with its one nullable field removed:
+
+```ts
+{
+  (id, label, mode, startedAt, endedAt);
+} // endedAt: number, not number | null
+```
+
+A label is made _from_ a segment, so it has both ends and something behind it.
+Everything that was propping up the old shape then disappears rather than being
+fixed:
+
+- **No clock.** `applyJourneyLabels(segments, labels)` takes no `now`, so a
+  frozen day and a live one go through identical code and give identical
+  answers.
+- **No fallback row.** A label covering no segments emits nothing. The old
+  fallback existed for a Record pressed where there was no signal; with
+  retrospective naming, covering nothing means the journey is gone — the fixes
+  were pruned, or a new preset folded them differently — and silence is the
+  honest answer.
+- **No day arithmetic.** The window-closing rule and the day filter that were
+  added to contain open windows are both deleted.
+
+### Stored as a time range, not a segment id
+
+Segments are re-derived from the fix buffer whenever they are needed, and a
+different tracking preset folds the same fixes into different journeys. An id
+would be orphaned by a settings change; a range is re-cut against whatever the
+day looks like now, which is what `splitSegment` below is for.
+
+### Why naming is worth keeping at all
+
+The engine can tell a bike from a car by speed. It cannot tell a slow cycle from
+a fast walk, and it can never know that _this_ drive was the commute. Those two
+things are what a name fixes — and both are things you know better afterwards
+than during.
 
 ### Splitting apportions distance, it does not recompute it
 

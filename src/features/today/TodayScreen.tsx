@@ -8,8 +8,6 @@ import type { Segment } from '@/core/segments';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SegmentRow } from '@/components/SegmentRow';
 import { StatTile } from '@/components/StatTile';
-import { RecordBar } from '@/features/record/components/RecordBar';
-import type { UseRecording } from '@/features/record/hooks/useRecording';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -17,25 +15,12 @@ interface TodayScreenProps {
   readonly segments: readonly Segment[];
   readonly places: readonly Place[];
   readonly onOpenSegment: (segment: Segment) => void;
-  readonly onOpenRecordings: () => void;
-  readonly recording: UseRecording;
   readonly settings: UseSettings;
-  readonly now: number;
   readonly tzOffsetMinutes: number;
   readonly ready: boolean;
 }
 
-export function TodayScreen({
-  segments,
-  places,
-  onOpenSegment,
-  onOpenRecordings,
-  recording,
-  settings,
-  now,
-  tzOffsetMinutes,
-  ready,
-}: TodayScreenProps) {
+export function TodayScreen({ segments, places, onOpenSegment, settings, tzOffsetMinutes, ready }: TodayScreenProps) {
   const summary = summarizeDay(segments);
   const calories = activeCalories(segments, settings.settings.weightKg);
 
@@ -106,21 +91,6 @@ export function TodayScreen({
           <StatTile label="Moving" value={formatDuration(summary.movingMs)} />
           <StatTile label="Calories" value={`${Math.round(calories)}`} accent={colors.success} />
         </View>
-
-        <RecordBar active={recording.active} now={now} onStart={recording.start} onStop={recording.stop} />
-
-        {recording.windows.length > 0 ? (
-          <Pressable
-            onPress={onOpenRecordings}
-            accessibilityRole="button"
-            accessibilityLabel="All recordings"
-            style={({ pressed }) => [styles.link, pressed && styles.pressed]}
-          >
-            <Text style={styles.linkText}>
-              {recording.windows.length === 1 ? '1 recording' : `${recording.windows.length} recordings`} ›
-            </Text>
-          </Pressable>
-        ) : null}
 
         <View style={styles.timeline}>
           {segments.length === 0 ? (

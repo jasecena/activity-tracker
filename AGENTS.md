@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 367
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 372
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -57,11 +57,27 @@ These were worked out against the platform's limits and are not open to casual
 revision. Changing one means changing the reasoning in `docs/ARCHITECTURE.md`
 with it.
 
-**One fix stream, always. Manual recording is a lens over it, not a second
-source.** Pressing Record writes down an instant and a name; `applyManualWindows`
-labels the automatic timeline on read. Two subscriptions would mean twice the
-battery, two answers to "how far did I walk", and no principled way to choose
-between them. It is also why you can stop a recording you forgot to start.
+**One fix stream, always, and there is no Record button.** Tracking is on or it
+is off; everything that happens while it is on is recorded. There is nothing to
+start and nothing to stop.
+
+This revises the decision that used to stand here — that manual recording was a
+lens over the stream rather than a second source. The lens was right; the button
+was a lie about it. It said "Record" over an app already recording, and asked
+you to declare a journey before it had happened. The cost was not cosmetic: a
+window with one end open could outlive its day, claim time that had not arrived,
+and print a row on a timeline it had nothing to do with — which is exactly what
+was reported from a real phone.
+
+**Naming a journey is retrospective.** Tap a journey the app already recorded
+and say what it was, the same way you name a stay. A `JourneyLabel` is made
+_from_ a segment, so it has both ends and always has something behind it —
+open-ended windows, phantom rows and the midnight rule they needed are not
+fixed so much as unrepresentable. A label covering no segments emits nothing.
+
+**Labels are stored as time ranges, not segment ids.** A different tracking
+preset folds the same fixes into different journeys, so an id would be orphaned
+by a settings change; a range is re-cut against whatever the day looks like now.
 
 **Stays and moves alternate, and short ones are absorbed rather than emitted.**
 Deciding "moving" from "still" on a single step is noisy, so the machine lets the

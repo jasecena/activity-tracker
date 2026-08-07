@@ -2,122 +2,119 @@ import { useMemo } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { formatClockTime, formatDistance, formatDuration, modeLabel } from '@/core/format';
-import { manualSegmentId, type ManualWindow, type Segment } from '@/core/segments';
+import { labelledSegmentId, type JourneyLabel, type Segment } from '@/core/segments';
 import { MapCanvas, type MapTrack } from '@/components/MapCanvas';
 import { RouteSparkline } from '@/components/RouteSparkline';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
 
-interface RecordingsScreenProps {
-  readonly windows: readonly ManualWindow[];
+interface NamedJourneysScreenProps {
+  readonly labels: readonly JourneyLabel[];
   /** Every segment the app knows about, today and frozen days alike. */
   readonly segments: readonly Segment[];
   readonly tzOffsetMinutes: number;
   readonly mapsEnabled: boolean;
   readonly onBack: () => void;
   readonly onOpenSegment: (segment: Segment) => void;
-  readonly onDiscard: (id: string) => void;
+  readonly onForget: (id: string) => void;
 }
 
 /**
- * Everything you pressed Record on, on one map.
+ * Every journey you have named, on one map.
  *
- * A recording is not a separate recording — it is a window over the one fix
- * stream, and `applyManualWindows` turns each into exactly one segment with a
- * predictable id. So this screen holds no data of its own: it pairs each window
- * with the row it produced and draws them together.
+ * A name is a time range over the one fix stream, and `applyJourneyLabels`
+ * turns each into exactly one segment with a predictable id. So this screen
+ * holds no data of its own: it pairs each name with the row it produced.
  *
- * A window whose segment is missing is shown with its times and no route. That
- * happens for real: a recording from a frozen day whose label was baked in, or
- * one made while location was denied. Hiding it would look like the app had
- * lost a recording it still has.
+ * A name whose journey is not in the current timeline is still listed, with its
+ * times and no route. That is honest rather than tidy: the journey belongs to a
+ * day whose fixes have been pruned, or to a fold under a different preset.
+ * Hiding it would look like the app had lost a name it still has.
  */
-export function RecordingsScreen({
-  windows,
+export function NamedJourneysScreen({
+  labels,
   segments,
   tzOffsetMinutes,
   mapsEnabled,
   onBack,
   onOpenSegment,
-  onDiscard,
-}: RecordingsScreenProps) {
+  onForget,
+}: NamedJourneysScreenProps) {
   const rows = useMemo(() => {
     const byId = new Map(segments.map((segment) => [segment.id, segment]));
-    return [...windows]
+    return [...labels]
       .sort((a, b) => b.startedAt - a.startedAt)
-      .map((window) => {
-        const segment = byId.get(manualSegmentId(window));
-        return { window, segment: segment?.kind === 'move' ? segment : null };
+      .map((label) => {
+        const segment = byId.get(labelledSegmentId(label));
+        return { label, segment: segment?.kind === 'move' ? segment : null };
       });
-  }, [windows, segments]);
+  }, [labels, segments]);
 
   const tracks = useMemo<MapTrack[]>(
     () =>
-      rows.flatMap(({ window, segment }) =>
+      rows.flatMap(({ label, segment }) =>
         segment && segment.path.length > 1
-          ? [{ id: window.id, points: segment.path, color: modeColors[window.mode] }]
+          ? [{ id: label.id, points: segment.path, color: modeColors[label.mode] }]
           : [],
       ),
     [rows],
   );
 
-  const confirmDiscard = (window: ManualWindow) =>
+  const confirmForget = (label: JourneyLabel) =>
     Alert.alert(
-      `Forget “${window.label}”?`,
-      'The recording label goes. The fixes it covered stay — they were collected anyway, and the timeline keeps them as an ordinary journey.',
+      `Forget “${label.label}”?`,
+      'The name goes. The journey stays — it was recorded either way, and the timeline keeps it with the mode worked out from speed.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Forget', style: 'destructive', onPress: () => onDiscard(window.id) },
+        { text: 'Forget', style: 'destructive', onPress: () => onForget(label.id) },
       ],
     );
 
   return (
     <View style={styles.screen}>
       <ScreenHeader
-        title="Recordings"
-        subtitle={windows.length === 1 ? '1 recording' : `${windows.length} recordings`}
+        title="Named journeys"
+        subtitle={labels.length === 1 ? '1 named' : `${labels.length} named`}
         onBack={onBack}
       />
 
       <ScrollView contentContainerStyle={styles.content}>
-        {windows.length === 0 ? (
-          <Text style={styles.empty}>Nothing recorded by hand yet. Press Record on Today to name an activity.</Text>
+        {labels.length === 0 ? (
+          <Text style={styles.empty}>Nothing named yet. Open a journey from the timeline and give it a name.</Text>
         ) : (
           <>
-            <MapCanvas mapsEnabled={mapsEnabled} tracks={tracks} height={240} label="Map of every recording" />
+            <MapCanvas mapsEnabled={mapsEnabled} tracks={tracks} height={240} label="Map of every named journey" />
 
-            {rows.map(({ window, segment }) => (
+            {rows.map(({ label, segment }) => (
               <Pressable
-                key={window.id}
+                key={label.id}
                 onPress={segment ? () => onOpenSegment(segment) : undefined}
-                onLongPress={() => confirmDiscard(window)}
+                onLongPress={() => confirmForget(label)}
                 accessibilityRole="button"
-                accessibilityLabel={`${window.label}, ${modeLabel(window.mode)}, ${
+                accessibilityLabel={`${label.label}, ${modeLabel(label.mode)}, ${
                   segment ? formatDistance(segment.distanceM) : 'no route recorded'
                 }`}
                 style={({ pressed }) => [styles.card, pressed && styles.pressed]}
               >
                 <View style={styles.rowText}>
                   <Text style={styles.title} numberOfLines={1}>
-                    {window.label}
+                    {label.label}
                   </Text>
                   <Text style={styles.detail}>
-                    {formatClockTime(window.startedAt, tzOffsetMinutes)}
-                    {window.endedAt === null
-                      ? ' · still recording'
-                      : ` · ${formatDuration(window.endedAt - window.startedAt)}`}
-                    {segment ? ` · ${formatDistance(segment.distanceM)}` : ' · no route'}
+                    {formatClockTime(label.startedAt, tzOffsetMinutes)} ·{' '}
+                    {formatDuration(label.endedAt - label.startedAt)}
+                    {segment ? ` · ${formatDistance(segment.distanceM)}` : ' · not in the current timeline'}
                   </Text>
                 </View>
                 {segment && segment.path.length > 1 ? (
-                  <RouteSparkline path={segment.path} color={modeColors[window.mode]} />
+                  <RouteSparkline path={segment.path} color={modeColors[label.mode]} />
                 ) : null}
               </Pressable>
             ))}
 
             <Text style={styles.footnote}>
-              Press and hold a recording to forget its label. The fixes underneath are never affected — pressing Record
-              never started a second stream, so there is nothing separate to delete.
+              Press and hold to forget a name. The journey underneath is never affected — a name is only a label over
+              what was already recorded, so there is nothing separate to delete.
             </Text>
           </>
         )}

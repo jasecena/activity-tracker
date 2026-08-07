@@ -16,6 +16,8 @@ interface SegmentScreenProps {
   readonly onBack: () => void;
   /** Stays only: opens the place picker. Absent where naming makes no sense. */
   readonly onNamePlace?: () => void;
+  /** Moves only: opens the journey sheet. The counterpart to naming a place. */
+  readonly onNameJourney?: () => void;
 }
 
 /** Every field the app holds for one row of the timeline. */
@@ -26,6 +28,7 @@ export function SegmentScreen({
   mapsEnabled,
   onBack,
   onNamePlace,
+  onNameJourney,
 }: SegmentScreenProps) {
   const span = `${formatClockTime(segment.startedAt, tzOffsetMinutes)}–${formatClockTime(segment.endedAt, tzOffsetMinutes)}`;
   const elapsed = durationMs(segment);
@@ -94,6 +97,15 @@ export function SegmentScreen({
         title={segment.label ?? modeLabel(segment.mode)}
         subtitle={`${span} · ${formatDuration(elapsed)}`}
         onBack={onBack}
+        action={
+          onNameJourney
+            ? {
+                label: segment.label ? 'Rename this journey' : 'Name this journey',
+                icon: 'pricetag-outline',
+                onPress: onNameJourney,
+              }
+            : undefined
+        }
       />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.stats}>

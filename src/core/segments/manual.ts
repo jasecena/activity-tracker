@@ -1,104 +1,46 @@
-// Imported from the leaf rather than `../day`: that barrel pulls in
-// `day/summary.ts`, which imports this domain back at runtime. `day/day.ts` has
-// only a type-only import of `Segment`, so this edge is one-way.
-import { startOfLocalDay, type TzOffsetMinutes } from '../day/day';
 import { pathLengthM, type PathPoint } from '../geo';
 
 import { classifyMode } from './classify';
 import type { ActivityMode, MoveSegment, Segment, StaySegment } from './types';
 
 /**
- * A stretch of the day you claimed by hand.
+ * A journey you named.
  *
- * Manual recording does **not** open a second location subscription. That is
- * the whole design: there is one fix stream, always, and pressing Record
- * declares that this window of it is one named activity. Two subscriptions
- * would mean twice the battery, two answers to "how far did I walk", and a
- * genuinely unresolvable question about which one the day's totals should use.
+ * There is no Record button, and there never was anything to record: tracking
+ * runs whenever it is on, every fix is stored, and the timeline is derived from
+ * them. A label adds the two things the engine cannot work out for itself —
+ * what this journey *was* ("the commute"), and which mode it was, where speed
+ * alone cannot separate a slow cycle from a fast walk.
  *
- * So a manual window is a *lens over the automatic timeline*, applied on read.
- * Nothing about the recorded fixes changes when you press the button, which is
- * also why you can stop a recording you forgot to start — the fixes were being
- * collected either way.
+ * **Naming is retrospective, and that is the whole design.** A label is made
+ * *from* a journey that already exists, so it has both ends and always has
+ * something behind it. The version this replaces wrote down an instant when you
+ * pressed a button and left the other end open until you pressed another —
+ * which let a label outlive its day, claim time that had not happened yet, and
+ * put a row on a timeline it had nothing to do with. Those bugs are not fixed
+ * here so much as made unrepresentable.
+ *
+ * Stored as a **time range**, not a segment id. Segments are re-derived from the
+ * fix buffer whenever they are needed, and a different tracking preset folds the
+ * same fixes into different journeys — so an id would be orphaned by a settings
+ * change. A range is re-cut against whatever the day looks like now.
  */
-export interface ManualWindow {
+export interface JourneyLabel {
+  /**
+   * Derived from `startedAt`, never generated — the same rule as segment ids,
+   * so naming the same journey twice updates one label rather than making two.
+   */
   readonly id: string;
-  /** What you called it. The reason the feature exists — the engine can tell a ride from a drive, but not a commute from an errand. */
+  /** What you called it. */
   readonly label: string;
-  /** Your answer, which overrules the classifier for this window. */
+  /** Your answer, which overrules the classifier for this stretch. */
   readonly mode: ActivityMode;
   readonly startedAt: number;
-  /** null while the recording is still running. */
-  readonly endedAt: number | null;
+  readonly endedAt: number;
 }
 
-const MS_PER_DAY = 24 * 60 * 60_000;
-
-/**
- * Close any recording that was still running when its day ended.
- *
- * The bug this exists to prevent, seen on a real phone: press Record, forget to
- * press Stop, and the window stays open forever. `applyManualWindows` closes a
- * running window at `now`, so the next day — and every day after — the live
- * timeline grows a row starting at yesterday's clock time and ending at this
- * moment. It has no fixes behind it, so it appears in no export, and it reads
- * as a journey at a time that has not arrived yet.
- *
- * A recording left open across a day boundary is a forgotten one, so it is
- * closed at the end of the day it started. The cost is real and worth stating:
- * a genuine ride that crosses midnight, on an app relaunched mid-ride, loses
- * its label after 00:00. That is much the smaller harm — the fixes and the
- * automatic timeline are untouched, and the alternative is a phantom row on
- * every future day and a Record button that never stops claiming to record.
- *
- * Returns the same array when nothing changed, so a caller can skip a write.
- */
-export function closeAbandonedWindows(
-  windows: readonly ManualWindow[],
-  now: number,
-  tzOffsetMinutes: TzOffsetMinutes,
-): readonly ManualWindow[] {
-  const today = startOfLocalDay(now, tzOffsetMinutes);
-  let changed = false;
-
-  const closed = windows.map((window) => {
-    if (window.endedAt !== null) return window;
-
-    const startedOn = startOfLocalDay(window.startedAt, tzOffsetMinutes);
-    // Still running on the day it started: genuinely in progress, leave it.
-    if (startedOn >= today) return window;
-
-    changed = true;
-    return { ...window, endedAt: startedOn + MS_PER_DAY };
-  });
-
-  return changed ? closed : windows;
-}
-
-/**
- * The windows that belong to the day being labelled.
- *
- * `applyManualWindows` emits a row for every window it is handed, including one
- * with no segments inside it — deliberately, because a recording made where
- * there was no signal still happened and an empty timeline after pressing
- * Record reads as the app being broken.
- *
- * The catch, found on a real phone: hand it *yesterday's* window and it emits
- * that row into *today*. Stopped or forgotten makes no difference — every past
- * recording leaks a phantom row onto every later day, at the clock time it was
- * started, with nothing behind it.
- *
- * So the caller says which day it is labelling, and anything that ended before
- * that day began is not in play. A recording straddling midnight still is: it
- * ends after the boundary, so it keeps its row on the day it ends.
- */
-export function windowsForDay(
-  windows: readonly ManualWindow[],
-  now: number,
-  tzOffsetMinutes: TzOffsetMinutes,
-): readonly ManualWindow[] {
-  const dayStart = startOfLocalDay(now, tzOffsetMinutes);
-  return windows.filter((window) => (window.endedAt ?? now) > dayStart);
+export function journeyLabelId(startedAt: number): string {
+  return `j-${startedAt}`;
 }
 
 function isMove(segment: Segment): segment is MoveSegment {
@@ -253,18 +195,17 @@ function splitAll(segments: readonly Segment[], at: number): Segment[] {
  * saying you stopped.
  */
 /**
- * The id the segment for a recording will have.
+ * The id of the segment a label produces.
  *
- * Namespaced by the window rather than by an instant, so a recording keeps its
- * identity while it is still running and its end is moving with the clock. It
- * is also how the UI finds the row a recording produced without re-deriving
- * anything: `applyManualWindows` emits exactly one segment per window.
+ * Namespaced by the label rather than by an instant, so the UI can find the row
+ * a name produced without re-deriving anything: `applyJourneyLabels` emits at
+ * most one segment per label.
  */
-export function manualSegmentId(window: ManualWindow): string {
-  return `manual-${window.id}`;
+export function labelledSegmentId(label: JourneyLabel): string {
+  return `named-${label.id}`;
 }
 
-function coalesce(inside: readonly Segment[], window: ManualWindow, from: number, to: number): MoveSegment {
+function coalesce(inside: readonly Segment[], label: JourneyLabel, from: number, to: number): MoveSegment {
   const path: PathPoint[] = [];
   let distance = 0;
   let fixCount = 0;
@@ -285,13 +226,13 @@ function coalesce(inside: readonly Segment[], window: ManualWindow, from: number
 
   return {
     kind: 'move',
-    id: manualSegmentId(window),
+    id: labelledSegmentId(label),
     startedAt: from,
     endedAt: to,
     fixCount,
     distanceM: distance,
-    mode: window.mode,
-    label: window.label,
+    mode: label.mode,
+    label: label.label,
     modeIsManual: true,
     path,
     topSpeedMps: topSpeed,
@@ -299,37 +240,45 @@ function coalesce(inside: readonly Segment[], window: ManualWindow, from: number
 }
 
 /**
- * Apply every manual recording to an automatic timeline.
+ * Apply every name to an automatic timeline.
  *
- * `now` closes any window that is still recording. Passing it in rather than
- * reading a clock is what keeps this testable and keeps `src/core` free of
- * ambient state — "what time is it" is an input here, everywhere.
+ * No clock. A label has both ends, so there is nothing here that depends on
+ * what time it is now — which is why this can be applied to any day, live or
+ * frozen, and give the same answer.
+ *
+ * **A label covering no segments emits nothing.** That is the rule the reported
+ * bug reduces to: the old version invented a row from the window's own bounds
+ * whenever it found nothing inside, so a name from one day printed a hollow row
+ * on every day after it, at a clock time that had not arrived. A label is made
+ * from a journey, so finding nothing means the journey is gone — the fixes were
+ * pruned, or a new preset folded them differently. The honest response to that
+ * is silence, not a fabricated row.
  */
-export function applyManualWindows(
-  segments: readonly Segment[],
-  windows: readonly ManualWindow[],
-  now: number,
-): readonly Segment[] {
+export function applyJourneyLabels(segments: readonly Segment[], labels: readonly JourneyLabel[]): readonly Segment[] {
   let result = [...segments];
 
-  const ordered = [...windows].sort((a, b) => a.startedAt - b.startedAt);
+  const ordered = [...labels].sort((a, b) => a.startedAt - b.startedAt);
 
-  for (const window of ordered) {
-    const to = window.endedAt ?? now;
-    if (to <= window.startedAt) continue;
+  for (const label of ordered) {
+    if (label.endedAt <= label.startedAt) continue;
 
-    result = splitAll(splitAll(result, window.startedAt), to);
+    result = splitAll(splitAll(result, label.startedAt), label.endedAt);
 
-    const inside = result.filter((segment) => segment.startedAt >= window.startedAt && segment.endedAt <= to);
-    const outside = result.filter((segment) => !(segment.startedAt >= window.startedAt && segment.endedAt <= to));
+    const covered = (segment: Segment) => segment.startedAt >= label.startedAt && segment.endedAt <= label.endedAt;
+    const inside = result.filter(covered);
+    if (inside.length === 0) continue;
 
-    // No fixes at all for the window — location was denied, or the phone was
-    // somewhere with no signal. The recording still happened and still gets a
-    // row; an empty timeline after deliberately pressing Record reads as a bug.
-    const from = inside[0]?.startedAt ?? window.startedAt;
-    const until = inside[inside.length - 1]?.endedAt ?? to;
+    const outside = result.filter((segment) => !covered(segment));
+    // Non-empty by the guard above, so these are assertions for
+    // `noUncheckedIndexedAccess` rather than fallbacks that can fire. The
+    // label's own bounds are deliberately *not* used as a backstop: inventing a
+    // row from them when nothing was covered is the bug this design removes.
+    const first = inside[0] as Segment;
+    const last = inside[inside.length - 1] as Segment;
 
-    result = [...outside, coalesce(inside, window, from, until)].sort((a, b) => a.startedAt - b.startedAt);
+    result = [...outside, coalesce(inside, label, first.startedAt, last.endedAt)].sort(
+      (a, b) => a.startedAt - b.startedAt,
+    );
   }
 
   return result;

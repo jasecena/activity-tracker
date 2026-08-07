@@ -4,11 +4,11 @@ import type { Fix } from '../../geo';
 import { summarizeDay } from '../../day';
 import { formatDistance, formatDuration, formatPace, formatSpeed } from '../../format';
 import {
-  applyManualWindows,
+  applyJourneyLabels,
   DEFAULT_SEGMENT_CONFIG,
   segmentFixes,
   splitSegment,
-  type ManualWindow,
+  type JourneyLabel,
   type Segment,
 } from '../index';
 
@@ -160,7 +160,7 @@ describe('manual recordings', () => {
       lengthMs: fc.integer({ min: 1, max: 3_600_000 }),
       mode: fc.constantFrom('walk' as const, 'run' as const, 'cycle' as const, 'drive' as const),
     })
-    .map(({ startOffset, lengthMs, mode }): ManualWindow => ({
+    .map(({ startOffset, lengthMs, mode }): JourneyLabel => ({
       id: 'w',
       label: 'Recorded',
       mode,
@@ -172,7 +172,7 @@ describe('manual recordings', () => {
     fc.assert(
       fc.property(fixStream, windowArb, (fixes, window) => {
         const { segments } = segmentFixes(fixes, CONFIG);
-        const labelled = applyManualWindows(segments, [window], T0 + 24 * 3_600_000);
+        const labelled = applyJourneyLabels(segments, [window]);
         expect(totalMoveDistance(labelled)).toBeCloseTo(totalMoveDistance(segments), 6);
       }),
     );
@@ -182,7 +182,7 @@ describe('manual recordings', () => {
     fc.assert(
       fc.property(fixStream, windowArb, (fixes, window) => {
         const { segments } = segmentFixes(fixes, CONFIG);
-        const labelled = applyManualWindows(segments, [window], T0 + 24 * 3_600_000);
+        const labelled = applyJourneyLabels(segments, [window]);
         for (let i = 1; i < labelled.length; i += 1) {
           if ((labelled[i - 1]?.startedAt ?? 0) > (labelled[i]?.startedAt ?? 0)) return false;
         }

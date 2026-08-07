@@ -1,12 +1,11 @@
 import {
-  applyManualWindows,
-  closeAbandonedWindows,
+  applyJourneyLabels,
   DEFAULT_SEGMENT_CONFIG,
-  manualSegmentId,
+  journeyLabelId,
+  labelledSegmentId,
   segmentFixes,
-  windowsForDay,
   splitSegment,
-  type ManualWindow,
+  type JourneyLabel,
   type MoveSegment,
   type Segment,
 } from '../index';
@@ -94,13 +93,13 @@ describe('splitSegment', () => {
   });
 });
 
-describe('applyManualWindows', () => {
+describe('applyJourneyLabels', () => {
   const { segments } = segmentFixes(DAY, CONFIG);
   const now = T0 + 40 * MINUTE;
 
-  function window(overrides: Partial<ManualWindow> = {}): ManualWindow {
+  function named(overrides: Partial<JourneyLabel> = {}): JourneyLabel {
     return {
-      id: 'w1',
+      id: 'j1',
       label: 'Commute',
       mode: 'walk',
       startedAt: T0 + 15 * MINUTE,
@@ -110,11 +109,11 @@ describe('applyManualWindows', () => {
   }
 
   it('changes nothing when there are no windows', () => {
-    expect(applyManualWindows(segments, [], now)).toEqual(segments);
+    expect(applyJourneyLabels(segments, [])).toEqual(segments);
   });
 
   it('names the stretch you recorded', () => {
-    const result = applyManualWindows(segments, [window()], now);
+    const result = applyJourneyLabels(segments, [named()]);
     const labelled = result.filter((segment) => segment.kind === 'move' && segment.label === 'Commute');
 
     expect(labelled).toHaveLength(1);
@@ -125,7 +124,7 @@ describe('applyManualWindows', () => {
   // The engine can tell a ride from a drive. It cannot know this one was the
   // commute — so when you say so, it does not argue.
   it('lets your answer overrule the classifier', () => {
-    const result = applyManualWindows(segments, [window({ mode: 'cycle' })], now);
+    const result = applyJourneyLabels(segments, [named({ mode: 'cycle' })]);
     const labelled = asMove(result.find((segment) => segment.kind === 'move' && segment.label === 'Commute'));
 
     expect(labelled.mode).toBe('cycle');
@@ -133,12 +132,12 @@ describe('applyManualWindows', () => {
   });
 
   it('preserves the total distance of the day it re-cuts', () => {
-    const result = applyManualWindows(segments, [window()], now);
+    const result = applyJourneyLabels(segments, [named()]);
     expect(totalDistance(result)).toBeCloseTo(totalDistance(segments), 6);
   });
 
   it('leaves the rest of the day untouched and in order', () => {
-    const result = applyManualWindows(segments, [window()], now);
+    const result = applyJourneyLabels(segments, [named()]);
     const starts = result.map((segment) => segment.startedAt);
 
     expect([...starts].sort((a, b) => a - b)).toEqual(starts);
@@ -149,220 +148,92 @@ describe('applyManualWindows', () => {
   // You pressed Record at the start of a walk, so the wait at the crossing is
   // part of the walk — not a place you went.
   it('swallows the stays inside a recording', () => {
-    const wide = window({ startedAt: T0 + 5 * MINUTE, endedAt: T0 + 35 * MINUTE });
-    const result = applyManualWindows(segments, [wide], now);
-    const inside = result.filter((s) => s.startedAt >= wide.startedAt && s.endedAt <= (wide.endedAt ?? now));
+    const wide = named({ startedAt: T0 + 5 * MINUTE, endedAt: T0 + 35 * MINUTE });
+    const result = applyJourneyLabels(segments, [wide]);
+    const inside = result.filter((s) => s.startedAt >= wide.startedAt && s.endedAt <= wide.endedAt);
 
     expect(inside).toHaveLength(1);
     expect(inside[0]?.kind).toBe('move');
   });
 
-  it('closes a still-running recording at the instant it is asked about', () => {
-    const open = window({ endedAt: null, startedAt: T0 + 30 * MINUTE });
-    const result = applyManualWindows(segments, [open], now);
-    const labelled = result.find((segment) => segment.kind === 'move' && segment.label === 'Commute');
-
-    expect(labelled?.endedAt).toBe(now);
+  it('ignores a label that covers no time at all', () => {
+    expect(applyJourneyLabels(segments, [named({ startedAt: now, endedAt: now })])).toEqual(segments);
   });
 
-  it('ignores a window that has not lasted any time yet', () => {
-    const instant = window({ startedAt: now, endedAt: null });
-    expect(applyManualWindows(segments, [instant], now)).toEqual(segments);
+  // The reported bug, stated as the rule that replaces it. The old version
+  // invented a row from the label's own bounds whenever it found nothing
+  // inside, so a name from one day printed a hollow row on every day after it.
+  it('emits nothing for a label whose journey is gone', () => {
+    const elsewhere = named({ startedAt: T0 + 500 * MINUTE, endedAt: T0 + 520 * MINUTE });
+    expect(applyJourneyLabels(segments, [elsewhere])).toEqual(segments);
   });
 
-  // Location denied, or a basement with no signal. The recording still happened
-  // and still gets a row — an empty timeline after deliberately pressing Record
-  // reads as the app being broken.
-  it('gives a recording with no fixes behind it a row anyway', () => {
-    const later = window({ id: 'w2', startedAt: T0 + 100 * MINUTE, endedAt: T0 + 110 * MINUTE });
-    const result = applyManualWindows(segments, [later], T0 + 120 * MINUTE);
-    const labelled = asMove(result.find((segment) => segment.kind === 'move' && segment.label === 'Commute'));
-
-    expect(labelled.startedAt).toBe(T0 + 100 * MINUTE);
-    expect(labelled.endedAt).toBe(T0 + 110 * MINUTE);
-    expect(labelled.distanceM).toBe(0);
-    expect(labelled.fixCount).toBe(0);
+  it('emits nothing when there is no timeline to label', () => {
+    expect(applyJourneyLabels([], [named()])).toEqual([]);
   });
 
-  it('keeps a running recording under one id as its end moves with the clock', () => {
-    const open = window({ endedAt: null, startedAt: T0 + 15 * MINUTE });
-    const earlier = applyManualWindows(segments, [open], T0 + 20 * MINUTE);
-    const later = applyManualWindows(segments, [open], T0 + 25 * MINUTE);
-
-    const idOf = (list: readonly Segment[]) => list.find((segment) => segment.kind === 'move' && segment.label)?.id;
-    expect(idOf(earlier)).toBe(idOf(later));
-    expect(idOf(earlier)).toBe('manual-w1');
-    // The same answer the UI gets without re-deriving anything, which is how a
-    // recording finds its own row.
-    expect(manualSegmentId(open)).toBe(idOf(earlier));
+  it('gives the row it produces an id derived from the label', () => {
+    const label = named();
+    const result = applyJourneyLabels(segments, [label]);
+    const row = result.find((segment) => segment.kind === 'move' && segment.label === 'Commute');
+    expect(row?.id).toBe(labelledSegmentId(label));
   });
 
-  // Two recordings that overlap force the second to cut through a segment the
-  // first already coalesced — a segment whose route is a handful of points, or
-  // none at all. That is the one path where a cut has no shape to apportion by
-  // and has to fall back to splitting by time.
-  it('cuts through a segment an earlier recording already claimed', () => {
-    const first = window({ id: 'a', label: 'First', startedAt: T0 + 12 * MINUTE, endedAt: T0 + 26 * MINUTE });
-    const second = window({ id: 'b', label: 'Second', startedAt: T0 + 20 * MINUTE, endedAt: T0 + 32 * MINUTE });
+  // Naming the same journey twice must update one label, not accumulate two.
+  it('derives a label id from the instant it starts', () => {
+    expect(journeyLabelId(T0)).toBe(journeyLabelId(T0));
+    expect(journeyLabelId(T0)).not.toBe(journeyLabelId(T0 + 1));
+  });
 
-    const result = applyManualWindows(segments, [first, second], now);
+  // No clock anywhere in the module: the same label over the same day gives the
+  // same answer whenever it is asked, which is what lets a frozen day and a
+  // live one go through the identical code path.
+  it('does not depend on what time it is', () => {
+    const label = named();
+    expect(applyJourneyLabels(segments, [label])).toEqual(applyJourneyLabels(segments, [label]));
+  });
 
+  // A label over a stretch of stops coalesces into a row whose "route" is a
+  // handful of points in one spot — no length to apportion by. Cutting that
+  // with a second label is the one path where the split falls back to
+  // splitting by time, and it is reachable without any Record button.
+  it('cuts a labelled stretch that has no shape to apportion, by time', () => {
+    const stops = named({ id: 'a', label: 'At the desk', startedAt: T0, endedAt: T0 + 10 * MINUTE });
+    const inner = named({ id: 'b', label: 'Coffee', startedAt: T0 + 3 * MINUTE, endedAt: T0 + 6 * MINUTE });
+
+    const result = applyJourneyLabels(segments, [stops, inner]);
+    const coffee = asMove(result.find((s) => s.kind === 'move' && s.label === 'Coffee'));
+
+    expect(coffee.startedAt).toBe(T0 + 3 * MINUTE);
+    expect(coffee.endedAt).toBe(T0 + 6 * MINUTE);
     expect(totalDistance(result)).toBeCloseTo(totalDistance(segments), 6);
-    const labels = result.filter((s) => s.kind === 'move' && s.label).map((s) => (s.kind === 'move' ? s.label : null));
-    expect(labels).toEqual(['First', 'Second']);
-    // The first recording keeps the part the second did not take.
-    const kept = asMove(result.find((s) => s.kind === 'move' && s.label === 'First'));
-    expect(kept.endedAt).toBe(T0 + 20 * MINUTE);
-    expect(kept.modeIsManual).toBe(true);
   });
 
-  it('cuts a recording that caught no fixes at all, by time', () => {
-    const empty = window({ id: 'a', label: 'Blind', startedAt: T0 + 100 * MINUTE, endedAt: T0 + 120 * MINUTE });
-    const overlapping = window({
-      id: 'b',
-      label: 'Also blind',
-      startedAt: T0 + 110 * MINUTE,
-      endedAt: T0 + 130 * MINUTE,
+  // Your answer must survive being cut. Re-classifying a half by speed would
+  // let a split quietly overturn the mode you chose.
+  it('keeps your mode on both halves when a labelled stretch is cut', () => {
+    const ride = named({
+      id: 'a',
+      label: 'Ride',
+      mode: 'cycle',
+      startedAt: T0 + 12 * MINUTE,
+      endedAt: T0 + 30 * MINUTE,
     });
+    const labelled = asMove(applyJourneyLabels(segments, [ride]).find((s) => s.kind === 'move' && s.label === 'Ride'));
 
-    const result = applyManualWindows(segments, [empty, overlapping], T0 + 140 * MINUTE);
-    const blind = asMove(result.find((s) => s.kind === 'move' && s.label === 'Blind'));
-
-    expect(blind.startedAt).toBe(T0 + 100 * MINUTE);
-    expect(blind.endedAt).toBe(T0 + 110 * MINUTE);
-    expect(blind.distanceM).toBe(0);
+    const [first, second] = splitSegment(labelled, T0 + 20 * MINUTE);
+    expect(asMove(first).mode).toBe('cycle');
+    expect(asMove(second).mode).toBe('cycle');
+    expect(asMove(first).modeIsManual).toBe(true);
   });
 
-  it('applies several windows in the order they happened', () => {
-    const first = window({ id: 'a', label: 'Morning', startedAt: T0 + 12 * MINUTE, endedAt: T0 + 18 * MINUTE });
-    const second = window({ id: 'b', label: 'Afternoon', startedAt: T0 + 22 * MINUTE, endedAt: T0 + 28 * MINUTE });
+  it('applies several labels in the order they happened', () => {
+    const first = named({ id: 'a', label: 'Morning', startedAt: T0 + 12 * MINUTE, endedAt: T0 + 18 * MINUTE });
+    const second = named({ id: 'b', label: 'Afternoon', startedAt: T0 + 22 * MINUTE, endedAt: T0 + 28 * MINUTE });
 
-    const result = applyManualWindows(segments, [second, first], now);
+    const result = applyJourneyLabels(segments, [second, first]);
     const labels = result.filter((s) => s.kind === 'move' && s.label).map((s) => (s.kind === 'move' ? s.label : null));
 
     expect(labels).toEqual(['Morning', 'Afternoon']);
-  });
-});
-
-/**
- * Reported from a real phone: Today showed a journey at 16:37, a time that had
- * not arrived, for a recording nobody had started that day — and it appeared in
- * no export, because it had no fixes behind it.
- *
- * The cause was a Record pressed the previous day and never stopped. A running
- * window is closed at `now`, so every subsequent day grew a row spanning from
- * yesterday's clock time to this moment.
- */
-describe('a recording nobody stopped', () => {
-  const YESTERDAY_1637 = Date.UTC(2026, 7, 6, 16, 37, 0);
-  const TODAY_1000 = Date.UTC(2026, 7, 7, 10, 0, 0);
-  const MIDNIGHT = Date.UTC(2026, 7, 7, 0, 0, 0);
-
-  const forgotten: ManualWindow = {
-    id: 'w-1',
-    label: 'Walk',
-    mode: 'walk',
-    startedAt: YESTERDAY_1637,
-    endedAt: null,
-  };
-
-  it('is closed at the end of the day it started', () => {
-    const [closed] = closeAbandonedWindows([forgotten], TODAY_1000, 0);
-    expect(closed?.endedAt).toBe(MIDNIGHT);
-  });
-
-  // The symptom itself, asserted the way it is actually seen: today's timeline
-  // is *empty*, not merely free of rows extending past midnight. An earlier
-  // version of this test allowed a row ending exactly at midnight and so passed
-  // while the phantom was still on screen.
-  it('leaves today with no row at all', () => {
-    const leaked = applyManualWindows([], [forgotten], TODAY_1000);
-    expect(leaked).toHaveLength(1);
-    expect(leaked[0]?.startedAt).toBe(YESTERDAY_1637);
-
-    const tidied = closeAbandonedWindows([forgotten], TODAY_1000, 0);
-    const today = applyManualWindows([], windowsForDay(tidied, TODAY_1000, 0), TODAY_1000);
-    expect(today).toEqual([]);
-  });
-
-  // Forgetting to stop is not required. A recording properly stopped yesterday
-  // leaked the same phantom row, because every window was applied to every day.
-  it('does not leak a recording that was stopped yesterday either', () => {
-    const stopped: ManualWindow = { ...forgotten, endedAt: YESTERDAY_1637 + 20 * MINUTE };
-    expect(applyManualWindows([], [stopped], TODAY_1000)).toHaveLength(1);
-    expect(applyManualWindows([], windowsForDay([stopped], TODAY_1000, 0), TODAY_1000)).toEqual([]);
-  });
-
-  it('leaves a recording that is genuinely still running alone', () => {
-    const startedToday: ManualWindow = { ...forgotten, startedAt: Date.UTC(2026, 7, 7, 9, 0, 0) };
-    expect(closeAbandonedWindows([startedToday], TODAY_1000, 0)).toEqual([startedToday]);
-  });
-
-  it('leaves a recording that was properly stopped alone', () => {
-    const stopped: ManualWindow = { ...forgotten, endedAt: YESTERDAY_1637 + 600_000 };
-    expect(closeAbandonedWindows([stopped], TODAY_1000, 0)).toEqual([stopped]);
-  });
-
-  // A day is a wall-clock idea, so which day a recording started on depends on
-  // the offset — the same sign convention as the rest of `core/day`.
-  it('decides which day it started on in local time', () => {
-    const lateEvening = Date.UTC(2026, 7, 6, 23, 30, 0);
-    const window: ManualWindow = { ...forgotten, startedAt: lateEvening };
-    // In UTC that is the 6th, and 10:00 on the 7th is a later day: closed.
-    expect(closeAbandonedWindows([window], TODAY_1000, 0)[0]?.endedAt).toBe(MIDNIGHT);
-    // Ten hours east it is already the 7th, the same day as `now`: left alone.
-    expect(closeAbandonedWindows([window], TODAY_1000, 600)[0]?.endedAt).toBeNull();
-  });
-
-  it('returns the very same array when there is nothing to close, so no write happens', () => {
-    const untouched = [{ ...forgotten, endedAt: YESTERDAY_1637 + 60_000 }];
-    expect(closeAbandonedWindows(untouched, TODAY_1000, 0)).toBe(untouched);
-  });
-
-  it('closes several forgotten recordings, each on its own day', () => {
-    const older: ManualWindow = { ...forgotten, id: 'w-0', startedAt: Date.UTC(2026, 7, 4, 8, 0, 0) };
-    const closed = closeAbandonedWindows([older, forgotten], TODAY_1000, 0);
-    expect(closed[0]?.endedAt).toBe(Date.UTC(2026, 7, 5, 0, 0, 0));
-    expect(closed[1]?.endedAt).toBe(MIDNIGHT);
-  });
-});
-
-describe('windowsForDay', () => {
-  const TODAY_1000 = Date.UTC(2026, 7, 7, 10, 0, 0);
-  const DAY_START = Date.UTC(2026, 7, 7, 0, 0, 0);
-
-  function window(overrides: Partial<ManualWindow>): ManualWindow {
-    return { id: 'w', label: 'Walk', mode: 'walk', startedAt: DAY_START, endedAt: null, ...overrides };
-  }
-
-  // The reason Record still works when you are standing still with no signal:
-  // the window is today's, so it keeps its row even with nothing behind it.
-  it('keeps a recording made today, even one that caught nothing', () => {
-    const today = window({ startedAt: TODAY_1000 - MINUTE, endedAt: TODAY_1000 });
-    expect(windowsForDay([today], TODAY_1000, 0)).toEqual([today]);
-  });
-
-  it('keeps a recording that is still running today', () => {
-    const open = window({ startedAt: TODAY_1000 - MINUTE, endedAt: null });
-    expect(windowsForDay([open], TODAY_1000, 0)).toEqual([open]);
-  });
-
-  it('drops one that ended before the day began', () => {
-    expect(windowsForDay([window({ endedAt: DAY_START })], TODAY_1000, 0)).toEqual([]);
-    expect(windowsForDay([window({ endedAt: DAY_START - 1 })], TODAY_1000, 0)).toEqual([]);
-  });
-
-  // A night ride belongs to the day it ends on as far as labelling goes: it is
-  // still in play when the timeline it overlaps is derived.
-  it('keeps one that straddles midnight', () => {
-    const straddling = window({ startedAt: DAY_START - 10 * MINUTE, endedAt: DAY_START + 30 * MINUTE });
-    expect(windowsForDay([straddling], TODAY_1000, 0)).toEqual([straddling]);
-  });
-
-  it('decides the boundary in local time', () => {
-    const lateYesterday = window({ endedAt: Date.UTC(2026, 7, 6, 23, 30, 0) });
-    expect(windowsForDay([lateYesterday], TODAY_1000, 0)).toEqual([]);
-    // Ten hours east, that instant is already the 7th — the same day as `now`.
-    expect(windowsForDay([lateYesterday], TODAY_1000, 600)).toEqual([lateYesterday]);
   });
 });

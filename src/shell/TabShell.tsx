@@ -8,7 +8,8 @@ import { formatDayTitle } from '@/core/format';
 import type { MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
-import type { Segment, StaySegment } from '@/core/segments';
+import { journeyLabelId } from '@/core/segments';
+import type { MoveSegment, Segment, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
 import { useTimeline } from '@/features/activities/hooks/useTimeline';
 import { CaptureScreen } from '@/features/capture/CaptureScreen';
@@ -21,8 +22,9 @@ import { PlaceScreen } from '@/features/places/PlaceScreen';
 import { PlacesScreen } from '@/features/places/PlacesScreen';
 import { PlacePicker } from '@/features/places/components/PlacePicker';
 import { usePlaces } from '@/features/places/hooks/usePlaces';
-import { RecordingsScreen } from '@/features/record/RecordingsScreen';
-import { useRecording } from '@/features/record/hooks/useRecording';
+import { NamedJourneysScreen } from '@/features/labels/NamedJourneysScreen';
+import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
+import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
@@ -39,7 +41,7 @@ type Page =
   | { readonly kind: 'day'; readonly day: DayGroup }
   | { readonly kind: 'places' }
   | { readonly kind: 'place'; readonly place: Place }
-  | { readonly kind: 'recordings' }
+  | { readonly kind: 'journeys' }
   | { readonly kind: 'media'; readonly item: MediaItem }
   | { readonly kind: 'data' };
 
@@ -86,13 +88,14 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
 export function TabShell() {
   const [tab, setTab] = useState<Tab>('today');
   const [naming, setNaming] = useState<StaySegment | null>(null);
+  const [namingJourney, setNamingJourney] = useState<MoveSegment | null>(null);
   const [replayDayKey, setReplayDayKey] = useState<string | null>(null);
 
   const settings = useSettings();
-  const recording = useRecording();
+  const journeys = useJourneyLabels();
   const places = usePlaces();
   const media = useMedia();
-  const timeline = useTimeline(settings.settings, recording.windows, settings.ready && recording.ready);
+  const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
 
   const stacks: Record<Tab, ReturnType<typeof usePageStack<Page>>> = {
     today: usePageStack<Page>(),
@@ -152,6 +155,7 @@ export function TabShell() {
           mapsEnabled={mapsEnabled}
           onBack={back}
           onNamePlace={page.segment.kind === 'stay' ? () => setNaming(page.segment as StaySegment) : undefined}
+          onNameJourney={page.segment.kind === 'move' ? () => setNamingJourney(page.segment as MoveSegment) : undefined}
         />
       );
     }
@@ -199,16 +203,16 @@ export function TabShell() {
         />
       );
     }
-    if (page.kind === 'recordings') {
+    if (page.kind === 'journeys') {
       return (
-        <RecordingsScreen
-          windows={recording.windows}
+        <NamedJourneysScreen
+          labels={journeys.labels}
           segments={allSegments}
           tzOffsetMinutes={timeline.tzOffsetMinutes}
           mapsEnabled={mapsEnabled}
           onBack={back}
           onOpenSegment={openSegment(which)}
-          onDiscard={recording.discard}
+          onForget={journeys.forget}
         />
       );
     }
@@ -247,10 +251,7 @@ export function TabShell() {
             segments={timeline.today}
             places={places.places}
             onOpenSegment={openSegment('today')}
-            onOpenRecordings={() => stacks.today.push({ kind: 'recordings' })}
-            recording={recording}
             settings={settings}
-            now={timeline.now}
             tzOffsetMinutes={timeline.tzOffsetMinutes}
             ready={timeline.ready}
           />
@@ -297,6 +298,7 @@ export function TabShell() {
             rejected={timeline.rejected}
             onOpenData={() => stacks.settings.push({ kind: 'data' })}
             onOpenPlaces={() => stacks.settings.push({ kind: 'places' })}
+            onOpenJourneys={() => stacks.settings.push({ kind: 'journeys' })}
           />
           {stacks.settings.current ? <View style={styles.page}>{renderPage('settings')}</View> : null}
         </View>
@@ -340,6 +342,18 @@ export function TabShell() {
           setNaming(null);
         }}
         onClose={() => setNaming(null)}
+      />
+
+      {/* Hoisted beside the place picker, and for the same reason: a journey can
+          be named from Today, from a day in History, or from Replay. */}
+      <JourneyLabelSheet
+        journey={namingJourney}
+        tzOffsetMinutes={timeline.tzOffsetMinutes}
+        onSave={(label, mode) => {
+          if (namingJourney) journeys.name(namingJourney, label, mode);
+        }}
+        onForget={namingJourney?.label ? () => journeys.forget(journeyLabelId(namingJourney.startedAt)) : undefined}
+        onClose={() => setNamingJourney(null)}
       />
     </SafeAreaView>
   );

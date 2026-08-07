@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import { groupByDay, type DayGroup } from '@/core/day';
 import type { Fix, RejectionReason } from '@/core/geo';
-import { applyManualWindows, segmentFixes, windowsForDay, type ManualWindow, type Segment } from '@/core/segments';
+import { applyJourneyLabels, segmentFixes, type JourneyLabel, type Segment } from '@/core/segments';
 import { now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { freezeFinishedDays } from '@/services/dayLog';
 import { readBuffer } from '@/services/fixBuffer';
@@ -50,7 +50,7 @@ const REFRESH_MS = 20_000;
  * The second matters more: coming back is exactly when the buffer has grown by
  * everything that happened while you were out.
  */
-export function useTimeline(settings: Settings, windows: readonly ManualWindow[], settingsReady: boolean): Timeline {
+export function useTimeline(settings: Settings, labels: readonly JourneyLabel[], settingsReady: boolean): Timeline {
   const [today, setToday] = useState<readonly Segment[]>([]);
   const [history, setHistory] = useState<readonly DayGroup[]>([]);
   const [rejected, setRejected] = useState<Timeline['rejected']>(null);
@@ -87,16 +87,13 @@ export function useTimeline(settings: Settings, windows: readonly ManualWindow[]
 
       if (!live) return;
 
-      // What the buffer still holds after freezing is the live day (plus the
-      // tail of a segment that straddled midnight), and only the windows that
-      // belong to that day are applied to it.
-      //
-      // Both halves matter. Applying every window ever recorded put a row from
-      // an older recording onto today — at the clock time it was started, with
-      // no fixes behind it, so it appeared in no export. See `windowsForDay`.
+      // What the buffer still holds after freezing is the live day, plus the
+      // tail of a segment that straddled midnight. Every label is applied to
+      // it; one whose journey is not in there covers nothing and emits nothing,
+      // so there is no filtering to do and no day arithmetic to get wrong.
       const boundary = log.length > 0 ? (log[log.length - 1]?.endedAt ?? 0) : 0;
       const liveSegments = segments.filter((segment) => segment.endedAt > boundary);
-      const labelled = applyManualWindows(liveSegments, windowsForDay(windows, at, offset), at);
+      const labelled = applyJourneyLabels(liveSegments, labels);
 
       setNow(at);
       setTzOffset(offset);
@@ -110,7 +107,7 @@ export function useTimeline(settings: Settings, windows: readonly ManualWindow[]
     return () => {
       live = false;
     };
-  }, [settings.segmentation, settings.retentionDays, windows, settingsReady, tick]);
+  }, [settings.segmentation, settings.retentionDays, labels, settingsReady, tick]);
 
   useEffect(() => {
     const timer = setInterval(refresh, REFRESH_MS);

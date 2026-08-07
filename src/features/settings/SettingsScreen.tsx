@@ -17,6 +17,8 @@ interface SettingsScreenProps {
    * you glance at several times a day.
    */
   readonly onOpenPlaces: () => void;
+  /** Every journey you have named, on one map. */
+  readonly onOpenJourneys: () => void;
 }
 
 const PERMISSION_TEXT: Readonly<Record<string, string>> = {
@@ -33,7 +35,7 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
   { label: '30 days', days: 30 },
 ];
 
-export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }: SettingsScreenProps) {
+export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, onOpenJourneys }: SettingsScreenProps) {
   const { settings: values } = settings;
 
   const confirmErase = () => {
@@ -197,6 +199,18 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces }:
             <View style={styles.rowText}>
               <Text style={styles.rowTitle}>Places</Text>
               <Text style={styles.rowDetail}>Everywhere you have named, and how long you spent there</Text>
+            </View>
+            <Text style={styles.tick}>›</Text>
+          </Pressable>
+          <Pressable
+            onPress={onOpenJourneys}
+            accessibilityRole="button"
+            accessibilityLabel="Named journeys"
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Named journeys</Text>
+              <Text style={styles.rowDetail}>Every journey you have given a name, on one map</Text>
             </View>
             <Text style={styles.tick}>›</Text>
           </Pressable>
