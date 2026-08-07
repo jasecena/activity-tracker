@@ -4,6 +4,7 @@ import {
   DEFAULT_SEGMENT_CONFIG,
   manualSegmentId,
   segmentFixes,
+  windowsForDay,
   splitSegment,
   type ManualWindow,
   type MoveSegment,
@@ -270,18 +271,26 @@ describe('a recording nobody stopped', () => {
     expect(closed?.endedAt).toBe(MIDNIGHT);
   });
 
-  // The symptom itself: without the close, today grows a seventeen-hour row
-  // starting at a clock time that has not arrived.
-  it('no longer leaks a row into the following day', () => {
+  // The symptom itself, asserted the way it is actually seen: today's timeline
+  // is *empty*, not merely free of rows extending past midnight. An earlier
+  // version of this test allowed a row ending exactly at midnight and so passed
+  // while the phantom was still on screen.
+  it('leaves today with no row at all', () => {
     const leaked = applyManualWindows([], [forgotten], TODAY_1000);
     expect(leaked).toHaveLength(1);
     expect(leaked[0]?.startedAt).toBe(YESTERDAY_1637);
 
     const tidied = closeAbandonedWindows([forgotten], TODAY_1000, 0);
-    // Today derives from today's own segments; a window that closed at midnight
-    // no longer reaches into them.
-    const today = applyManualWindows([], tidied, TODAY_1000).filter((segment) => segment.endedAt > MIDNIGHT);
+    const today = applyManualWindows([], windowsForDay(tidied, TODAY_1000, 0), TODAY_1000);
     expect(today).toEqual([]);
+  });
+
+  // Forgetting to stop is not required. A recording properly stopped yesterday
+  // leaked the same phantom row, because every window was applied to every day.
+  it('does not leak a recording that was stopped yesterday either', () => {
+    const stopped: ManualWindow = { ...forgotten, endedAt: YESTERDAY_1637 + 20 * MINUTE };
+    expect(applyManualWindows([], [stopped], TODAY_1000)).toHaveLength(1);
+    expect(applyManualWindows([], windowsForDay([stopped], TODAY_1000, 0), TODAY_1000)).toEqual([]);
   });
 
   it('leaves a recording that is genuinely still running alone', () => {
@@ -315,5 +324,45 @@ describe('a recording nobody stopped', () => {
     const closed = closeAbandonedWindows([older, forgotten], TODAY_1000, 0);
     expect(closed[0]?.endedAt).toBe(Date.UTC(2026, 7, 5, 0, 0, 0));
     expect(closed[1]?.endedAt).toBe(MIDNIGHT);
+  });
+});
+
+describe('windowsForDay', () => {
+  const TODAY_1000 = Date.UTC(2026, 7, 7, 10, 0, 0);
+  const DAY_START = Date.UTC(2026, 7, 7, 0, 0, 0);
+
+  function window(overrides: Partial<ManualWindow>): ManualWindow {
+    return { id: 'w', label: 'Walk', mode: 'walk', startedAt: DAY_START, endedAt: null, ...overrides };
+  }
+
+  // The reason Record still works when you are standing still with no signal:
+  // the window is today's, so it keeps its row even with nothing behind it.
+  it('keeps a recording made today, even one that caught nothing', () => {
+    const today = window({ startedAt: TODAY_1000 - MINUTE, endedAt: TODAY_1000 });
+    expect(windowsForDay([today], TODAY_1000, 0)).toEqual([today]);
+  });
+
+  it('keeps a recording that is still running today', () => {
+    const open = window({ startedAt: TODAY_1000 - MINUTE, endedAt: null });
+    expect(windowsForDay([open], TODAY_1000, 0)).toEqual([open]);
+  });
+
+  it('drops one that ended before the day began', () => {
+    expect(windowsForDay([window({ endedAt: DAY_START })], TODAY_1000, 0)).toEqual([]);
+    expect(windowsForDay([window({ endedAt: DAY_START - 1 })], TODAY_1000, 0)).toEqual([]);
+  });
+
+  // A night ride belongs to the day it ends on as far as labelling goes: it is
+  // still in play when the timeline it overlaps is derived.
+  it('keeps one that straddles midnight', () => {
+    const straddling = window({ startedAt: DAY_START - 10 * MINUTE, endedAt: DAY_START + 30 * MINUTE });
+    expect(windowsForDay([straddling], TODAY_1000, 0)).toEqual([straddling]);
+  });
+
+  it('decides the boundary in local time', () => {
+    const lateYesterday = window({ endedAt: Date.UTC(2026, 7, 6, 23, 30, 0) });
+    expect(windowsForDay([lateYesterday], TODAY_1000, 0)).toEqual([]);
+    // Ten hours east, that instant is already the 7th — the same day as `now`.
+    expect(windowsForDay([lateYesterday], TODAY_1000, 600)).toEqual([lateYesterday]);
   });
 });

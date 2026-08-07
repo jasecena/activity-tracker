@@ -75,6 +75,32 @@ export function closeAbandonedWindows(
   return changed ? closed : windows;
 }
 
+/**
+ * The windows that belong to the day being labelled.
+ *
+ * `applyManualWindows` emits a row for every window it is handed, including one
+ * with no segments inside it — deliberately, because a recording made where
+ * there was no signal still happened and an empty timeline after pressing
+ * Record reads as the app being broken.
+ *
+ * The catch, found on a real phone: hand it *yesterday's* window and it emits
+ * that row into *today*. Stopped or forgotten makes no difference — every past
+ * recording leaks a phantom row onto every later day, at the clock time it was
+ * started, with nothing behind it.
+ *
+ * So the caller says which day it is labelling, and anything that ended before
+ * that day began is not in play. A recording straddling midnight still is: it
+ * ends after the boundary, so it keeps its row on the day it ends.
+ */
+export function windowsForDay(
+  windows: readonly ManualWindow[],
+  now: number,
+  tzOffsetMinutes: TzOffsetMinutes,
+): readonly ManualWindow[] {
+  const dayStart = startOfLocalDay(now, tzOffsetMinutes);
+  return windows.filter((window) => (window.endedAt ?? now) > dayStart);
+}
+
 function isMove(segment: Segment): segment is MoveSegment {
   return segment.kind === 'move';
 }

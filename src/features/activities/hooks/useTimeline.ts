@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import { groupByDay, type DayGroup } from '@/core/day';
 import type { Fix, RejectionReason } from '@/core/geo';
-import { applyManualWindows, segmentFixes, type ManualWindow, type Segment } from '@/core/segments';
+import { applyManualWindows, segmentFixes, windowsForDay, type ManualWindow, type Segment } from '@/core/segments';
 import { now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { freezeFinishedDays } from '@/services/dayLog';
 import { readBuffer } from '@/services/fixBuffer';
@@ -88,12 +88,15 @@ export function useTimeline(settings: Settings, windows: readonly ManualWindow[]
       if (!live) return;
 
       // What the buffer still holds after freezing is the live day (plus the
-      // tail of a segment that straddled midnight). Manual windows are applied
-      // to it, and only to it: a finished day's labels were baked in when it
-      // was frozen.
+      // tail of a segment that straddled midnight), and only the windows that
+      // belong to that day are applied to it.
+      //
+      // Both halves matter. Applying every window ever recorded put a row from
+      // an older recording onto today — at the clock time it was started, with
+      // no fixes behind it, so it appeared in no export. See `windowsForDay`.
       const boundary = log.length > 0 ? (log[log.length - 1]?.endedAt ?? 0) : 0;
       const liveSegments = segments.filter((segment) => segment.endedAt > boundary);
-      const labelled = applyManualWindows(liveSegments, windows, at);
+      const labelled = applyManualWindows(liveSegments, windowsForDay(windows, at, offset), at);
 
       setNow(at);
       setTzOffset(offset);
