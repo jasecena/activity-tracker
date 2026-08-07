@@ -153,7 +153,10 @@ appId: ${APP_ID}
 - tapOn: 'Sort by Name'
 - tapOn: 'Sort by Time spent'
 - tapOn: 'Back'
-- assertVisible: 'Track my day'
+# Asserted on the erase button, not on 'Track my day': the flow is scrolled to
+# the bottom of Settings by this point, so the switch at the top is off screen.
+# Not 'Settings' either — that is the tab label, visible from anywhere.
+- assertVisible: 'Erase everything'
 
 # --- The raw data page opens ----------------------------------------------
 # Exercises the page stack and the counts. Deliberately does NOT tap an export
@@ -163,7 +166,10 @@ appId: ${APP_ID}
 - assertVisible: 'Raw data'
 - assertVisible: 'Route points (all history): 0'
 - tapOn: 'Back'
-- assertVisible: 'Track my day'
+# Asserted on the erase button, not on 'Track my day': the flow is scrolled to
+# the bottom of Settings by this point, so the switch at the top is off screen.
+# Not 'Settings' either — that is the tab label, visible from anywhere.
+- assertVisible: 'Erase everything'
 
 # --- Erase is present and asks first --------------------------------------
 # The one irreversible action in the app — it destroys the encryption key. It
