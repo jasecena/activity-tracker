@@ -31,7 +31,7 @@ import { colors, spacing, typography } from '@/theme/tokens';
 
 import { usePageStack } from './usePageStack';
 
-type Tab = 'today' | 'history' | 'replay' | 'capture' | 'settings';
+type Tab = 'today' | 'history' | 'capture' | 'replay' | 'settings';
 
 /** Pages that can sit above a tab's root. */
 type Page =
@@ -46,8 +46,11 @@ type Page =
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'today', label: 'Today', icon: 'today-outline' },
   { key: 'history', label: 'History', icon: 'calendar-outline' },
-  { key: 'replay', label: 'Replay', icon: 'play-circle-outline' },
+  // Capture in the middle, where a thumb reaches without moving the phone. It
+  // is the only tab that is a thing you *do* rather than a thing you read, and
+  // the only one you would ever open one-handed in a hurry.
   { key: 'capture', label: 'Capture', icon: 'camera-outline' },
+  { key: 'replay', label: 'Replay', icon: 'play-circle-outline' },
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
@@ -264,6 +267,16 @@ export function TabShell() {
           {stacks.history.current ? <View style={styles.page}>{renderPage('history')}</View> : null}
         </View>
 
+        <View style={[styles.screen, tab !== 'capture' && styles.hidden]}>
+          <CaptureScreen
+            media={media}
+            tzOffsetMinutes={timeline.tzOffsetMinutes}
+            visible={tab === 'capture'}
+            onOpenItem={openMedia('capture')}
+          />
+          {stacks.capture.current ? <View style={styles.page}>{renderPage('capture')}</View> : null}
+        </View>
+
         <View style={[styles.screen, tab !== 'replay' && styles.hidden]}>
           <ReplayScreen
             days={replayDays}
@@ -276,16 +289,6 @@ export function TabShell() {
             onOpenMedia={openMedia('replay')}
           />
           {stacks.replay.current ? <View style={styles.page}>{renderPage('replay')}</View> : null}
-        </View>
-
-        <View style={[styles.screen, tab !== 'capture' && styles.hidden]}>
-          <CaptureScreen
-            media={media}
-            tzOffsetMinutes={timeline.tzOffsetMinutes}
-            visible={tab === 'capture'}
-            onOpenItem={openMedia('capture')}
-          />
-          {stacks.capture.current ? <View style={styles.page}>{renderPage('capture')}</View> : null}
         </View>
 
         <View style={[styles.screen, tab !== 'settings' && styles.hidden]}>

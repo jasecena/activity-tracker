@@ -460,8 +460,10 @@ install, not the thing that makes them safe.
 
 ## 13. UI: no navigation library, one fold for five tabs
 
-Five tabs — Today, History, Replay, Capture, Settings — with one level of detail
-below most of them. `shell/usePageStack.ts` is an array and three functions,
+Five tabs — Today, History, Capture, Replay, Settings — with one level of detail
+below most of them. Capture takes the middle slot: it is the only tab that is a
+thing you _do_ rather than a thing you read, and the only one anyone opens
+one-handed in a hurry. `shell/usePageStack.ts` is an array and three functions,
 against a router that would bring a native screen container, a navigation state
 tree and a serialisation format to solve the same problem.
 

@@ -149,8 +149,10 @@ written because the handler was busy segmenting the last one.
 `storage.ts` and `motion.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
-**No navigation library.** Five tabs — Today, History, Replay, Capture,
-Settings — and one level of detail below most of them. Places is a page under
+**No navigation library.** Five tabs — Today, History, Capture, Replay,
+Settings — and one level of detail below most of them. Capture sits in the
+middle because it is the only tab that is an action rather than a view, and the
+only one reached one-handed in a hurry. Places is a page under
 Settings, not a tab: iOS collapses a sixth tab into a "More" list.
 `shell/usePageStack.ts` is an array and three functions, against a router that
 would bring a native screen container, a navigation state tree and a

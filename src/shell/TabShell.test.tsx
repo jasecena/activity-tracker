@@ -59,6 +59,16 @@ describe('the shell', () => {
     expect(screen.getByText('Track my day')).toBeOnTheScreen();
   });
 
+  // Order is invisible to every other test here — they all select a tab by its
+  // label — so without this the deliberate middle slot could be reshuffled by
+  // accident and nothing would notice.
+  it('puts Capture in the middle of the bar', async () => {
+    await render(<TabShell />);
+
+    const labels = screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel);
+    expect(labels).toEqual(['Today tab', 'History tab', 'Capture tab', 'Replay tab', 'Settings tab']);
+  });
+
   // Places lost its tab to Replay and Capture; it is a reference list you
   // consult rather than somewhere you glance several times a day.
   it('reaches Places through Settings and comes back', async () => {
