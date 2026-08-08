@@ -174,6 +174,19 @@ way out rather than on the way in.
 Do not delete it without a very good reason: a build that cannot read a sealed
 file silently loses every photo its owner took.
 
+**It writes the plain file and leaves the sealed one.** Deleting the original
+there opens a window one suspension wide: the plain file exists, the index still
+names the sealed one, and the next launch sweeps the plain file as an orphan.
+The photo is gone, silently, on a phone that did nothing wrong. Write the new,
+let the index move, let the next sweep take the old — it is an orphan by then by
+definition, and the cost of dying anywhere in between is a duplicate on disk
+rather than a capture.
+
+**A sealed thumbnail counts as missing**, not as a thumbnail. It is ciphertext,
+and an `<Image>` handed ciphertext draws nothing — so treating a non-null
+`thumbFileName` as good enough left every old capture as a blank square in the
+filmstrip, with an index that looked perfectly healthy.
+
 **The app makes exactly one kind of network request, and only when you ask.**
 There is no analytics, no telemetry, no crash reporting and no geocoder — that is
 still why a place has no name until you type one. The one exception is Apple Maps

@@ -3,7 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system';
 
 import { mediaIdFor } from '@/core/media';
-import { openThumbnail, stageCapture, writeMedia, writeThumbnail } from '@/services/mediaStore';
+import { openThumbnail, stageCapture, unsealInPlace, writeMedia, writeThumbnail } from '@/services/mediaStore';
 import { STORAGE_KEYS, writeJson } from '@/services/storage';
 import { sealBytes } from '@/services/vault';
 
@@ -221,8 +221,127 @@ describe('captures sealed by an earlier build', () => {
     const stored = new File(Paths.document, 'media', 'm-1.jpg');
     expect(stored.exists).toBe(true);
     expect(stored.bytesSync().length).toBe(bytes.length);
-    // No second copy: two of every video is what a phone has no room for.
-    expect(new File(Paths.document, 'media', 'm-1.jpg.avm').exists).toBe(false);
+  });
+
+  // The duplicate is temporary, and this is what makes it so: once the index
+  // names the plain file, the sealed one is an orphan and the next launch's
+  // sweep takes it. Two copies of every video is not something a phone has
+  // room for indefinitely.
+  it('sweeps the sealed original on the launch after that', async () => {
+    await seedSealed('m-6.jpg.avm', bytes4(2_000));
+    await writeJson(STORAGE_KEYS.media, [
+      {
+        id: 'm-6',
+        kind: 'photo',
+        capturedAt: CAPTURED_AT,
+        durationMs: null,
+        fileName: 'm-6.jpg.avm',
+        thumbFileName: null,
+        byteLength: 2_000,
+        at: null,
+        note: '',
+      },
+    ]);
+
+    const first = await renderHook(() => useMedia());
+    await waitFor(() => expect(first.result.current.items[0]?.fileName).toBe('m-6.jpg'));
+    expect(new File(Paths.document, 'media', 'm-6.jpg.avm').exists).toBe(true);
+
+    const second = await renderHook(() => useMedia());
+    await waitFor(() => expect(second.result.current.ready).toBe(true));
+
+    await waitFor(() => expect(new File(Paths.document, 'media', 'm-6.jpg.avm').exists).toBe(false));
+    expect(new File(Paths.document, 'media', 'm-6.jpg').exists).toBe(true);
+  });
+
+  /**
+   * The window that could have destroyed a capture.
+   *
+   * Unsealing writes the plain file and the index moves to point at it. If iOS
+   * suspends the app in between — which is the ordinary way this app stops —
+   * the next launch has an index naming the sealed file and a plain file
+   * nothing points at. Deleting the sealed original at the end of the unseal
+   * would make that plain file an orphan, and the launch sweep would take it.
+   * The photo would be gone, silently, on a phone that did nothing wrong.
+   *
+   * So the original stays until the index has moved and the sweep can see it
+   * is an orphan. The cost is a duplicate on disk for one launch.
+   */
+  it('keeps the sealed original until the index has moved off it', async () => {
+    await seedSealed('m-9.jpg.avm', bytes4(2_000));
+    await writeJson(STORAGE_KEYS.media, [
+      {
+        id: 'm-9',
+        kind: 'photo',
+        capturedAt: CAPTURED_AT,
+        durationMs: null,
+        fileName: 'm-9.jpg.avm',
+        thumbFileName: null,
+        byteLength: 2_000,
+        at: null,
+        note: '',
+      },
+    ]);
+
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.items[0]?.fileName).toBe('m-9.jpg'));
+
+    expect(new File(Paths.document, 'media', 'm-9.jpg').exists).toBe(true);
+    expect(new File(Paths.document, 'media', 'm-9.jpg.avm').exists).toBe(true);
+  });
+
+  // Simulating the crash: the file was unsealed, the index never got written.
+  // The launch that follows must not treat the plain file as rubbish.
+  it('survives the app dying between unsealing and writing the index', async () => {
+    await seedSealed('m-8.jpg.avm', bytes4(2_000));
+    await writeJson(STORAGE_KEYS.media, [
+      {
+        id: 'm-8',
+        kind: 'photo',
+        capturedAt: CAPTURED_AT,
+        durationMs: null,
+        fileName: 'm-8.jpg.avm',
+        thumbFileName: null,
+        byteLength: 2_000,
+        at: null,
+        note: '',
+      },
+    ]);
+
+    // What the interrupted run left behind: a plain copy nothing points at.
+    await unsealInPlace('m-8.jpg.avm');
+    expect(new File(Paths.document, 'media', 'm-8.jpg').exists).toBe(true);
+
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.items[0]?.fileName).toBe('m-8.jpg'));
+
+    // The capture is readable either way round — which it would not be if the
+    // sweep had taken the plain file and the unseal had taken the sealed one.
+    expect(new File(Paths.document, 'media', 'm-8.jpg').exists).toBe(true);
+    expect(new File(Paths.document, 'media', 'm-8.jpg').bytesSync().length).toBe(2_000);
+  });
+
+  // A sealed thumbnail is ciphertext, and an `<Image>` handed ciphertext draws
+  // nothing. Left alone it looked fine in the index and blank on the screen.
+  it('replaces a thumbnail that is still sealed', async () => {
+    await seedSealed('m-7.jpg.avm', bytes4(2_000));
+    await seedSealed('m-7.thumb.avm', bytes4(200));
+    await writeJson(STORAGE_KEYS.media, [
+      {
+        id: 'm-7',
+        kind: 'photo',
+        capturedAt: CAPTURED_AT,
+        durationMs: null,
+        fileName: 'm-7.jpg.avm',
+        thumbFileName: 'm-7.thumb.avm',
+        byteLength: 2_000,
+        at: null,
+        note: '',
+      },
+    ]);
+
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.items[0]?.thumbFileName).toBe('m-7.thumb.jpg'));
   });
 
   // Unsealed first, then given a thumbnail — the second step reads the file the

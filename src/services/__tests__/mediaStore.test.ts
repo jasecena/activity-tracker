@@ -239,9 +239,12 @@ describe('unsealing what an earlier build wrote', () => {
     expect(plainName).toBe('m-1767600000000.jpg');
 
     expectSameBytes(new File(Paths.document, 'media', plainName as string).bytesSync(), bytes);
-    // The sealed original is gone: two copies of every video is the one thing
-    // a phone has no room for.
-    expect(new File(Paths.document, 'media', 'm-1767600000000.jpg.avm').exists).toBe(false);
+    // The sealed original stays. Deleting it here would open a window where
+    // the plain file exists and the index still names the sealed one — and a
+    // crash in that window makes the plain file an orphan for the next sweep
+    // to delete. The old file is removed by that sweep instead, once the index
+    // has moved and it is genuinely an orphan.
+    expect(new File(Paths.document, 'media', 'm-1767600000000.jpg.avm').exists).toBe(true);
   });
 
   it('is null for a file that is not there', async () => {

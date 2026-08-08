@@ -231,8 +231,9 @@ export function useMedia(): UseMedia {
  * somebody took is not something an app gets to do because its storage decision
  * changed. Each file is unsealed in place, once.
  *
- * **Thumbnails**, for anything captured before they existed. Cheap now: there
- * is nothing to decrypt before there is a frame to scale.
+ * **Thumbnails**, for anything captured before they existed *or* whose
+ * thumbnail is still sealed. Cheap now: there is nothing to decrypt before
+ * there is a frame to scale.
  *
  * Reports each step as it lands rather than at the end, so the strip fills in
  * while the rest of the library is still being worked through.
@@ -251,7 +252,13 @@ async function bringUpToDate(item: MediaItem, onProgress: (patch: Partial<MediaI
     onProgress({ fileName });
   }
 
-  if (current.kind === 'audio' || current.thumbFileName) return;
+  // A *sealed* thumbnail counts as missing. It is ciphertext, and an `<Image>`
+  // handed ciphertext draws nothing — so an old capture would sit in the
+  // filmstrip as a blank square forever, with a `thumbFileName` that looked
+  // perfectly fine. The sealed one becomes an orphan and the next sweep takes
+  // it.
+  const hasThumb = current.thumbFileName !== null && !isSealed(current.thumbFileName);
+  if (current.kind === 'audio' || hasThumb) return;
 
   const thumbFileName = await backfillThumbnail(current);
   if (thumbFileName) onProgress({ thumbFileName });

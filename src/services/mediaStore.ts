@@ -301,7 +301,14 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
   }
 }
 
-/** Anything written before media stopped being sealed at rest. */
+/**
+ * Anything written before media stopped being sealed at rest.
+ *
+ * True for a thumbnail as well as a capture. A sealed thumbnail is ciphertext
+ * handed to an `<Image>`, which draws nothing at all — so an old capture is not
+ * merely un-migrated, it is a blank square in the filmstrip until it has been
+ * made again.
+ */
 export function isSealed(fileName: string): boolean {
   return fileName.endsWith('.avm');
 }
@@ -366,7 +373,15 @@ export async function unsealInPlace(fileName: string): Promise<string | null> {
     output.close();
   }
 
-  sealed.delete();
+  // **The sealed original is left where it is**, and that is the whole safety
+  // of this. Deleting it here would open a window: the plain file exists, the
+  // index still names the sealed one, and if iOS suspends the app before the
+  // index is written, the next launch sweeps the plain file as an orphan and
+  // the capture is gone for good.
+  //
+  // Write the new, let the index move, and let the next launch's sweep take
+  // the old one — it is an orphan by then, by definition. Dying anywhere in
+  // between costs a duplicate on disk until that sweep, and never a photo.
   return plainName;
 }
 
