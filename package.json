@@ -82,5 +82,12 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
+  },
+  "expo": {
+    "autolinking": {
+      "buildFromSource": [
+        "expo-image-manipulator"
+      ]
+    }
   }
 }

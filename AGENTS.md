@@ -225,6 +225,16 @@ tell apart. `services/motion.ts` uses the pedometer, which is reachable.
 demand and never automatic. `services/dayLog.ts` stores a plain array of
 `Segment` precisely so that stays straightforward.
 
+**A precompiled Expo module can fail to link at launch, and the smoke test is
+the only thing that will tell you.** `expo-image-manipulator@57.0.8` ships an
+xcframework built against a newer `ExpoModulesCore` than `expo@57.0.9` provides,
+so the app aborted in dyld before any JavaScript ran — `Symbol not found:
+BaseModule.willDestroy`. Jest cannot see this; every module is mocked. The fix
+is `expo.autolinking.buildFromSource` in `package.json`, which compiles that one
+module against the core actually present. Making the JS import lazy does _not_
+help: the framework is linked because it is in the bundle, not because something
+imported it.
+
 **Expo Go no longer runs this app.** `expo-camera`, `expo-audio`, `expo-video`
 and `expo-maps` are native modules, so development needs a dev client build.
 
