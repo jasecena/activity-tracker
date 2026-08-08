@@ -332,7 +332,7 @@ export function TabShell() {
               {/* Icon only. The label is still the accessibility name, so a
                   screen reader and the smoke test keep saying "Day tab" — what
                   goes is the visible word, not the meaning. */}
-              <Ionicons name={icon} size={26} color={active ? colors.move : colors.textMuted} />
+              <Ionicons name={icon} size={30} color={active ? colors.move : colors.textMuted} />
             </Pressable>
           );
         })}
@@ -390,6 +390,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
+  // A bigger target than the icon needs. With no labels under them the row was
+  // as short as an icon and a hair of padding, which is a smaller thing to hit
+  // than anything else in the app and the one you reach for most.
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md, minHeight: 56 },
   pressed: { opacity: 0.6 },
 });

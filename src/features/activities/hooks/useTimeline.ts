@@ -88,19 +88,30 @@ export function useTimeline(settings: Settings, labels: readonly JourneyLabel[],
       if (!live) return;
 
       // What the buffer still holds after freezing is the live day, plus the
-      // tail of a segment that straddled midnight. Every label is applied to
-      // it; one whose journey is not in there covers nothing and emits nothing,
-      // so there is no filtering to do and no day arithmetic to get wrong.
+      // tail of a segment that straddled midnight.
       const boundary = log.length > 0 ? (log[log.length - 1]?.endedAt ?? 0) : 0;
       const liveSegments = segments.filter((segment) => segment.endedAt > boundary);
+
+      // **Both halves, and this was a bug.** Labels used to be applied to the
+      // live day alone, on the reasoning that a label covering nothing emits
+      // nothing so no filtering was needed. True, and beside the point: it
+      // meant naming or merging a journey on any day already frozen was stored
+      // faithfully and then never shown. The row came back unchanged and the
+      // merge looked broken, because from where you were sitting it was.
+      //
+      // The two sets are disjoint — `boundary` is exactly where the log ends —
+      // so each is labelled on its own and a label reaches whichever contains
+      // its range. Frozen days keep their `path`, so a split still apportions
+      // distance rather than recomputing it.
       const labelled = applyJourneyLabels(liveSegments, labels);
+      const labelledLog = applyJourneyLabels(log, labels);
 
       setNow(at);
       setTzOffset(offset);
       setRejected(dropped);
       setFixes(buffered);
       setToday(labelled);
-      setHistory(groupByDay(log, offset));
+      setHistory(groupByDay(labelledLog, offset));
       setReady(true);
     })();
 

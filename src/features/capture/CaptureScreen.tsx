@@ -214,9 +214,23 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           style={StyleSheet.absoluteFill}
           facing={facing}
           mode={mode === 'video' ? 'video' : 'picture'}
-          // The default on iOS already focuses continuously; saying so keeps it
-          // from being switched off by a future default change.
-          autofocus="on"
+          /**
+           * `"off"` is continuous autofocus. Read that twice, because the
+           * naming is a trap and this app fell in it.
+           *
+           * `expo-camera`'s `FocusMode` is documented as: `"on"` — focus once
+           * and then **lock**; `"off"` — focus automatically **when needed**.
+           * So `"on"` is the manual one. It was set here with a comment saying
+           * it meant continuous focus, which is how the camera came to focus
+           * once as it mounted and then hold that plane for as long as the tab
+           * was open: point it at something else and nothing happened.
+           *
+           * There is no built-in tap-to-focus in this SDK — no point of
+           * interest, no focus callback — so a tap would mean a gesture and a
+           * hand-rolled toggle. Continuous focus is what a tap would have been
+           * asking for anyway.
+           */
+          autofocus="off"
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.voiceStage]}>
