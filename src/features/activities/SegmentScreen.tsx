@@ -41,13 +41,15 @@ export function SegmentScreen({
           title={place?.name ?? 'Unnamed place'}
           subtitle={`${span} · ${formatDuration(elapsed)}`}
           onBack={onBack}
-          action={
+          actions={
             onNamePlace
-              ? {
-                  label: place ? 'Rename this place' : 'Name this place',
-                  icon: 'pricetag-outline',
-                  onPress: onNamePlace,
-                }
+              ? [
+                  {
+                    label: place ? 'Rename this place' : 'Name this place',
+                    icon: 'pricetag-outline',
+                    onPress: onNamePlace,
+                  },
+                ]
               : undefined
           }
         />
@@ -97,13 +99,15 @@ export function SegmentScreen({
         title={segment.label ?? modeLabel(segment.mode)}
         subtitle={`${span} · ${formatDuration(elapsed)}`}
         onBack={onBack}
-        action={
+        actions={
           onNameJourney
-            ? {
-                label: segment.label ? 'Rename this journey' : 'Name this journey',
-                icon: 'pricetag-outline',
-                onPress: onNameJourney,
-              }
+            ? [
+                {
+                  label: segment.label ? 'Rename this journey' : 'Name this journey',
+                  icon: 'pricetag-outline',
+                  onPress: onNameJourney,
+                },
+              ]
             : undefined
         }
       />

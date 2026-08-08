@@ -4,8 +4,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography } from '@/theme/tokens';
 
 export interface HeaderAction {
+  /** Announced to a screen reader, and the tooltip a sighted user never sees. */
   readonly label: string;
   readonly icon: keyof typeof Ionicons.glyphMap;
+  /**
+   * Shown instead of the icon.
+   *
+   * For the handful of actions where a glyph is a guess — "Today" next to a
+   * calendar is two calendars — a short word says it outright.
+   */
+  readonly text?: string;
   readonly onPress: () => void;
 }
 
@@ -14,7 +22,8 @@ interface ScreenHeaderProps {
   readonly subtitle?: string;
   /** Omit on a tab root; supply on a page pushed above one. */
   readonly onBack?: () => void;
-  readonly action?: HeaderAction;
+  /** Rendered right-aligned in the order given. Usually one; the day view has two. */
+  readonly actions?: readonly HeaderAction[];
 }
 
 /**
@@ -25,7 +34,7 @@ interface ScreenHeaderProps {
  * distinguish the "Today" heading from the "Today" tab label, which are
  * different things that happen to share a word.
  */
-export function ScreenHeader({ title, subtitle, onBack, action }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, onBack, actions = [] }: ScreenHeaderProps) {
   return (
     <View style={styles.header}>
       {onBack ? (
@@ -53,17 +62,22 @@ export function ScreenHeader({ title, subtitle, onBack, action }: ScreenHeaderPr
         ) : null}
       </View>
 
-      {action ? (
+      {actions.map((action) => (
         <Pressable
+          key={action.label}
           onPress={action.onPress}
           accessibilityRole="button"
           accessibilityLabel={action.label}
           hitSlop={12}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
         >
-          <Ionicons name={action.icon} size={22} color={colors.textSecondary} />
+          {action.text ? (
+            <Text style={styles.actionText}>{action.text}</Text>
+          ) : (
+            <Ionicons name={action.icon} size={22} color={colors.textSecondary} />
+          )}
         </Pressable>
-      ) : null}
+      ))}
     </View>
   );
 }
@@ -82,5 +96,6 @@ const styles = StyleSheet.create({
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary },
   action: { padding: spacing.xs },
+  actionText: { ...typography.body, fontWeight: '600', color: colors.move },
   pressed: { opacity: 0.6 },
 });

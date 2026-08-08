@@ -54,7 +54,7 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
             : 'No visits recorded yet'
         }
         onBack={onBack}
-        action={{ label: 'Place options', icon: 'ellipsis-horizontal', onPress: () => setMenuOpen(true) }}
+        actions={[{ label: 'Place options', icon: 'ellipsis-horizontal', onPress: () => setMenuOpen(true) }]}
       />
 
       {renaming ? (

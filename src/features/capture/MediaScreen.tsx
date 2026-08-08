@@ -67,7 +67,7 @@ export function MediaScreen({ item, at, tzOffsetMinutes, mapsEnabled, onBack, on
         title={formatClockTime(item.capturedAt, tzOffsetMinutes)}
         subtitle={`${item.kind}${item.durationMs === null ? '' : ` · ${formatDuration(item.durationMs)}`}`}
         onBack={onBack}
-        action={{ label: 'Forget this capture', icon: 'trash-outline', onPress: confirmForget }}
+        actions={[{ label: 'Forget this capture', icon: 'trash-outline', onPress: confirmForget }]}
       />
 
       <ScrollView contentContainerStyle={styles.content}>

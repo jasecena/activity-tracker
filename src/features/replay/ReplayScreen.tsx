@@ -115,7 +115,21 @@ export function ReplayScreen({
       <ScreenHeader
         title={isToday ? 'Today' : title}
         subtitle={subtitle}
-        action={{ label: 'All days', icon: 'calendar-outline', onPress: onOpenAllDays }}
+        actions={[
+          // Only when it would do something. On today it is a no-op, and its
+          // absence is itself the answer to "which day am I looking at".
+          ...(isToday
+            ? []
+            : [
+                {
+                  label: 'Back to today',
+                  icon: 'today-outline' as const,
+                  text: 'Today',
+                  onPress: () => onSelectDay(null),
+                },
+              ]),
+          { label: 'All days', icon: 'calendar-outline' as const, onPress: onOpenAllDays },
+        ]}
       />
 
       <ScrollView contentContainerStyle={styles.content}>

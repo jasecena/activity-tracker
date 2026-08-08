@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { useState } from 'react';
 
 import type { DayGroup } from '@/core/day';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
@@ -78,6 +79,36 @@ const SETTINGS = {
   setTracking: () => undefined,
   askForPermission: () => undefined,
 } as unknown as UseSettings;
+
+/** Yesterday, so there is somewhere to go back from. */
+const YESTERDAY: DayGroup = {
+  key: '2026-01-04',
+  startedAt: Date.UTC(2026, 0, 4),
+  segments: [move(T0 - 24 * 60 * 60_000, T0 - 24 * 60 * 60_000 + 10 * MINUTE, 0, 800)],
+};
+
+function renderTwoDays() {
+  function Harness() {
+    const [selected, setSelected] = useState<string | null>(null);
+    return (
+      <ReplayScreen
+        days={[WHOLE_DAY, YESTERDAY]}
+        places={[]}
+        media={[]}
+        settings={SETTINGS}
+        tzOffsetMinutes={0}
+        mapsEnabled={false}
+        ready
+        selectedDayKey={selected}
+        onSelectDay={setSelected}
+        onOpenSegment={() => undefined}
+        onOpenMedia={() => undefined}
+        onOpenAllDays={() => undefined}
+      />
+    );
+  }
+  return render(<Harness />);
+}
 
 function renderScreen(day: DayGroup) {
   return render(
@@ -209,5 +240,30 @@ describe('the player', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('getting back to today', () => {
+  // A day view is long, and the previous/next arrows scroll away with it. The
+  // button lives in the header, which does not move.
+  it('offers no way back while you are already on today', async () => {
+    await renderTwoDays();
+    expect(screen.queryByLabelText('Back to today')).not.toBeOnTheScreen();
+  });
+
+  it('appears once you have gone back, and returns in one tap', async () => {
+    await renderTwoDays();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Previous day'));
+    });
+    expect(screen.getByRole('header', { name: 'Sunday 4 Jan' })).toBeOnTheScreen();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Back to today'));
+    });
+
+    expect(screen.getByRole('header', { name: 'Today' })).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Back to today')).not.toBeOnTheScreen();
   });
 });
