@@ -52,16 +52,42 @@ function isOpen(state: AppStateStatus | undefined): boolean {
  * is false for a related reason — see § 8.
  *
  * **Self-rescheduling rather than an interval.** Each fix schedules the next
- * from the moment it landed, so returning to the app after two minutes does not
- * take one and returning after twenty takes one immediately. An interval would
- * fire on a fixed grid and take a fix every time you glanced at the screen.
+ * from the moment it landed. An interval would fire on a fixed grid regardless
+ * of what had already been recorded.
+ *
+ * **Every arrival counts.** Opening the app clears the throttle, so a position
+ * is recorded then and there — a cold launch and a return from the background
+ * alike. The app switcher does not count: iOS reports `inactive` while it is
+ * up, and treating that as an arrival would wake the GPS every time the phone
+ * was flicked past.
  */
 export function useHeartbeat(enabled: boolean, onRecorded: () => void): void {
   const [lastAt, setLastAt] = useState<number | null>(null);
   const [open, setOpen] = useState(() => isOpen(AppState.currentState));
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => setOpen(isOpen(state)));
+    // The previous state, in a closure rather than in state: nothing renders
+    // from it, and it exists only to tell a real reopening apart from the
+    // active/inactive flicker of the app switcher.
+    let wasOpen = isOpen(AppState.currentState);
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      const nowOpen = isOpen(state);
+
+      // Opening the app is itself a moment worth writing down, so the interval
+      // restarts from here rather than carrying over from before. Without
+      // this, coming back after two minutes records nothing — the throttle
+      // that stops a glance costing a fix also stops an arrival costing one.
+      //
+      // Only on a genuine reopening. `inactive` is what iOS reports while the
+      // app switcher is up or a call is ringing, and treating each of those as
+      // an arrival would wake the GPS every time the phone was flicked past.
+      if (nowOpen && !wasOpen) setLastAt(null);
+
+      wasOpen = nowOpen;
+      setOpen(nowOpen);
+    });
+
     return () => subscription.remove();
   }, []);
 

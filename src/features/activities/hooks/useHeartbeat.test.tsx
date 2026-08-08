@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 import * as LocationModule from 'expo-location';
 
 import { readBuffer } from '@/services/fixBuffer';
@@ -92,4 +93,67 @@ it('tells the timeline to re-read once a fix has landed', async () => {
   await tick();
 
   expect(onRecorded).toHaveBeenCalled();
+});
+
+describe('coming back to the app', () => {
+  /**
+   * Drive AppState through the listener the hook itself registered.
+   *
+   * Reaching for an emitter on the mock would be testing React Native rather
+   * than this hook, and the mock's internals are not a contract.
+   */
+  function captureAppState(): { send: (state: 'active' | 'inactive' | 'background') => Promise<void> } {
+    let handler: ((state: string) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_type: string, listener: (s: string) => void) => {
+      handler = listener;
+      return { remove: () => undefined };
+    }) as typeof AppState.addEventListener);
+
+    return {
+      send: (state) =>
+        act(async () => {
+          handler?.(state);
+        }),
+    };
+  }
+
+  it('records a position the moment the app is opened again', async () => {
+    const appState = captureAppState();
+
+    await act(async () => {
+      await renderHook(() => useHeartbeat(true, () => undefined));
+    });
+    await tick();
+    const afterLaunch = location.getCurrentPositionAsync.mock.calls.length;
+    expect(afterLaunch).toBeGreaterThan(0);
+
+    // Two minutes later — well inside the interval — so nothing on its own.
+    await tick(2 * 60_000);
+    expect(location.getCurrentPositionAsync).toHaveBeenCalledTimes(afterLaunch);
+
+    await appState.send('background');
+    await appState.send('active');
+    await tick();
+
+    expect(location.getCurrentPositionAsync.mock.calls.length).toBeGreaterThan(afterLaunch);
+  });
+
+  // The app switcher reports `inactive` and then `active` again without the app
+  // ever having left. Waking the GPS for that would cost a fix every time the
+  // phone was flicked past.
+  it('ignores the app switcher passing over it', async () => {
+    const appState = captureAppState();
+
+    await act(async () => {
+      await renderHook(() => useHeartbeat(true, () => undefined));
+    });
+    await tick();
+    const afterLaunch = location.getCurrentPositionAsync.mock.calls.length;
+
+    await appState.send('inactive');
+    await appState.send('active');
+    await tick();
+
+    expect(location.getCurrentPositionAsync).toHaveBeenCalledTimes(afterLaunch);
+  });
 });
