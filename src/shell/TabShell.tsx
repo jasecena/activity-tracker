@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { groupByDay } from '@/core/day';
@@ -27,7 +27,7 @@ import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, spacing } from '@/theme/tokens';
 
 import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
@@ -305,10 +305,10 @@ export function TabShell() {
               accessibilityState={{ selected: active }}
               style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
             >
-              <Ionicons name={icon} size={24} color={active ? colors.move : colors.textMuted} />
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
-                {label}
-              </Text>
+              {/* Icon only. The label is still the accessibility name, so a
+                  screen reader and the smoke test keep saying "Day tab" — what
+                  goes is the visible word, not the meaning. */}
+              <Ionicons name={icon} size={26} color={active ? colors.move : colors.textMuted} />
             </Pressable>
           );
         })}
@@ -360,11 +360,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  tab: { flex: 1, alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm, paddingBottom: spacing.xs },
-  // One size down from `caption` and never wrapped: five labels across a 6.1"
-  // screen is where "Settings" starts to break onto a second line and push the
-  // bar taller than the others.
-  tabLabel: { ...typography.caption, fontSize: 11, color: colors.textMuted },
-  tabLabelActive: { color: colors.move },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
   pressed: { opacity: 0.6 },
 });
