@@ -25,6 +25,7 @@ function item(capturedAt: number, overrides: Partial<MediaItem> = {}): MediaItem
     capturedAt,
     durationMs: null,
     fileName: `${mediaIdFor(capturedAt)}.bin`,
+    thumbFileName: null,
     byteLength: 1_024,
     note: '',
     ...overrides,

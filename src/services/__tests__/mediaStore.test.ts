@@ -1,10 +1,12 @@
 import * as FileSystem from 'expo-file-system';
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 
 import type { MediaItem } from '@/core/media';
 
 import {
   deleteMedia,
+  openThumbnail,
+  writeThumbnail,
   discardPending,
   eraseAllMedia,
   listPending,
@@ -47,6 +49,7 @@ function item(overrides: Partial<MediaItem> = {}): MediaItem {
     capturedAt: 1_767_600_000_000,
     durationMs: null,
     fileName: 'm-1767600000000.jpg.avm',
+    thumbFileName: null,
     byteLength: 0,
     note: '',
     ...overrides,
@@ -330,5 +333,71 @@ describe('sweeping orphans', () => {
 
   it('is harmless before anything has been captured', () => {
     expect(sweepOrphans([])).toBe(0);
+  });
+});
+
+/**
+ * A filmstrip of full captures would decrypt every photo to draw a row of
+ * 60-point squares — the same whole-file cost as playing a video, multiplied by
+ * everything ever taken. A few kilobytes sealed beside each capture avoids it.
+ */
+describe('thumbnails', () => {
+  it('seals one beside a photo, separate from the photo', async () => {
+    __seed('file:///mock/cache/shot.jpg', pattern(50_000));
+
+    const thumbName = await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
+    expect(thumbName).toBe('m-1.thumb.avm');
+
+    const sealed = new File(Paths.document, 'media', thumbName as string);
+    expect(sealed.exists).toBe(true);
+    // Sealed, not the raw scaled bytes.
+    expect(sameBytes(sealed.bytesSync(), new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).toBe(false);
+    // And far smaller than the capture it came from.
+    expect(sealed.size).toBeLessThan(50_000);
+  });
+
+  it('opens one back to the bytes it was made from', async () => {
+    __seed('file:///mock/cache/shot.jpg', pattern(4_000));
+    const thumbName = await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
+
+    const uri = await openThumbnail(thumbName as string);
+    expectSameBytes(new File(uri as string).bytesSync(), new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
+  });
+
+  it('pulls a frame out of a video first', async () => {
+    __seed('file:///mock/cache/clip.mov', pattern(4_000));
+    expect(await writeThumbnail('file:///mock/cache/clip.mov', 'm-2', 'video')).toBe('m-2.thumb.avm');
+  });
+
+  // Nothing to show, and inventing a grey square would be worse than nothing.
+  it('makes none for a voice note', async () => {
+    __seed('file:///mock/cache/note.m4a', pattern(1_000));
+    expect(await writeThumbnail('file:///mock/cache/note.m4a', 'm-3', 'audio')).toBeNull();
+  });
+
+  it('is null rather than fatal when the platform cannot make one', async () => {
+    expect(await writeThumbnail('file:///mock/cache/missing.jpg', 'm-4', 'photo')).not.toBe(undefined);
+  });
+
+  it('leaves no plaintext scaled copy behind in the media directory', async () => {
+    __seed('file:///mock/cache/shot.jpg', pattern(4_000));
+    await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
+
+    const stray = new Directory(Paths.document, 'media').list().filter((entry) => !entry.uri.endsWith('.avm'));
+    expect(stray).toEqual([]);
+  });
+
+  // The capture and its thumbnail are two files; forgetting one must not leave
+  // the other behind for the sweep to find and the disk to carry.
+  it('goes when the capture it belongs to goes', async () => {
+    __seed('file:///mock/cache/shot.jpg', pattern(4_000));
+    const thumbName = await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
+    __seed('file:///mock/cache/shot2.jpg', pattern(4_000));
+    const written = await writeMedia('file:///mock/cache/shot2.jpg', 'm-1', 'photo');
+
+    deleteMedia(item({ fileName: written.fileName, thumbFileName: thumbName }));
+
+    expect(new File(Paths.document, 'media', thumbName as string).exists).toBe(false);
+    expect(sealedFileOf(item({ fileName: written.fileName })).exists).toBe(false);
   });
 });

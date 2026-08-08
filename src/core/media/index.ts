@@ -39,6 +39,18 @@ export interface MediaItem {
   readonly durationMs: number | null;
   /** Name of the sealed file in the media directory. Opaque — the plaintext never has a name. */
   readonly fileName: string;
+  /**
+   * A small sealed image for the filmstrip, or null if there is none.
+   *
+   * Null for a voice note, which has nothing to show, and for anything
+   * captured before thumbnails existed — those get one the first time they are
+   * looked at rather than by rewriting the whole store.
+   *
+   * It exists because a filmstrip of full captures would decrypt every photo
+   * to draw a row of 60-point squares, which is the same whole-file cost as
+   * playing a video, multiplied by everything you have ever taken.
+   */
+  readonly thumbFileName: string | null;
   /** Size on disk, ciphertext included. What the Data screen reports. */
   readonly byteLength: number;
   /** Whatever you typed, or empty. */
@@ -96,6 +108,10 @@ export function normalizeMedia(input: unknown): MediaItem[] {
       capturedAt: item.capturedAt,
       durationMs: typeof item.durationMs === 'number' && Number.isFinite(item.durationMs) ? item.durationMs : null,
       fileName: item.fileName,
+      // Absent on anything written before thumbnails existed, which is a state
+      // the app has to handle rather than a value to invent.
+      thumbFileName:
+        typeof item.thumbFileName === 'string' && item.thumbFileName.length > 0 ? item.thumbFileName : null,
       byteLength: typeof item.byteLength === 'number' && item.byteLength >= 0 ? item.byteLength : 0,
       note: typeof item.note === 'string' ? item.note : '',
     }))

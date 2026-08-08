@@ -1,4 +1,6 @@
 import { Directory, File, FileMode, Paths } from 'expo-file-system';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { getThumbnailAsync } from 'expo-video-thumbnails';
 
 import type { MediaItem, MediaKind } from '@/core/media';
 
@@ -66,6 +68,15 @@ const PENDING_DIRECTORY = 'pending';
 
 /** `<id>--<kind>.<ext>`, so an interrupted capture identifies itself. */
 const NAME_SEPARATOR = '--';
+
+/**
+ * Longest edge of a filmstrip thumbnail, in pixels.
+ *
+ * Generous for a 60-point square at 3× so it stays sharp, and still a few
+ * kilobytes — which is the entire point. Decrypting one is imperceptible;
+ * decrypting the photo it came from, sixty times over, is the lag this avoids.
+ */
+const THUMB_EDGE = 240;
 
 const EXTENSIONS: Readonly<Record<MediaKind, string>> = {
   photo: 'jpg',
@@ -270,6 +281,74 @@ export async function writeMedia(
 }
 
 /**
+ * Make a small image for the filmstrip and seal it beside the capture.
+ *
+ * Takes the **plaintext**, so it must be called while the staged file still
+ * exists — before `writeMedia` consumes it. Generating one later means
+ * decrypting the whole capture first, which is exactly the cost thumbnails
+ * exist to avoid; that path is for old captures only.
+ *
+ * Returns null when there is nothing to show (a voice note) or when the
+ * platform cannot produce a frame. A missing thumbnail is a state the UI
+ * already has to handle, so failing here is never worth losing a capture over.
+ */
+export async function writeThumbnail(sourceUri: string, id: string, kind: MediaKind): Promise<string | null> {
+  if (kind === 'audio') return null;
+  ensureDirectory();
+
+  try {
+    // A video has no image until a frame is pulled out of it; a photo is
+    // already one. Either way what gets scaled is a plain file on disk.
+    const frameUri = kind === 'video' ? (await getThumbnailAsync(sourceUri, { time: 0, quality: 0.6 })).uri : sourceUri;
+
+    const context = ImageManipulator.manipulate(frameUri);
+    context.resize({ width: THUMB_EDGE, height: null });
+    const rendered = await context.renderAsync();
+    const small = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.6 });
+
+    const fileName = `${id}.thumb.avm`;
+    const destination = new File(mediaDirectory(), fileName);
+    if (destination.exists) destination.delete();
+
+    // Small enough to seal in one pass: no chunking, no yielding, no progress.
+    const plain = await new File(small.uri).bytes();
+    destination.create();
+    destination.write(await sealBytes(plain));
+
+    // The extracted frame and the scaled copy are both plaintext temp files.
+    for (const uri of [small.uri, frameUri]) {
+      if (uri === sourceUri) continue;
+      const temp = new File(uri);
+      if (temp.exists) temp.delete();
+    }
+
+    return fileName;
+  } catch (error) {
+    console.warn('Could not make a thumbnail', error);
+    return null;
+  }
+}
+
+/** Decrypt a thumbnail for display. Small, so read whole rather than streamed. */
+export async function openThumbnail(fileName: string): Promise<string | null> {
+  const sealed = new File(mediaDirectory(), fileName);
+  if (!sealed.exists) return null;
+
+  try {
+    const plain = await openBytes(await sealed.bytes());
+    if (!plain) return null;
+
+    const destination = new File(Paths.cache, `thumb-${fileName.replace(/\.avm$/, '')}.jpg`);
+    if (destination.exists) destination.delete();
+    destination.create();
+    destination.write(plain);
+    return destination.uri;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Decrypt an item into the cache and return a URI something can play.
  *
  * Returns null when the file is missing or will not authenticate — a restored
@@ -330,11 +409,14 @@ export function releasePlayback(item: MediaItem): void {
   if (decrypted.exists) decrypted.delete();
 }
 
-/** Forget one capture, bytes and all. */
+/** Forget one capture, bytes and all — the thumbnail included. */
 export function deleteMedia(item: MediaItem): void {
   releasePlayback(item);
-  const sealed = new File(mediaDirectory(), item.fileName);
-  if (sealed.exists) sealed.delete();
+  for (const name of [item.fileName, item.thumbFileName]) {
+    if (!name) continue;
+    const sealed = new File(mediaDirectory(), name);
+    if (sealed.exists) sealed.delete();
+  }
 }
 
 /**

@@ -164,6 +164,10 @@ export class File {
     return written.get(this.uri) ?? new Uint8Array();
   }
 
+  async bytes(): Promise<Uint8Array> {
+    return this.bytesSync();
+  }
+
   open(mode: FileMode = FileMode.ReadWrite): FileHandle {
     return new FileHandle(this.uri, mode);
   }

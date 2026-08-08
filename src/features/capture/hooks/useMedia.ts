@@ -9,6 +9,7 @@ import {
   stageCapture,
   sweepOrphans,
   writeMedia,
+  writeThumbnail,
 } from '@/services/mediaStore';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
@@ -69,6 +70,7 @@ export function useMedia(): UseMedia {
         }
 
         try {
+          const thumbFileName = await writeThumbnail(pending.uri, pending.id, pending.kind);
           const { fileName, byteLength } = await writeMedia(pending.uri, pending.id, pending.kind);
           // `durationMs` is not recoverable from the name and is only ever set
           // for a voice note. A clip with no length beats a clip that is gone.
@@ -78,6 +80,7 @@ export function useMedia(): UseMedia {
             capturedAt,
             durationMs: null,
             fileName,
+            thumbFileName,
             byteLength,
             note: '',
           });
@@ -127,8 +130,12 @@ export function useMedia(): UseMedia {
         // the clip — and it means an interruption leaves behind a file that
         // says what it was, rather than an OS temp file nobody will look for.
         const staged = stageCapture(sourceUri, id, kind);
+        // Before `writeMedia`, which deletes the staged file: a thumbnail made
+        // afterwards would have to decrypt the whole capture to get a picture
+        // of it, which is the cost thumbnails exist to avoid.
+        const thumbFileName = await writeThumbnail(staged.uri, id, kind);
         const { fileName, byteLength } = await writeMedia(staged.uri, id, kind, onProgress);
-        const item: MediaItem = { id, kind, capturedAt, durationMs, fileName, byteLength, note: '' };
+        const item: MediaItem = { id, kind, capturedAt, durationMs, fileName, thumbFileName, byteLength, note: '' };
         // Read from state at the moment of the write rather than from a
         // dependency: sealing a video takes long enough for a second capture to
         // start, and a stale closure here would drop one of them.
