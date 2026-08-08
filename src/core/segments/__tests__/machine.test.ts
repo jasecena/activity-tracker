@@ -11,7 +11,7 @@ import {
   type StaySegment,
 } from '../index';
 
-import { chain, fix, leg, T0 } from './fixtures';
+import { chain, ELSEWHERE, fix, leg, shifted, T0 } from './fixtures';
 
 const MINUTE = 60_000;
 const CONFIG = DEFAULT_SEGMENT_CONFIG;
@@ -80,6 +80,84 @@ describe('a plain day: sit, walk, sit', () => {
   it('places the stay where the phone actually sat', () => {
     expect(asStay(segments[0]).center.lat).toBeCloseTo(0, 9);
     expect(asStay(segments[0]).radiusM).toBeCloseTo(0, 6);
+  });
+});
+
+/**
+ * Where a stay says it was, against where its readings actually were.
+ *
+ * Deliberately run away from the origin. Every other fixture in this suite sits
+ * at (0, 0) — which keeps the distances checkable in your head and keeps real
+ * places out of the repository, but also means a centre computed with the wrong
+ * divisor is still exactly zero. This is the assertion that origin hides.
+ */
+describe('where a stay says it was', () => {
+  function boundsOfFixes(fixes: readonly { lat: number; lon: number }[]) {
+    return {
+      minLat: Math.min(...fixes.map((one) => one.lat)),
+      maxLat: Math.max(...fixes.map((one) => one.lat)),
+      minLon: Math.min(...fixes.map((one) => one.lon)),
+      maxLon: Math.max(...fixes.map((one) => one.lon)),
+    };
+  }
+
+  it('is inside the readings it was computed from', () => {
+    const fixes = shifted(chain(still(0, T0, 20 * MINUTE)), ELSEWHERE);
+    const { segments } = segmentFixes(fixes, CONFIG);
+    const bounds = boundsOfFixes(fixes);
+
+    const { center } = asStay(segments[0]);
+    expect(center.lat).toBeGreaterThanOrEqual(bounds.minLat);
+    expect(center.lat).toBeLessThanOrEqual(bounds.maxLat);
+    expect(center.lon).toBeGreaterThanOrEqual(bounds.minLon);
+    expect(center.lon).toBeLessThanOrEqual(bounds.maxLon);
+  });
+
+  // The bug that shipped. A merge counts the boundary fix once and used to sum
+  // it twice, so the centre came out as the true mean scaled by (n + merges)/n
+  // — which is invisible at the origin and, on a real phone, put a stay 800 km
+  // out to sea. Two absorbed segments, so the error compounds rather than
+  // being a rounding difference.
+  it('is still inside them after absorbing the noise around it', () => {
+    const fixes = shifted(
+      chain(
+        still(0, T0, 15 * MINUTE),
+        walk(0, T0 + 15 * MINUTE, 30_000),
+        still(42, T0 + 15 * MINUTE + 30_000, 15 * MINUTE),
+        walk(42, T0 + 30 * MINUTE + 30_000, 30_000),
+        still(84, T0 + 31 * MINUTE, 15 * MINUTE),
+      ),
+      ELSEWHERE,
+    );
+    const { segments } = segmentFixes(fixes, CONFIG);
+    const bounds = boundsOfFixes(fixes);
+
+    expect(kinds(segments)).toEqual(['stay']);
+    const { center } = asStay(segments[0]);
+    expect(center.lat).toBeGreaterThanOrEqual(bounds.minLat);
+    expect(center.lat).toBeLessThanOrEqual(bounds.maxLat);
+    expect(center.lon).toBeGreaterThanOrEqual(bounds.minLon);
+    expect(center.lon).toBeLessThanOrEqual(bounds.maxLon);
+  });
+
+  // The centre is the plain mean of every reading, and after a merge it must
+  // still be the mean of *all* of them — not of a count that disagrees with the
+  // sum it divides.
+  it('is the mean of every reading behind it', () => {
+    const fixes = shifted(
+      chain(
+        still(0, T0, 15 * MINUTE),
+        walk(0, T0 + 15 * MINUTE, 30_000),
+        still(42, T0 + 15 * MINUTE + 30_000, 15 * MINUTE),
+      ),
+      ELSEWHERE,
+    );
+    const { segments } = segmentFixes(fixes, CONFIG);
+
+    const stay = asStay(segments[0]);
+    const meanLon = fixes.reduce((sum, one) => sum + one.lon, 0) / fixes.length;
+    expect(stay.fixCount).toBe(fixes.length);
+    expect(stay.center.lon).toBeCloseTo(meanLon, 9);
   });
 });
 

@@ -136,6 +136,17 @@ function merge(earlier: OpenSegment, later: OpenSegment): OpenSegment {
   // in `earlier`. Dropping the repeat keeps a merged route from acquiring a
   // zero-length step at every join.
   const laterPath = later.path[0]?.at === earlier.lastKept.at ? later.path.slice(1) : later.path;
+
+  // The same boundary fix, for the running total that produces the centre.
+  //
+  // `fixCount` has always subtracted it. The sums did not, so every merge added
+  // one extra copy of the boundary point and the centre came out as the true
+  // mean scaled by (n+merges)/n. At the origin — where every fixture in this
+  // suite lives, deliberately — that error is zero times something and
+  // invisible. On a real phone it put a stay in the Macedon Ranges half way out
+  // into the Tasman Sea, 800 km from any reading behind it.
+  const boundary = later.path[0];
+
   return {
     kind: earlier.kind,
     startedAt: earlier.startedAt,
@@ -150,8 +161,8 @@ function merge(earlier: OpenSegment, later: OpenSegment): OpenSegment {
     anchor: earlier.anchor,
     // An upper bound rather than a recomputation, which would need every fix.
     radiusM: Math.max(earlier.radiusM, distanceM(earlier.anchor, later.anchor) + later.radiusM),
-    sumLat: earlier.sumLat + later.sumLat,
-    sumLon: earlier.sumLon + later.sumLon,
+    sumLat: earlier.sumLat + later.sumLat - (boundary?.lat ?? 0),
+    sumLon: earlier.sumLon + later.sumLon - (boundary?.lon ?? 0),
     lastKept: later.lastKept,
     lastPoint: later.lastPoint,
   };

@@ -16,6 +16,26 @@ const DEG_PER_METRE_LAT = 1 / ((EARTH_RADIUS_M * Math.PI) / 180);
 /** The origin of every fixture. Deliberately in the ocean. */
 export const ORIGIN = { lat: 0, lon: 0 } as const;
 
+/**
+ * Somewhere that is not the origin, for the errors the origin hides.
+ *
+ * (0, 0) makes every distance easy to check in your head and keeps the fixtures
+ * out of anybody's real life — but it also means a coordinate scaled by the
+ * wrong factor is still exactly zero, so a whole class of arithmetic bug passes
+ * every assertion in this suite. One shipped: the boundary fix of a merge was
+ * counted once and summed twice, and a stay's centre came out as the true mean
+ * multiplied by (n + merges) / n. Zero times anything is zero.
+ *
+ * Round numbers with no decimals, so it stays plainly synthetic: this is a
+ * point in the Sahara, not anybody's morning.
+ */
+export const ELSEWHERE = { lat: 20, lon: 10 } as const;
+
+/** Move a whole stream somewhere else, keeping every relative distance. */
+export function shifted(fixes: readonly Fix[], to: { readonly lat: number; readonly lon: number }): Fix[] {
+  return fixes.map((one) => ({ ...one, lat: one.lat + to.lat, lon: one.lon + to.lon }));
+}
+
 export const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
 
 export function fix(at: number, northM: number, overrides: Partial<Fix> = {}): Fix {

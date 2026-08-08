@@ -39,6 +39,15 @@ in Jest's structural equality, and a loop with an early exit costs milliseconds.
 **Refs may not be read during render.** `react-hooks/refs` is an error, not a
 warning. A value the render depends on goes in `useState`.
 
+**Fixtures at the origin hide multiplicative errors, so test the centre away
+from it.** (0, 0) keeps distances checkable in your head and real places out of
+the repository, but a coordinate scaled by the wrong factor is still exactly
+zero. One shipped: `merge` counted the boundary fix once and summed it twice,
+so a stay's centre came out as the true mean times (n + merges) / n — invisible
+in every test and, on a phone in Victoria, a stay 800 km out in the Tasman Sea.
+`ELSEWHERE` and `shifted` in the fixtures exist for assertions about _where_
+something is, as opposed to how far apart two things are.
+
 **Never commit credentials, and never commit real coordinates.** `.gitignore`
 blocks the credential patterns and gitleaks scans history in CI. There is also a
 gitleaks rule for plausible latitudes: a fixture built from a real track is a
