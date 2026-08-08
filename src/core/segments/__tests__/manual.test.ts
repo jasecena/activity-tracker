@@ -3,7 +3,6 @@ import {
   applyJourneyLabels,
   DEFAULT_SEGMENT_CONFIG,
   journeyLabelId,
-  journeyLabelIdOf,
   labelledSegmentId,
   segmentFixes,
   splitSegment,
@@ -299,31 +298,5 @@ describe('a merge', () => {
   it('treats a name of nothing but spaces as no name', () => {
     const blank: JourneyLabel = { ...merged(T0, T0 + 40 * MINUTE), label: '   ' };
     expect(asMove(applyJourneyLabels(segments, [blank])[0]).label).toBeNull();
-  });
-});
-
-/**
- * The id scheme has one owner, and both directions of it live there.
- *
- * Undoing a merge means forgetting the label that made the row, and the only
- * thing the screen holds is the row's id. A picker that re-derived which label
- * covered which range would be a second implementation of `labelledSegmentId`,
- * free to disagree with it.
- */
-describe('finding the label behind a row', () => {
-  it('round-trips the id a label produced', () => {
-    const label: JourneyLabel = {
-      id: journeyLabelId(T0),
-      label: 'Home to work',
-      mode: null,
-      startedAt: T0,
-      endedAt: T0 + 60_000,
-    };
-
-    expect(journeyLabelIdOf(labelledSegmentId(label))).toBe(label.id);
-  });
-
-  it('is null for a row the day produced by itself', () => {
-    expect(journeyLabelIdOf('seg-1786221473999.122')).toBeNull();
   });
 });

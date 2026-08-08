@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { summarizeDay, type DayGroup } from '@/core/day';
@@ -7,7 +7,7 @@ import { activeCalories } from '@/core/energy';
 import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
-import { journeyLabelIdOf, type Segment } from '@/core/segments';
+import type { Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
@@ -35,9 +35,6 @@ interface ReplayScreenProps {
   /** The full list of days, for going further back than the arrows are worth. */
   readonly onOpenAllDays: () => void;
   /** Join the selected rows into one journey. */
-  readonly onMerge: (segments: readonly Segment[]) => void;
-  /** Undo a merge, by forgetting the labels that produced the chosen rows. */
-  readonly onUnmerge: (labelIds: readonly string[]) => void;
 }
 
 /**
@@ -72,16 +69,7 @@ export function ReplayScreen({
   onOpenSegment,
   onOpenMedia,
   onOpenAllDays,
-  onMerge,
-  onUnmerge,
 }: ReplayScreenProps) {
-  /**
-   * Which rows are being joined, by id. Empty means not selecting at all —
-   * there is no separate mode flag, because a mode you can be in with nothing
-   * selected is a mode you can get stuck in.
-   */
-  const [picked, setPicked] = useState<readonly string[]>([]);
-  const selecting = picked.length > 0;
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
   const index = Math.max(
@@ -93,14 +81,6 @@ export function ReplayScreen({
 
   const segments = useMemo<readonly Segment[]>(() => day?.segments ?? [], [day]);
 
-  // A selection belongs to the day it was made on. Adjusted during render
-  // rather than in an effect, so the new day is never painted holding the old
-  // day's ticks.
-  const [pickedOn, setPickedOn] = useState(day?.key ?? null);
-  if (pickedOn !== (day?.key ?? null)) {
-    setPickedOn(day?.key ?? null);
-    setPicked([]);
-  }
   const replay = useReplay(segments);
 
   const summary = summarizeDay(segments);
@@ -122,33 +102,6 @@ export function ReplayScreen({
   );
 
   const currentSegment = segments.find((candidate) => candidate.id === replay.position?.segmentId) ?? null;
-
-  const chosen = useMemo(() => segments.filter((segment) => picked.includes(segment.id)), [segments, picked]);
-
-  /**
-   * The labels behind the chosen rows, if any of them came from one.
-   *
-   * A merge produces a single row, so the usual way to undo one is to select
-   * that row alone — at which point Merge is disabled anyway, because there is
-   * nothing to merge it with. Offering Unmerge in its place is what makes the
-   * long press mean "do something to this row" rather than only ever "join
-   * this to another".
-   */
-  const undoable = useMemo(
-    () =>
-      chosen.flatMap((segment) => {
-        const id = journeyLabelIdOf(segment.id);
-        return id ? [id] : [];
-      }),
-    [chosen],
-  );
-  const mergeSpan = useMemo(
-    () => ({
-      from: Math.min(...chosen.map((segment) => segment.startedAt)),
-      to: Math.max(...chosen.map((segment) => segment.endedAt)),
-    }),
-    [chosen],
-  );
 
   const title = day ? formatDayTitle(day.startedAt, tzOffsetMinutes) : 'Today';
   const subtitle = ready
@@ -367,61 +320,6 @@ export function ReplayScreen({
 
         <Text style={styles.sectionLabel}>TIMELINE</Text>
 
-        {/* Above the rows, where the selection is. A bar that floats over the
-            screen would cover the very rows being chosen. */}
-        {selecting ? (
-          <View style={styles.mergeBar}>
-            <Pressable
-              onPress={() => setPicked([])}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel selection"
-              style={({ pressed }) => [styles.mergeCancel, pressed && styles.pressed]}
-            >
-              <Text style={styles.mergeCancelText}>Cancel</Text>
-            </Pressable>
-
-            {/* The span, not the count, because everything between the first
-                and the last comes too — including rows nobody ticked. */}
-            <Text style={styles.mergeSpan} numberOfLines={1}>
-              {formatClockTime(mergeSpan.from, tzOffsetMinutes)}–{formatClockTime(mergeSpan.to, tzOffsetMinutes)}
-            </Text>
-
-            {/* One button, and which one it is says what the selection is. A
-                row that came from a merge can be taken apart; anything else can
-                be joined to what is next to it. */}
-            {undoable.length > 0 && chosen.length < 2 ? (
-              <Pressable
-                onPress={() => {
-                  onUnmerge(undoable);
-                  setPicked([]);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={undoable.length === 1 ? 'Unmerge this journey' : `Unmerge ${undoable.length} rows`}
-                style={({ pressed }) => [styles.mergeButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.mergeButtonText}>Unmerge</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={() => {
-                  onMerge(chosen);
-                  setPicked([]);
-                }}
-                disabled={chosen.length < 2}
-                accessibilityRole="button"
-                accessibilityLabel={`Merge ${chosen.length} rows`}
-                style={({ pressed }) => [
-                  styles.mergeButton,
-                  chosen.length < 2 && styles.mergeDisabled,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.mergeButtonText}>Merge</Text>
-              </Pressable>
-            )}
-          </View>
-        ) : null}
-
         <View style={styles.timeline}>
           {segments.length === 0 ? (
             <Text style={styles.empty}>
@@ -435,14 +333,6 @@ export function ReplayScreen({
                 places={places}
                 tzOffsetMinutes={tzOffsetMinutes}
                 onOpen={onOpenSegment}
-                onLongPress={(chosenSegment) =>
-                  setPicked((current) =>
-                    current.includes(chosenSegment.id)
-                      ? current.filter((id) => id !== chosenSegment.id)
-                      : [...current, chosenSegment.id],
-                  )
-                }
-                selected={selecting ? picked.includes(segment.id) : null}
               />
             ))
           )}
@@ -535,26 +425,6 @@ const styles = StyleSheet.create({
   rowTitle: { ...typography.body, color: colors.textPrimary, flex: 1 },
   rowDetail: { ...typography.caption, color: colors.textSecondary },
   timeline: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
-  mergeBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  mergeCancel: { paddingVertical: spacing.xs },
-  mergeCancelText: { ...typography.caption, color: colors.textSecondary },
-  mergeSpan: { ...typography.caption, color: colors.textPrimary, flex: 1, textAlign: 'center' },
-  mergeButton: {
-    backgroundColor: colors.move,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  mergeDisabled: { opacity: 0.4 },
-  mergeButtonText: { ...typography.caption, fontWeight: '700', color: colors.onAccent },
   empty: { ...typography.body, color: colors.textMuted, paddingVertical: spacing.lg, textAlign: 'center' },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
   pressed: { opacity: 0.6 },

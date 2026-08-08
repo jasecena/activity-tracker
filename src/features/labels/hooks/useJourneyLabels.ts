@@ -8,14 +8,6 @@ export interface UseJourneyLabels {
   labels: readonly JourneyLabel[];
   /** Name a journey, or rename one already named. The mode is your answer, and it wins. */
   name: (segment: Segment, label: string, mode: ActivityMode) => void;
-  /**
-   * Join several rows into one journey.
-   *
-   * A merge is a label with no name and no mode over the whole span — so it is
-   * the same stored shape, the same code path, and naming it afterwards
-   * updates it rather than making a second one.
-   */
-  merge: (segments: readonly Segment[]) => void;
   forget: (id: string) => void;
 }
 
@@ -23,8 +15,9 @@ function isLabel(candidate: unknown): candidate is JourneyLabel {
   if (typeof candidate !== 'object' || candidate === null) return false;
   const { id, label, mode, startedAt, endedAt } = candidate as Partial<JourneyLabel>;
   if (typeof id !== 'string' || typeof label !== 'string') return false;
-  // Null is a real value: a merge has no mode of its own and lets the
-  // classifier read the combined whole.
+  // Null is a real value: a label written by the merge feature that used to
+  // exist had no mode of its own. Those are dropped on load, but the shape has
+  // to be recognised before it can be dropped.
   if (mode !== null && typeof mode !== 'string') return false;
   if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return false;
   return typeof endedAt === 'number' && Number.isFinite(endedAt) && endedAt > startedAt;
@@ -65,8 +58,21 @@ export function useJourneyLabels(): UseJourneyLabels {
       await dropRetiredKeys();
 
       const stored = normalizeLabels(await readJson<unknown>(STORAGE_KEYS.journeyLabels));
+
+      // Merging rows into one journey is gone, and the merges go with it. A
+      // merge was stored as a label with no name over a span — which is exactly
+      // what an empty name still is — so dropping those takes apart every row
+      // that was ever joined, in one pass, with nothing left to interpret.
+      // Without this a build with no merge button would go on applying every
+      // merge ever made, and offer no way to undo any of them.
+      //
+      // Names survive. Naming a journey was never the part that did not work,
+      // and a name is the one thing here that nobody could reconstruct.
+      const named = stored.filter((label) => label.label.length > 0);
+      if (named.length !== stored.length) await writeJson(STORAGE_KEYS.journeyLabels, named);
+
       if (!live) return;
-      if (!touched.current) setLabels(stored);
+      if (!touched.current) setLabels(named);
       setReady(true);
     })();
     return () => {
@@ -102,35 +108,7 @@ export function useJourneyLabels(): UseJourneyLabels {
     [labels, persist],
   );
 
-  const merge = useCallback(
-    (segments: readonly Segment[]) => {
-      if (segments.length < 2) return;
-
-      const ordered = [...segments].sort((a, b) => a.startedAt - b.startedAt);
-      const first = ordered[0];
-      const last = ordered[ordered.length - 1];
-      if (!first || !last || last.endedAt <= first.startedAt) return;
-
-      // Everything between the first and the last comes too, including rows
-      // that were not selected. A label is a span, so there is no way to
-      // express "these two but not the middle" — and the middle of two
-      // journeys is usually the pause that joins them.
-      const next: JourneyLabel = {
-        id: journeyLabelId(first.startedAt),
-        label: '',
-        mode: null,
-        startedAt: first.startedAt,
-        endedAt: last.endedAt,
-      };
-
-      persist(
-        [...labels.filter((existing) => existing.id !== next.id), next].sort((a, b) => a.startedAt - b.startedAt),
-      );
-    },
-    [labels, persist],
-  );
-
   const forget = useCallback((id: string) => persist(labels.filter((label) => label.id !== id)), [labels, persist]);
 
-  return { ready, labels, name, merge, forget };
+  return { ready, labels, name, forget };
 }

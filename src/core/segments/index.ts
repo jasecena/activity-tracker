@@ -23,14 +23,7 @@ export {
   type SegmentationResult,
   type SegmenterState,
 } from './machine';
-export {
-  applyJourneyLabels,
-  journeyLabelId,
-  journeyLabelIdOf,
-  labelledSegmentId,
-  splitSegment,
-  type JourneyLabel,
-} from './manual';
+export { applyJourneyLabels, journeyLabelId, labelledSegmentId, splitSegment, type JourneyLabel } from './manual';
 export {
   ACTIVITY_MODES,
   averageSpeedMps,

@@ -281,10 +281,6 @@ export function TabShell() {
             onOpenSegment={openSegment('replay')}
             onOpenMedia={openMedia('replay')}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
-            onMerge={journeys.merge}
-            // Undoing a merge is forgetting the label that made it — the same
-            // thing the sheet's Remove does, reached from the row itself.
-            onUnmerge={(ids) => ids.forEach(journeys.forget)}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>

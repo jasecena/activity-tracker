@@ -78,17 +78,19 @@ window with one end open could outlive its day, claim time that had not arrived,
 and print a row on a timeline it had nothing to do with — which is exactly what
 was reported from a real phone.
 
+**Joining rows into one journey was built and removed.** Merge, then Unmerge to
+undo it, and neither was the shape of the problem: a merge could only ever be a
+span, so "these two but not the middle" was inexpressible, and undoing meant
+finding the label behind a row by its id. Half a feature is worse than none. The
+merges themselves are dropped on launch — a merge was a label with an empty
+name, so anything nameless goes — because a build with no merge button would
+otherwise apply every merge ever made and offer no way out of any of them.
+
 **Naming a journey is retrospective.** Tap a journey the app already recorded
 and say what it was, the same way you name a stay. A `JourneyLabel` is made
 _from_ a segment, so it has both ends and always has something behind it —
 open-ended windows, phantom rows and the midnight rule they needed are not
 fixed so much as unrepresentable. A label covering no segments emits nothing.
-
-**A merge is undone by forgetting the label that made it.** The row a label
-produces carries the label in its id, and `journeyLabelIdOf` is the inverse of
-`labelledSegmentId` — so the timeline offers Unmerge on a merged row without
-re-deriving which label covered which range, which would be a second
-implementation of the id scheme, free to disagree with the first.
 
 **Labels are stored as time ranges, not segment ids.** A different tracking
 preset folds the same fixes into different journeys, so an id would be orphaned
