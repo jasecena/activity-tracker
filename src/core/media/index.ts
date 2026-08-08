@@ -45,8 +45,25 @@ export interface MediaItem {
   readonly note: string;
 }
 
+const ID_PREFIX = 'm-';
+
 export function mediaIdFor(capturedAt: number): string {
-  return `m-${capturedAt}`;
+  return `${ID_PREFIX}${capturedAt}`;
+}
+
+/**
+ * The instant back out of the id, or null if that is not one of ours.
+ *
+ * The inverse exists because a capture interrupted mid-seal is recovered from
+ * a file named after its id and nothing else — there is no index entry yet, by
+ * definition. Deriving the id from the instant is what makes the instant
+ * recoverable from the id, which is the same property that lets a segment be
+ * re-derived: encode, do not generate.
+ */
+export function capturedAtFromMediaId(id: string): number | null {
+  if (!id.startsWith(ID_PREFIX)) return null;
+  const at = Number(id.slice(ID_PREFIX.length));
+  return Number.isFinite(at) && at > 0 ? at : null;
 }
 
 function isMediaKind(candidate: unknown): candidate is MediaKind {

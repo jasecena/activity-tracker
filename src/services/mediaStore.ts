@@ -50,11 +50,116 @@ const MAX_SEALED_CHUNK = CHUNK_BYTES + SEAL_OVERHEAD + 64;
 
 const MEDIA_DIRECTORY = 'media';
 
+/**
+ * Where a capture waits between the camera handing it over and the seal
+ * finishing.
+ *
+ * **In cache, deliberately, and this is the one decision here that is not
+ * negotiable.** The file is plaintext until it is sealed. Documents is backed
+ * up to iCloud, so parking video there — even for the seconds a seal takes —
+ * would put unencrypted recordings in a backup and undo the guarantee the whole
+ * store exists to make. Cache is excluded from backups. iOS may reclaim it
+ * under storage pressure, which costs an interrupted capture and never costs
+ * privacy; that is the right way round.
+ */
+const PENDING_DIRECTORY = 'pending';
+
+/** `<id>--<kind>.<ext>`, so an interrupted capture identifies itself. */
+const NAME_SEPARATOR = '--';
+
 const EXTENSIONS: Readonly<Record<MediaKind, string>> = {
   photo: 'jpg',
   video: 'mov',
   audio: 'm4a',
 };
+
+function pendingDirectory(): Directory {
+  return new Directory(Paths.cache, PENDING_DIRECTORY);
+}
+
+/** A capture that has been taken but not yet sealed. */
+export interface PendingCapture {
+  readonly id: string;
+  readonly kind: MediaKind;
+  readonly uri: string;
+}
+
+function parsePendingName(name: string): { readonly id: string; readonly kind: MediaKind } | null {
+  const [id, rest] = name.split(NAME_SEPARATOR);
+  if (!id || !rest) return null;
+
+  const kind = rest.split('.')[0];
+  if (kind !== 'photo' && kind !== 'video' && kind !== 'audio') return null;
+  return { id, kind };
+}
+
+/**
+ * Take ownership of what the camera produced, before sealing it.
+ *
+ * A move, not a copy: both directories live in the same container, so this is a
+ * rename and costs nothing regardless of how large the clip is.
+ *
+ * The point is the name. The OS hands over a temp file called whatever it likes;
+ * once it is `<id>--<kind>`, an interrupted seal leaves behind a file that says
+ * what it was and when it was taken — the id encodes the instant — so the next
+ * launch can finish the job with no extra bookkeeping to keep in step.
+ */
+export function stageCapture(sourceUri: string, id: string, kind: MediaKind): PendingCapture {
+  const directory = pendingDirectory();
+  if (!directory.exists) directory.create({ intermediates: true });
+
+  const staged = new File(directory, `${id}${NAME_SEPARATOR}${kind}.${EXTENSIONS[kind]}`);
+  if (staged.exists) staged.delete();
+
+  new File(sourceUri).moveSync(staged);
+  return { id, kind, uri: staged.uri };
+}
+
+/** Captures that were taken but never finished sealing. Usually none. */
+export function listPending(): readonly PendingCapture[] {
+  const directory = pendingDirectory();
+  if (!directory.exists) return [];
+
+  return directory.list().flatMap((entry) => {
+    if (!(entry instanceof File)) return [];
+    const parsed = parsePendingName(entry.name);
+    return parsed ? [{ ...parsed, uri: entry.uri }] : [];
+  });
+}
+
+/** Give up on one that cannot be sealed, rather than retrying it every launch. */
+export function discardPending(pending: PendingCapture): void {
+  const file = new File(pending.uri);
+  if (file.exists) file.delete();
+}
+
+/**
+ * Delete sealed files the index has never heard of.
+ *
+ * Suspension is not an exception: if iOS stops the app mid-seal, neither the
+ * `catch` nor the `finally` below runs, so a half-written container is left
+ * with no index entry pointing at it. It is invisible in the app, undeletable
+ * from the UI, and missing from the "what is stored" total — it just occupies
+ * the phone. Swept on launch, once the index is known.
+ *
+ * Returns how many went, which is worth logging and worth nothing else.
+ */
+export function sweepOrphans(known: readonly string[]): number {
+  const directory = mediaDirectory();
+  if (!directory.exists) return 0;
+
+  const keep = new Set(known);
+  let removed = 0;
+
+  for (const entry of directory.list()) {
+    if (entry instanceof File && !keep.has(entry.name)) {
+      entry.delete();
+      removed += 1;
+    }
+  }
+
+  return removed;
+}
 
 function mediaDirectory(): Directory {
   return new Directory(Paths.document, MEDIA_DIRECTORY);
@@ -241,6 +346,7 @@ export function deleteMedia(item: MediaItem): void {
  * makes them safe.
  */
 export function eraseAllMedia(): void {
-  const directory = mediaDirectory();
-  if (directory.exists) directory.delete();
+  for (const directory of [mediaDirectory(), pendingDirectory()]) {
+    if (directory.exists) directory.delete();
+  }
 }

@@ -261,6 +261,10 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
           {state === 'saving' ? (
             <View style={styles.saving} accessible accessibilityLabel={`Saving, ${Math.round(progress * 100)}%`}>
               <Text style={styles.savingText}>Saving… {Math.round(progress * 100)}%</Text>
+              {/* Not decoration. Leaving now suspends the app mid-write; the
+                  capture is recovered on the next launch, but only if it gets
+                  one, and cache is the first thing iOS reclaims. */}
+              <Text style={styles.savingHint}>Keep the app open</Text>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
               </View>
@@ -432,6 +436,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   savingText: { ...typography.body, color: colors.textPrimary },
+  savingHint: { ...typography.caption, color: colors.textSecondary },
   progressTrack: {
     width: '70%',
     height: 4,

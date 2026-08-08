@@ -127,6 +127,22 @@ export class File {
     return written.get(this.uri)?.length ?? 0;
   }
 
+  /** File name including the extension, as the real one reports it. */
+  get name(): string {
+    return this.uri.slice(this.uri.lastIndexOf('/') + 1);
+  }
+
+  /**
+   * Move, as a rename. Both media directories live in the same container on a
+   * device, so this is what staging a capture actually costs: nothing.
+   */
+  moveSync(destination: File | Directory): void {
+    const target = destination instanceof Directory ? new File(destination, this.name) : destination;
+    const bytes = written.get(this.uri);
+    if (bytes !== undefined) written.set(target.uri, bytes);
+    written.delete(this.uri);
+  }
+
   create(): void {
     written.set(this.uri, new Uint8Array());
   }

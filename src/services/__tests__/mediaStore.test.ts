@@ -3,7 +3,17 @@ import { File, Paths } from 'expo-file-system';
 
 import type { MediaItem } from '@/core/media';
 
-import { deleteMedia, eraseAllMedia, openForPlayback, releasePlayback, writeMedia } from '../mediaStore';
+import {
+  deleteMedia,
+  discardPending,
+  eraseAllMedia,
+  listPending,
+  openForPlayback,
+  releasePlayback,
+  stageCapture,
+  sweepOrphans,
+  writeMedia,
+} from '../mediaStore';
 
 /**
  * The real cipher against an in-memory filesystem, for the same reason
@@ -241,5 +251,84 @@ describe('deleting', () => {
 
     expect(sealedFileOf(item({ fileName: first.fileName })).exists).toBe(false);
     expect(sealedFileOf(item({ fileName: second.fileName })).exists).toBe(false);
+  });
+});
+
+/**
+ * Suspension is not an exception. If iOS stops the app mid-seal, neither the
+ * catch nor the finally in `writeMedia` runs — so the clip is lost, a
+ * half-written container is left behind that nothing points at, and the "what
+ * is stored" total under-reports the disk it occupies.
+ */
+describe('a capture interrupted before it was sealed', () => {
+  it('is owned by us, under a name that says what it is', () => {
+    __seed('file:///mock/cache/AV-1234.mov', pattern(500));
+
+    const staged = stageCapture('file:///mock/cache/AV-1234.mov', 'm-1767600000000', 'video');
+
+    // Moved, not copied: the OS temp file is gone and ours has the bytes.
+    expect(new File('file:///mock/cache/AV-1234.mov').exists).toBe(false);
+    expect(new File(staged.uri).size).toBe(500);
+    expect(staged.uri).toContain('m-1767600000000--video');
+  });
+
+  it('is found again on the next launch, with its kind and its instant intact', () => {
+    __seed('file:///mock/cache/AV-1.mov', pattern(64));
+    stageCapture('file:///mock/cache/AV-1.mov', 'm-1767600000000', 'video');
+
+    const [pending] = listPending();
+    expect(pending?.id).toBe('m-1767600000000');
+    expect(pending?.kind).toBe('video');
+  });
+
+  it('can then be sealed exactly as it would have been', async () => {
+    const bytes = pattern(3_000);
+    __seed('file:///mock/cache/AV-1.m4a', bytes);
+    const staged = stageCapture('file:///mock/cache/AV-1.m4a', 'm-1767600000000', 'audio');
+
+    const written = await writeMedia(staged.uri, staged.id, staged.kind);
+    const uri = await openForPlayback(item({ kind: 'audio', fileName: written.fileName }));
+
+    expectSameBytes(new File(uri as string).bytesSync(), bytes);
+    // And it stops being pending, so the next launch does not do it again.
+    expect(listPending()).toEqual([]);
+  });
+
+  it('is given up on rather than retried forever', () => {
+    __seed('file:///mock/cache/AV-1.mov', pattern(10));
+    const staged = stageCapture('file:///mock/cache/AV-1.mov', 'm-1', 'video');
+
+    discardPending(staged);
+    expect(listPending()).toEqual([]);
+  });
+
+  it('ignores a file in there that is not one of ours', () => {
+    __seed('file:///mock/cache/pending/something-else.txt', pattern(10));
+    expect(listPending()).toEqual([]);
+  });
+});
+
+describe('sweeping orphans', () => {
+  it('deletes a sealed file the index has never heard of', async () => {
+    __seed('file:///mock/cache/a.jpg', pattern(100));
+    const kept = await writeMedia('file:///mock/cache/a.jpg', 'm-1', 'photo');
+    __seed('file:///mock/cache/b.jpg', pattern(100));
+    const orphan = await writeMedia('file:///mock/cache/b.jpg', 'm-2', 'photo');
+
+    expect(sweepOrphans([kept.fileName])).toBe(1);
+
+    expect(sealedFileOf(item({ fileName: kept.fileName })).exists).toBe(true);
+    expect(sealedFileOf(item({ fileName: orphan.fileName })).exists).toBe(false);
+  });
+
+  it('does nothing when everything on disk is accounted for', async () => {
+    __seed('file:///mock/cache/a.jpg', pattern(100));
+    const kept = await writeMedia('file:///mock/cache/a.jpg', 'm-1', 'photo');
+
+    expect(sweepOrphans([kept.fileName])).toBe(0);
+  });
+
+  it('is harmless before anything has been captured', () => {
+    expect(sweepOrphans([])).toBe(0);
   });
 });

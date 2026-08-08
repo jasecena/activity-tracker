@@ -527,6 +527,33 @@ when the screen closes. Video capture is capped at 60 seconds because the bytes
 are encrypted on the way in and decrypted again to play, and both passes are
 something you would wait for at ten minutes.
 
+### Interrupted mid-seal
+
+Suspension is not an exception. If iOS stops the app between the camera handing
+a clip over and the seal finishing, neither the `catch` nor the `finally` runs —
+so the naive version lost the capture _and_ left a half-written container that
+nothing pointed at: invisible in the app, absent from the "what is stored"
+total, and occupying the phone until "erase everything".
+
+Three things close it, and the order matters:
+
+1. **The capture is staged under our own name first.** A move, not a copy —
+   same container, so a rename, free however large the clip. The name is
+   `<id>--<kind>`, and since the id encodes the instant, an interrupted capture
+   describes itself with no extra bookkeeping to keep in step.
+2. **Anything still staged is sealed on the next launch**, before the index is
+   settled. A capture that cannot be sealed is discarded rather than retried
+   every launch for the life of the install.
+3. **Then sealed files the index has never heard of are swept.** After
+   recovery, never before, or the sweep would delete what recovery just wrote.
+
+The staging directory is in **cache, not documents**, and that is the one part
+here that is not negotiable: the file is plaintext until it is sealed, and
+documents is backed up to iCloud. Parking video there even for seconds would put
+unencrypted recordings in a backup and undo the guarantee the whole store
+exists to make. Cache is excluded from backups; iOS may reclaim it under storage
+pressure, which costs an interrupted capture and never costs privacy.
+
 "Erase everything" is unchanged in what it guarantees: destroying the key makes
 every sealed file permanently unreadable. Deleting the media directory afterwards
 is housekeeping so the bytes do not sit in the container for the life of the

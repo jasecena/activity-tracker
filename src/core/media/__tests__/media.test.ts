@@ -3,6 +3,7 @@ import { buildTrack } from '../../replay';
 import type { MoveSegment, Segment, StaySegment } from '../../segments';
 import {
   attachToSegments,
+  capturedAtFromMediaId,
   mediaForDay,
   mediaIdFor,
   normalizeMedia,
@@ -68,6 +69,21 @@ describe('mediaIdFor', () => {
   it('is a function of the instant alone', () => {
     expect(mediaIdFor(T0)).toBe(mediaIdFor(T0));
     expect(mediaIdFor(T0)).not.toBe(mediaIdFor(T0 + 1));
+  });
+});
+
+describe('capturedAtFromMediaId', () => {
+  // A capture interrupted mid-seal is recovered from a file named after its id
+  // and nothing else — there is no index entry yet, by definition.
+  it('recovers the instant an id was made from', () => {
+    expect(capturedAtFromMediaId(mediaIdFor(T0))).toBe(T0);
+  });
+
+  it('refuses anything that is not one of ours', () => {
+    expect(capturedAtFromMediaId('1767600000000')).toBeNull();
+    expect(capturedAtFromMediaId('m-lunchtime')).toBeNull();
+    expect(capturedAtFromMediaId('m-')).toBeNull();
+    expect(capturedAtFromMediaId('m--1')).toBeNull();
   });
 });
 

@@ -7,6 +7,26 @@ import { STORAGE_KEYS, writeJson } from '@/services/storage';
 import { TabShell } from './TabShell';
 
 /**
+ * Pin the clock.
+ *
+ * `services/clock.ts` is the single point where "what time is it" enters the
+ * app — it exists so this is possible — and without pinning it these tests
+ * depend on when they are run. Seeding a walk at "forty minutes ago" puts it on
+ * *yesterday* if the suite runs near local midnight, and yesterday is frozen:
+ * the day view then shows the walk from history, unlabelled, and a test about
+ * naming a journey fails for reasons that have nothing to do with naming.
+ *
+ * Found at 00:03 UTC, which is exactly the sort of hour this bites.
+ */
+jest.mock('@/services/clock', () => ({
+  now: () => Date.UTC(2026, 7, 8, 12, 0, 0),
+  tzOffsetMinutes: () => 0,
+}));
+
+/** The same instant the mock above returns. Midday, so a day has room either side. */
+const NOW = Date.UTC(2026, 7, 8, 12, 0, 0);
+
+/**
  * Put a day's worth of fixes in the store before the app reads it.
  *
  * Journeys used to be conjured by pressing Record, which is gone — and was
@@ -20,7 +40,7 @@ import { TabShell } from './TabShell';
 const DEG_PER_METRE_LAT = 1 / ((EARTH_RADIUS_M * Math.PI) / 180);
 
 async function seedAWalk(): Promise<void> {
-  const start = Date.now() - 40 * 60_000;
+  const start = NOW - 40 * 60_000;
   const fixes: Fix[] = [];
 
   // Ten minutes still, then twenty walking north at 1.4 m/s — enough to clear
