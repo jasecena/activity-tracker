@@ -393,8 +393,22 @@ export async function openThumbnail(fileName: string): Promise<string | null> {
  * do about either.
  *
  * Call `releasePlayback` when the screen showing it goes away.
+ *
+ * **Breathes between chunks, exactly like the write does.** Reading is the same
+ * shape of work as writing — dozens of megabyte-sized AEAD passes — and it was
+ * shipped without the yield the write had. Awaiting `openBytes` drains the
+ * microtask queue and nothing else, so opening a minute of video ran the whole
+ * loop without the UI getting a frame: the tab took a visible age to appear,
+ * and the swipe that got you there had already been forgotten. Slightly slower
+ * in wall-clock, entirely responsive.
+ *
+ * `onProgress` is the other half of that: something a person waits for should
+ * say how far along it is.
  */
-export async function openForPlayback(item: MediaItem): Promise<string | null> {
+export async function openForPlayback(
+  item: MediaItem,
+  onProgress?: (fraction: number) => void,
+): Promise<string | null> {
   const sealed = new File(mediaDirectory(), item.fileName);
   if (!sealed.exists) return null;
 
@@ -405,6 +419,10 @@ export async function openForPlayback(item: MediaItem): Promise<string | null> {
 
   const input = sealed.open(FileMode.ReadOnly);
   const output = destination.open(FileMode.WriteOnly);
+  // Sealed bytes, not plaintext — close enough for a progress bar, and the
+  // plaintext size is not known until the last chunk is open.
+  const total = Math.max(1, sealed.size);
+  let read = MAGIC.length;
 
   try {
     if (!sameBytes(input.readBytes(MAGIC.length), MAGIC)) throw new Error('Not a sealed media file');
@@ -426,6 +444,12 @@ export async function openForPlayback(item: MediaItem): Promise<string | null> {
       const plain = await openBytes(chunk);
       if (!plain) throw new Error('Chunk failed to authenticate');
       output.writeBytes(plain);
+
+      read += 4 + chunk.length;
+      onProgress?.(Math.min(1, read / total));
+
+      // The yield that was missing. See the note above.
+      await breathe();
     }
   } catch {
     if (destination.exists) destination.delete();

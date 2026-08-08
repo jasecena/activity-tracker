@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { File, Paths } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system';
 
@@ -98,12 +98,11 @@ describe('captures stored before thumbnails existed', () => {
     ]);
 
     const { result } = await renderHook(() => useMedia());
-    await act(async () => {
-      await Promise.resolve();
-    });
+    // `waitFor`, not a drained microtask queue: opening a capture yields to the
+    // UI between chunks with `setTimeout(0)`, which is a macrotask.
+    await waitFor(() => expect(result.current.items[0]?.thumbFileName).toBe('m-1.thumb.avm'));
 
     const thumbFileName = result.current.items[0]?.thumbFileName;
-    expect(thumbFileName).toBe('m-1.thumb.avm');
     expect(await openThumbnail(thumbFileName as string)).not.toBeNull();
   });
 

@@ -52,8 +52,9 @@ describe('MediaGalleryScreen', () => {
     await render(<MediaGalleryScreen items={items} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
 
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
-    // Newest first, so the top of the list is the last thing captured.
-    expect(opened).toHaveBeenCalledWith(items[4]);
+    // Newest first, so the top of the list is the last thing captured. The
+    // second argument is the progress callback the open reports through.
+    expect(opened).toHaveBeenCalledWith(items[4], expect.any(Function));
   });
 
   it('draws a thumbnail for the neighbours it is not opening', async () => {

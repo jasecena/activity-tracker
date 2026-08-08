@@ -53,10 +53,25 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
   const safeIndex = Math.min(index, Math.max(0, ordered.length - 1));
   const current = ordered[safeIndex] ?? null;
 
+  /**
+   * The capture you have asked to play, if you have asked.
+   *
+   * A photo opens the moment you land on it — it is a few hundred kilobytes and
+   * waiting for a tap would be pointless ceremony. **A video does not.** Opening
+   * one means decrypting forty megabytes, and doing that on arrival meant a
+   * swipe through a dozen clips paid for every one of them, whether or not you
+   * ever pressed play. The thumbnail is already on screen; the bytes can wait
+   * until they are wanted.
+   */
+  const [asked, setAsked] = useState<string | null>(null);
+  if (asked !== null && asked !== current?.id) setAsked(null);
+
+  const wanted = current && (current.kind !== 'video' || asked === current.id) ? current : null;
+
   // Nothing is opened while another tab is showing. Coming back re-opens it,
   // which costs one decrypt and is the difference between a video that carries
   // on playing behind Settings and one that does not.
-  const file = useSealedFile(visible ? current : null);
+  const file = useSealedFile(visible ? wanted : null);
   const images = useSealedImages();
 
   // A window around where you are, plus the head of the strip, which is on
@@ -127,7 +142,10 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
               live={position === safeIndex}
               uri={position === safeIndex ? file.uri : null}
               failed={position === safeIndex && file.failed}
+              opening={position === safeIndex && wanted !== null && file.uri === null && !file.failed}
+              progress={file.progress}
               thumbUri={images.uriFor(item)}
+              onPlay={() => setAsked(item.id)}
             />
           </View>
         )}
@@ -189,7 +207,11 @@ interface StageProps {
   readonly live: boolean;
   readonly uri: string | null;
   readonly failed: boolean;
+  /** True while its bytes are being decrypted, which for a video is worth showing. */
+  readonly opening: boolean;
+  readonly progress: number;
   readonly thumbUri: string | null;
+  readonly onPlay: () => void;
 }
 
 /**
@@ -200,7 +222,7 @@ interface StageProps {
  * something to look at immediately rather than a black rectangle; for the pages
  * either side of it, it is the whole story.
  */
-function Stage({ item, live, uri, failed, thumbUri }: StageProps) {
+function Stage({ item, live, uri, failed, opening, progress, thumbUri, onPlay }: StageProps) {
   return (
     <View style={styles.stage}>
       {thumbUri ? <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="contain" /> : null}
@@ -214,7 +236,27 @@ function Stage({ item, live, uri, failed, thumbUri }: StageProps) {
 
       {live && uri ? <Playing item={item} uri={uri} /> : null}
 
-      {live && !uri && !failed ? <Text style={styles.opening}>Opening…</Text> : null}
+      {/* The tap that spends the forty megabytes. Over the poster frame, so
+          what you are choosing to open is what you can already see. */}
+      {live && !uri && !failed && !opening && item.kind === 'video' ? (
+        <Pressable
+          onPress={onPlay}
+          accessibilityRole="button"
+          accessibilityLabel="Play video"
+          style={({ pressed }) => [styles.play, pressed && styles.pressed]}
+        >
+          <Ionicons name="play" size={38} color={colors.textPrimary} />
+        </Pressable>
+      ) : null}
+
+      {live && opening ? (
+        <View style={styles.opening} accessible accessibilityLabel={`Opening, ${Math.round(progress * 100)}%`}>
+          <Text style={styles.openingText}>Opening… {Math.round(progress * 100)}%</Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -270,15 +312,31 @@ const styles = StyleSheet.create({
   pager: { flex: 1 },
   page: { flex: 1 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  play: {
+    width: 84,
+    height: 84,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,15,20,0.6)',
+  },
   opening: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(11,15,20,0.75)',
+  },
+  openingText: { ...typography.caption, color: colors.textPrimary },
+  progressTrack: {
+    width: 140,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
     overflow: 'hidden',
   },
+  progressFill: { height: 4, backgroundColor: colors.move },
   failed: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', padding: spacing.lg },
   audio: { alignItems: 'center', gap: spacing.sm },
   audioText: { ...typography.body, color: colors.textSecondary },

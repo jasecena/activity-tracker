@@ -22,10 +22,18 @@ export interface SealedImages {
  * something anything renders, and because a second `load` for the same item
  * must be dropped *now* rather than after a re-render — otherwise a fast scroll
  * queues the same decrypt a dozen times.
+ *
+ * **One at a time, through a queue.** Firing a screenful of decrypts together
+ * does not make them arrive sooner — they contend for the same single JS thread
+ * — and it does make the first one arrive much later, because it now finishes
+ * twelfth instead of first. Chaining them means the thumbnail you are actually
+ * looking at appears while the rest of the strip is still filling in behind it,
+ * which is the difference between a gallery that opens and one that hangs.
  */
 export function useSealedImages(): SealedImages {
   const [uris, setUris] = useState<Readonly<Record<string, string>>>({});
   const inFlight = useRef<Set<string>>(new Set());
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const live = useRef(true);
 
   useEffect(() => {
@@ -43,10 +51,15 @@ export function useSealedImages(): SealedImages {
       if (!fileName || inFlight.current.has(item.id)) continue;
       inFlight.current.add(item.id);
 
-      void openThumbnail(fileName).then((uri) => {
-        if (!uri || !live.current) return;
-        setUris((existing) => ({ ...existing, [item.id]: uri }));
-      });
+      // Appended to the chain rather than started now. `catch` on the queue
+      // only, so one unreadable thumbnail does not stop every one behind it.
+      queue.current = queue.current
+        .then(() => (live.current ? openThumbnail(fileName) : null))
+        .then((uri) => {
+          if (!uri || !live.current) return;
+          setUris((existing) => ({ ...existing, [item.id]: uri }));
+        })
+        .catch(() => undefined);
     }
   }, []);
 
