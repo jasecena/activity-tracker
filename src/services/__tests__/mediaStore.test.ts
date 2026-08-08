@@ -12,6 +12,7 @@ import {
   listPending,
   openForPlayback,
   releasePlayback,
+  filesOf,
   stageCapture,
   sweepOrphans,
   writeMedia,
@@ -334,6 +335,30 @@ describe('sweeping orphans', () => {
 
   it('is harmless before anything has been captured', () => {
     expect(sweepOrphans([])).toBe(0);
+  });
+
+  // The bug this exists to prevent, and it shipped: a capture is two files now,
+  // and a sweep told about only the first deleted every thumbnail on the next
+  // launch. Silent, because the gallery simply fell back to drawing nothing —
+  // and self-inflicted, because the thumbnails were rewritten and deleted again
+  // every time. `filesOf` is what no caller has to remember.
+  it('keeps the thumbnails, which are files an item owns too', async () => {
+    __seed('file:///mock/cache/a.jpg', pattern(100));
+    const thumbFileName = await writeThumbnail('file:///mock/cache/a.jpg', 'm-1', 'photo');
+    __seed('file:///mock/cache/a.jpg', pattern(100));
+    const { fileName } = await writeMedia('file:///mock/cache/a.jpg', 'm-1', 'photo');
+
+    expect(thumbFileName).not.toBeNull();
+    expect(sweepOrphans(filesOf([item({ fileName, thumbFileName })]))).toBe(0);
+    expect(await openThumbnail(thumbFileName as string)).not.toBeNull();
+  });
+
+  it('still sweeps a thumbnail whose capture is gone', async () => {
+    __seed('file:///mock/cache/a.jpg', pattern(100));
+    const orphan = await writeThumbnail('file:///mock/cache/a.jpg', 'm-9', 'photo');
+
+    expect(orphan).not.toBeNull();
+    expect(sweepOrphans(filesOf([]))).toBe(1);
   });
 });
 

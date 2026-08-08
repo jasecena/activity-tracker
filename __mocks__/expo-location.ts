@@ -44,7 +44,16 @@ export const stopLocationUpdatesAsync = jest.fn(async () => {
   started = false;
 });
 
+/**
+ * Stamped `Date.now()`, not a constant.
+ *
+ * `currentFix` rejects a reading older than a minute, because Core Location
+ * answers this call from a cache that survives a flight and a photo must not
+ * claim to have been taken in the last city the phone was switched on in. A
+ * fixture frozen at the epoch is a 56-year-old fix, and every caller would
+ * correctly refuse it.
+ */
 export const getCurrentPositionAsync = jest.fn(async () => ({
   coords: { latitude: 0, longitude: 0, accuracy: 10, speed: 0, altitude: 0, heading: 0, altitudeAccuracy: 5 },
-  timestamp: 0,
+  timestamp: Date.now(),
 }));

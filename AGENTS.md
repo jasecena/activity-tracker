@@ -164,6 +164,21 @@ The reading is taken at the moment that _matters_, which the caller decides:
 the shutter for a photo, the **start** for a video or a voice note. By the time
 either finishes you may be somewhere else.
 
+**`currentFix` judges its own answer, because nothing downstream will.** It is
+the one path that puts a coordinate somewhere the fold never sees it — a pin
+drawn straight off `item.at` — so a reading older than a minute or wider than
+150 m is refused outright. `getCurrentPositionAsync` answers from a cache that
+survives a flight, and a cached fix keeps its original timestamp, which is the
+only thing giving it away when its coordinates and accuracy look perfect. Null
+is the honest answer and every caller already handles it.
+
+**A capture is two files, and everything that walks the directory must know
+it.** `sweepOrphans` deletes sealed files the index has never heard of, and
+being told only about the captures meant it deleted every thumbnail on the
+following launch — invisibly, since the gallery just drew nothing. Build the
+list with `filesOf`. Captures stored before thumbnails existed are given one on
+the next launch, after the index settles, one at a time.
+
 The tracking switch governs what the app records **on its own**. Pressing the
 shutter is not the app acting on its own.
 

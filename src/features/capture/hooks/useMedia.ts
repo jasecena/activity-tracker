@@ -5,8 +5,10 @@ import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { appendFixes } from '@/services/fixBuffer';
 import {
+  backfillThumbnail,
   deleteMedia as deleteBytes,
   discardPending,
+  filesOf,
   listPending,
   stageCapture,
   sweepOrphans,
@@ -52,10 +54,10 @@ export interface UseMedia {
  * written here so they cannot drift: the file is sealed **first**, and the
  * index entry is only added once there is something for it to point at.
  *
- * A capture records a time and nothing about where it happened. Where is
- * derived later from the fix buffer — `core/media`'s `placeMedia` — for the
- * same reason manual recording does not open its own location subscription:
- * one fix stream, one answer to "where was I".
+ * A capture stores where it was taken in two places from one reading — on the
+ * item and in the fix buffer — so the pin on the photo and the route drawn
+ * under it can never be two different answers. The reading itself is taken by
+ * the caller, at the moment that matters for that kind of capture.
  */
 export function useMedia(): UseMedia {
   const [items, setItems] = useState<readonly MediaItem[]>([]);
@@ -109,13 +111,37 @@ export function useMedia(): UseMedia {
       const all = normalizeMedia([...stored.filter((item) => !known.has(item.id)), ...recovered]);
 
       // Only once the index is settled, or this would delete what was just
-      // recovered.
-      sweepOrphans(all.map((item) => item.fileName));
+      // recovered. Every file an item owns, thumbnails included — handing it
+      // only the captures deleted every thumbnail on the following launch.
+      sweepOrphans(filesOf(all));
       if (recovered.length > 0) void writeJson(STORAGE_KEYS.media, all);
 
       if (!live) return;
       if (!touched.current) setItems(all);
       setReady(true);
+
+      // Captures stored before thumbnails existed, given one now. After
+      // `setReady`, because it decrypts each capture whole and the gallery
+      // should be usable — drawing what it can — while it runs. One at a time
+      // and never retried within a session: a video that cannot yield a frame
+      // will not start being able to on the second attempt.
+      for (const item of all) {
+        if (!live) return;
+        if (item.kind === 'audio' || item.thumbFileName) continue;
+
+        const thumbFileName = await backfillThumbnail(item);
+        if (!live || !thumbFileName) continue;
+
+        // Merged into whatever the list is *now*, not into `all`: a capture
+        // taken or deleted while this was running must not be undone by it.
+        setItems((current) => {
+          const next = current.map((existing) =>
+            existing.id === item.id && !existing.thumbFileName ? { ...existing, thumbFileName } : existing,
+          );
+          void writeJson(STORAGE_KEYS.media, next);
+          return next;
+        });
+      }
     })();
     return () => {
       live = false;

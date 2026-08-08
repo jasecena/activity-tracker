@@ -154,6 +154,12 @@ export function discardPending(pending: PendingCapture): void {
  * the phone. Swept on launch, once the index is known.
  *
  * Returns how many went, which is worth logging and worth nothing else.
+ *
+ * **`known` must list every file an item owns, thumbnail included.** A capture
+ * is two files now, and a sweep handed only the first quietly deleted every
+ * thumbnail on the next launch — leaving a gallery that had to decrypt whole
+ * videos to draw its filmstrip, which is precisely what the thumbnails exist to
+ * prevent. `filesOf` builds the list so no caller has to remember.
  */
 export function sweepOrphans(known: readonly string[]): number {
   const directory = mediaDirectory();
@@ -170,6 +176,11 @@ export function sweepOrphans(known: readonly string[]): number {
   }
 
   return removed;
+}
+
+/** Every file these items own — what `sweepOrphans` must be told to keep. */
+export function filesOf(items: readonly MediaItem[]): readonly string[] {
+  return items.flatMap((item) => (item.thumbFileName ? [item.fileName, item.thumbFileName] : [item.fileName]));
 }
 
 function mediaDirectory(): Directory {
@@ -326,6 +337,31 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
   } catch (error) {
     console.warn('Could not make a thumbnail', error);
     return null;
+  }
+}
+
+/**
+ * Make a thumbnail for a capture that was stored before thumbnails existed.
+ *
+ * The expensive path, and deliberately the only one that is: the capture has to
+ * be decrypted whole before there is an image to scale. That is the cost
+ * thumbnails avoid on every subsequent read, which is why this is a one-off
+ * over the old library rather than something the gallery ever does on demand.
+ *
+ * The plaintext is released either way, including when the thumbnail fails —
+ * a decrypted video left in the cache because a frame could not be pulled out
+ * of it is the worst outcome available here.
+ */
+export async function backfillThumbnail(item: MediaItem): Promise<string | null> {
+  if (item.kind === 'audio') return null;
+
+  const opened = await openForPlayback(item);
+  if (!opened) return null;
+
+  try {
+    return await writeThumbnail(opened, item.id, item.kind);
+  } finally {
+    releasePlayback(item);
   }
 }
 

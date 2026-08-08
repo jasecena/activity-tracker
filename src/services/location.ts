@@ -2,6 +2,8 @@ import * as Location from 'expo-location';
 
 import type { Fix } from '@/core/geo';
 
+import { now } from './clock';
+
 /**
  * The only file in the app that talks to Core Location.
  *
@@ -215,15 +217,51 @@ export async function stopTracking(): Promise<void> {
 }
 
 /**
+ * The oldest reading worth believing is "where am I now".
+ *
+ * `getCurrentPositionAsync` may answer from Core Location's cache rather than
+ * from the radio, and that cache survives a flight. Sixty seconds is generous
+ * for a question whose answer is a photo's pin: anything older is a place you
+ * were, not a place you are.
+ */
+const MAX_FIX_AGE_MS = 60_000;
+
+/**
+ * The widest circle that still says something about where you are standing.
+ *
+ * Deliberately looser than the segmenter's `maxAccuracyM` (60 m), because the
+ * two are answering different questions. The filter is asked "did this person
+ * move?", where a 100 m circle is noise. This is asked "roughly where was this
+ * taken?", where 100 m is a street and 3 km is a city — the first is worth
+ * keeping and the second is not.
+ */
+const MAX_FIX_ACCURACY_M = 150;
+
+/**
  * One fix, now, asked for rather than waited for.
  *
  * This **is** fed to the segmenter, which revises the note that used to stand
  * here — that a foreground request must never reach the fold, because it can
- * return a cached position of unknown age. The hazard is real and the engine
- * already handles both halves of it: `judgeFix` drops a reading that is not
- * newer than the last one as `out-of-order`, and a cold-start position from
- * where the phone was hours ago, stamped now, as a `teleport`. A stale
- * heartbeat is discarded, not believed.
+ * return a cached position of unknown age. Where the fold runs, the hazard is
+ * handled: `judgeFix` drops a reading that is not newer than the last one as
+ * `out-of-order`, and a cold-start position from where the phone was hours ago,
+ * stamped now, as a `teleport`.
+ *
+ * **But the fold is no longer the only consumer**, and that is why this now
+ * judges its own answer. A capture stores this reading on the item and draws a
+ * pin from it directly, so nothing downstream ever gets the chance to reject
+ * it. Handed a cached position from the last city the phone was switched on in,
+ * the photo screen would state, with no hedging at all, that the picture was
+ * taken on another continent. Two checks close it, and both are local:
+ *
+ * - **Age.** A cached fix keeps its original timestamp, so its age is the
+ *   giveaway even when its coordinates and accuracy look perfect.
+ * - **Accuracy.** Indoors, iOS answers a high-accuracy request from Wi-Fi and
+ *   cell with a circle kilometres wide rather than not answering at all.
+ *
+ * Null in both cases, which every caller already handles as "we do not know" —
+ * an honest gap, and the answer this app is supposed to give when it has no
+ * business claiming otherwise.
  *
  * **`Accuracy.High`, not `Balanced`.** Balanced is documented at ~100 m, and
  * `maxAccuracyM` is 60 — so every reading this returned would have been thrown
@@ -232,7 +270,12 @@ export async function stopTracking(): Promise<void> {
  */
 export async function currentFix(): Promise<Fix | null> {
   try {
-    return toFix(await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }));
+    const fix = toFix(await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }));
+    if (!(fix.accuracyM <= MAX_FIX_ACCURACY_M)) return null;
+    // `Math.abs`, because a clock that has just been corrected can put a fresh
+    // reading slightly in the future, and that is not staleness.
+    if (Math.abs(now() - fix.at) > MAX_FIX_AGE_MS) return null;
+    return fix;
   } catch {
     return null;
   }
