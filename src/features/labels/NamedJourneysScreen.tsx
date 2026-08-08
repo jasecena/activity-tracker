@@ -91,14 +91,14 @@ export function NamedJourneysScreen({
                 onPress={segment ? () => onOpenSegment(segment) : undefined}
                 onLongPress={() => confirmForget(label)}
                 accessibilityRole="button"
-                accessibilityLabel={`${label.label || 'Merged journey'}, ${modeLabel(label.mode ?? segment?.mode ?? 'unknown')}, ${
+                accessibilityLabel={`${label.label}, ${modeLabel(label.mode ?? segment?.mode ?? 'unknown')}, ${
                   segment ? formatDistance(segment.distanceM) : 'no route recorded'
                 }`}
                 style={({ pressed }) => [styles.card, pressed && styles.pressed]}
               >
                 <View style={styles.rowText}>
                   <Text style={styles.title} numberOfLines={1}>
-                    {label.label || 'Merged journey'}
+                    {label.label}
                   </Text>
                   <Text style={styles.detail}>
                     {formatClockTime(label.startedAt, tzOffsetMinutes)} ·{' '}

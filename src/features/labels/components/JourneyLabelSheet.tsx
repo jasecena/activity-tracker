@@ -13,7 +13,7 @@ interface JourneyLabelSheetProps {
   /**
    * Absent for a journey the engine produced on its own.
    *
-   * Present for anything a label made — including a merge, which has no name
+   * Present for anything a label made — which now means anything named, since
    * to remove but very much needs undoing.
    */
   readonly onForget?: () => void;
@@ -129,10 +129,10 @@ export function JourneyLabelSheet({ journey, tzOffsetMinutes, onSave, onForget, 
                   close();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={journey.label ? 'Remove this name' : 'Undo this merge'}
+                accessibilityLabel="Remove this name"
                 style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
               >
-                <Text style={styles.forgetText}>{journey.label ? 'Remove this name' : 'Undo this merge'}</Text>
+                <Text style={styles.forgetText}>Remove this name</Text>
               </Pressable>
             ) : null}
 

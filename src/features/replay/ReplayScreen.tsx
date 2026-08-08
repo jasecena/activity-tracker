@@ -348,7 +348,7 @@ export function ReplayScreen({
  * Here rather than in `core` because it is a presentation choice — which
  * colour, which label — over data `core` already produced.
  */
-export function dayOverlay(
+function dayOverlay(
   segments: readonly Segment[],
   places: readonly Place[],
 ): { readonly tracks: MapTrack[]; readonly marks: MapMark[] } {

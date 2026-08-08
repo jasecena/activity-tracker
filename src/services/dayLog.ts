@@ -75,11 +75,3 @@ export async function freezeFinishedDays({
 
   return [...kept];
 }
-
-/** Forget a single day. The one deletion that is not "erase everything". */
-export async function forgetSegments(ids: readonly string[]): Promise<Segment[]> {
-  const doomed = new Set(ids);
-  const kept = (await readLog()).filter((segment) => !doomed.has(segment.id));
-  await writeJson(STORAGE_KEYS.dayLog, kept);
-  return kept;
-}

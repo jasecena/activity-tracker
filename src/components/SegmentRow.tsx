@@ -23,7 +23,7 @@ interface SegmentRowProps {
   readonly tzOffsetMinutes: number;
   /** Opens the segment's own page. Omitted where the timeline is read-only. */
   readonly onOpen?: (segment: Segment) => void;
-  /** Starts a selection. Omitted where rows cannot be merged. */
+  /** A long press on the row. Omitted where there is nothing to do with one. */
   readonly onLongPress?: (segment: Segment) => void;
   /**
    * Null when nothing is being selected. A boolean puts the row in selection

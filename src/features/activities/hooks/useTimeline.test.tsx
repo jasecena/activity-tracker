@@ -91,9 +91,10 @@ describe('a journey named on a day that is already frozen', () => {
     );
   });
 
-  // A merge is a label with no name over the whole span, so it is the same code
-  // path — and it was broken in the same place, for the same reason.
-  it('collapses merged rows in history into one', async () => {
+  // A label swallows the rows inside its span — the stays in the middle of a
+  // journey are part of the journey. Same code path as the name above, and it
+  // was broken in the same place, for the same reason.
+  it('collapses the rows inside a labelled span', async () => {
     const threeDaysAgo = NOW - 3 * DAY;
     await writeJson(STORAGE_KEYS.fixBuffer, aWalk(threeDaysAgo));
 
@@ -104,14 +105,14 @@ describe('a journey named on a day that is already frozen', () => {
 
     const span: JourneyLabel = {
       id: journeyLabelId(threeDaysAgo),
-      label: '',
+      label: 'The whole outing',
       mode: null,
       startedAt: threeDaysAgo,
       endedAt: threeDaysAgo + 30 * 60_000,
     };
 
-    const merged = [span];
-    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, merged, true));
+    const labels = [span];
+    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, true));
     await waitFor(() => expect(result.current.ready).toBe(true));
 
     await waitFor(() => expect(result.current.history.flatMap((day) => day.segments).length).toBeLessThan(before));

@@ -230,7 +230,8 @@ be redone later from those fixes; nothing can recover a fix that was never
 written because the handler was busy segmenting the last one.
 
 **Native modules live behind `src/services`.** `location.ts`, `vault.ts`,
-`storage.ts` and `motion.ts` are the only files importing an Expo native module.
+`storage.ts`, `battery.ts` and `mediaStore.ts` are the only files importing an
+Expo native module.
 Feature code builds values and hands them over.
 
 **No navigation library.** Four tabs — Day, Capture, Media, Settings — and one
@@ -296,7 +297,14 @@ different date depending on where the machine is.
 `CMMotionActivityManager` — the thing that reports "walking"/"automotive" with a
 confidence — has no Expo binding and needs a custom native module. Mode is
 inferred from speed alone, which is why a slow cycle and a fast walk are hard to
-tell apart. `services/motion.ts` uses the pedometer, which is reachable.
+tell apart.
+
+There was a `services/motion.ts` wrapping the pedometer, which _is_ reachable,
+against the day something used it to confirm that a stretch called a walk had
+steps under it. Nothing ever did. It has gone, and `expo-sensors` with it: an
+unused native module still links into the binary and still carries a permission
+the app has no reason to want. Bring both back when there is a caller, not
+before.
 
 **Pruned fixes are archived, not dropped.** Freezing a day removes its raw
 readings from the buffer — the fold never needs them again, because the day's

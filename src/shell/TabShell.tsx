@@ -361,8 +361,8 @@ export function TabShell() {
         onSave={(label, mode) => {
           if (namingJourney) journeys.name(namingJourney, label, mode);
         }}
-        // Offered whenever a label produced this row — by name *or* by merge. A
-        // merge has no name to remove and is otherwise impossible to undo.
+        // Offered only where a label actually produced this row, so the sheet
+        // never shows Remove over a name that was never given.
         onForget={
           namingJourney && journeys.labels.some((one) => one.id === journeyLabelId(namingJourney.startedAt))
             ? () => journeys.forget(journeyLabelId(namingJourney.startedAt))
