@@ -53,25 +53,10 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
   const safeIndex = Math.min(index, Math.max(0, ordered.length - 1));
   const current = ordered[safeIndex] ?? null;
 
-  /**
-   * The capture you have asked to play, if you have asked.
-   *
-   * A photo opens the moment you land on it — it is a few hundred kilobytes and
-   * waiting for a tap would be pointless ceremony. **A video does not.** Opening
-   * one means decrypting forty megabytes, and doing that on arrival meant a
-   * swipe through a dozen clips paid for every one of them, whether or not you
-   * ever pressed play. The thumbnail is already on screen; the bytes can wait
-   * until they are wanted.
-   */
-  const [asked, setAsked] = useState<string | null>(null);
-  if (asked !== null && asked !== current?.id) setAsked(null);
-
-  const wanted = current && (current.kind !== 'video' || asked === current.id) ? current : null;
-
   // Nothing is opened while another tab is showing. Coming back re-opens it,
   // which costs one decrypt and is the difference between a video that carries
   // on playing behind Settings and one that does not.
-  const file = useSealedFile(visible ? wanted : null);
+  const file = useSealedFile(visible ? current : null);
   const images = useSealedImages();
 
   // A window around where you are, plus the head of the strip, which is on
@@ -142,10 +127,8 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
               live={position === safeIndex}
               uri={position === safeIndex ? file.uri : null}
               failed={position === safeIndex && file.failed}
-              opening={position === safeIndex && wanted !== null && file.uri === null && !file.failed}
-              progress={file.progress}
+              opening={position === safeIndex && file.uri === null && !file.failed}
               thumbUri={images.uriFor(item)}
-              onPlay={() => setAsked(item.id)}
             />
           </View>
         )}
@@ -207,11 +190,9 @@ interface StageProps {
   readonly live: boolean;
   readonly uri: string | null;
   readonly failed: boolean;
-  /** True while its bytes are being decrypted, which for a video is worth showing. */
+  /** True until the file is ready — a blink now that nothing is decrypted. */
   readonly opening: boolean;
-  readonly progress: number;
   readonly thumbUri: string | null;
-  readonly onPlay: () => void;
 }
 
 /**
@@ -222,7 +203,7 @@ interface StageProps {
  * something to look at immediately rather than a black rectangle; for the pages
  * either side of it, it is the whole story.
  */
-function Stage({ item, live, uri, failed, opening, progress, thumbUri, onPlay }: StageProps) {
+function Stage({ item, live, uri, failed, opening, thumbUri }: StageProps) {
   return (
     <View style={styles.stage}>
       {thumbUri ? <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="contain" /> : null}
@@ -236,25 +217,9 @@ function Stage({ item, live, uri, failed, opening, progress, thumbUri, onPlay }:
 
       {live && uri ? <Playing item={item} uri={uri} /> : null}
 
-      {/* The tap that spends the forty megabytes. Over the poster frame, so
-          what you are choosing to open is what you can already see. */}
-      {live && !uri && !failed && !opening && item.kind === 'video' ? (
-        <Pressable
-          onPress={onPlay}
-          accessibilityRole="button"
-          accessibilityLabel="Play video"
-          style={({ pressed }) => [styles.play, pressed && styles.pressed]}
-        >
-          <Ionicons name="play" size={38} color={colors.textPrimary} />
-        </Pressable>
-      ) : null}
-
       {live && opening ? (
-        <View style={styles.opening} accessible accessibilityLabel={`Opening, ${Math.round(progress * 100)}%`}>
-          <Text style={styles.openingText}>Opening… {Math.round(progress * 100)}%</Text>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-          </View>
+        <View style={styles.opening}>
+          <Text style={styles.openingText}>Opening…</Text>
         </View>
       ) : null}
     </View>
@@ -270,14 +235,13 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
 }
 
 /**
- * A video, played from disk rather than held in memory.
+ * A video, played from the stored file.
  *
- * `useVideoPlayer` is handed a file URI, so AVFoundation reads the frames it
- * needs and no more — a ten-minute clip costs the same as a ten-second one. It
- * is also why the file has to exist decrypted on disk for the length of the
- * playback: there is no way to hand Core Media a stream this app decrypts as it
- * goes, and reading the whole clip into a JavaScript string to avoid that would
- * be the very thing being avoided.
+ * `useVideoPlayer` is handed the file itself, so AVFoundation reads the frames
+ * it needs and no more — a ten-minute clip costs what a ten-second one does,
+ * and starting it costs nothing at all. That is what dropping the at-rest
+ * encryption bought: there was no way to hand Core Media a stream this app
+ * decrypted as it went, so every clip had to be written out whole first.
  */
 function VideoPlaying({ uri }: { readonly uri: string }) {
   const player = useVideoPlayer(uri, (instance) => {
@@ -312,14 +276,6 @@ const styles = StyleSheet.create({
   pager: { flex: 1 },
   page: { flex: 1 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  play: {
-    width: 84,
-    height: 84,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(11,15,20,0.6)',
-  },
   opening: {
     alignItems: 'center',
     gap: spacing.sm,
@@ -329,14 +285,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,15,20,0.75)',
   },
   openingText: { ...typography.caption, color: colors.textPrimary },
-  progressTrack: {
-    width: 140,
-    height: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.border,
-    overflow: 'hidden',
-  },
-  progressFill: { height: 4, backgroundColor: colors.move },
   failed: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', padding: spacing.lg },
   audio: { alignItems: 'center', gap: spacing.sm },
   audioText: { ...typography.body, color: colors.textSecondary },

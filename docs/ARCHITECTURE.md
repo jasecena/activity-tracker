@@ -550,7 +550,44 @@ of playback: there is no way to hand Core Media a stream this app decrypts as it
 goes, and buffering the clip in JavaScript to avoid that would be the very thing
 being avoided.
 
-### The bytes: a container of their own
+### The bytes: ordinary files, and why the container went
+
+Media is stored as plain files under `Documents/media`. It used to be sealed
+into a chunked container of its own — `"AVM1"`, a megabyte at a time, each chunk
+independently authenticated — under the same device key as everything else.
+
+That was consistent and it was wrong about the trade. **iOS already encrypts the
+app container**, with a key derived from the passcode, so a second pass in
+JavaScript added very little against the threat it was named for: someone with
+the phone. What it added a great deal of was cost. `@noble/ciphers` is audited,
+pure TypeScript and has no hardware acceleration, so opening a minute of video
+meant forty megabytes of AEAD on the single thread that also draws the screen —
+and the read path, unlike the write path, was shipped without a yield between
+chunks. Switching to the Media tab took seconds and the swipe that got you there
+had already been forgotten.
+
+The one thing the layer genuinely bought was **backups**: the key is
+`THIS_DEVICE_ONLY`, so an iCloud or Finder backup restored elsewhere held
+ciphertext and nothing else. That is the guarantee given up here, knowingly, and
+it is the one to weigh if this is ever revisited.
+
+What it buys instead is that video actually streams. `expo-video` is handed the
+stored file and AVFoundation reads the frames it needs; a ten-minute clip costs
+what a ten-second one does, and starting it costs nothing. That was impossible
+before — there is no way to hand Core Media a stream this app decrypts as it
+goes, so every clip had to be written out whole first.
+
+Encryption has not gone away; it has moved to where data actually leaves the
+device. The sync seals bytes on the way _out_. Everything else — fixes, places,
+labels, settings, the media index — is still sealed by `services/vault.ts`,
+because those are short strings and the cost there is not measurable.
+
+**`unsealInPlace` is the migration**, run once per file on launch after the
+index settles, and it is not optional: a build that cannot read a sealed file
+silently loses every photo its owner ever took. It fails closed, leaving the
+sealed original alone rather than replacing it with half a file.
+
+### The container that was, and that the migration still reads
 
 The vault seals _values_ — short strings bound for AsyncStorage. A minute of
 1080p is forty megabytes, which does not go through `JSON.stringify` and should

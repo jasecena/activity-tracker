@@ -147,11 +147,24 @@ in the keychain, marked `THIS_DEVICE_ONLY` so it enters no backup. It is
 while the phone is locked in a pocket and a key unreadable then would leave a
 hole in every day. "Erase everything" destroys the key.
 
-Media is too big for that path, so `services/mediaStore.ts` seals it into its own
-chunked container under the same key — a megabyte at a time, each chunk
-independently authenticated, so a truncated file fails to open rather than
-decrypting into noise. The plaintext the OS handed over is deleted once sealed,
-and playback decrypts to the cache directory and cleans up after itself.
+**Media is the exception, and this revises what used to stand here.** Photos,
+video and voice notes are stored as ordinary files under `Documents/media`.
+They used to be sealed into a chunked container of their own under the same
+key, and the reasoning was consistent — but iOS already encrypts the container
+with a key derived from the passcode, so the second pass bought very little
+against a stolen phone and cost every read: forty megabytes of pure-JavaScript
+AEAD, on the one thread that also draws the screen, before anything could be
+looked at. The gallery was unusable and the cause was entirely self-inflicted.
+
+What that layer really protected was a **backup**: the key is
+`THIS_DEVICE_ONLY`, so a restored backup held ciphertext. That is what has been
+given up, knowingly. Encryption belongs at the boundary where data actually
+leaves the phone — the sync that is coming — and the bytes get sealed on the
+way out rather than on the way in.
+
+`unsealInPlace` migrates a library written by an older build, once, on launch.
+Do not delete it without a very good reason: a build that cannot read a sealed
+file silently loses every photo its owner took.
 
 **The app makes exactly one kind of network request, and only when you ask.**
 There is no analytics, no telemetry, no crash reporting and no geocoder — that is

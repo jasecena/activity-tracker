@@ -13,10 +13,14 @@ import {
   openForPlayback,
   releasePlayback,
   filesOf,
+  isSealed,
   stageCapture,
   sweepOrphans,
+  unsealInPlace,
   writeMedia,
 } from '../mediaStore';
+
+import { sealBytes } from '../vault';
 
 /**
  * The real cipher against an in-memory filesystem, for the same reason
@@ -65,7 +69,7 @@ function pattern(length: number): Uint8Array {
   return bytes;
 }
 
-function sealedFileOf(media: MediaItem): File {
+function storedFileOf(media: MediaItem): File {
   return new File(Paths.document, 'media', media.fileName);
 }
 
@@ -88,6 +92,38 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 function expectSameBytes(actual: Uint8Array, expected: Uint8Array): void {
   expect(actual.length).toBe(expected.length);
   expect(sameBytes(actual, expected)).toBe(true);
+}
+
+/**
+ * Write a container in the format an earlier build wrote, so the migration is
+ * tested against the real thing rather than against a mock of it.
+ *
+ * `"AVM1"` then, repeating: a four-byte big-endian length and that many bytes of
+ * `nonce || ciphertext || tag`. Chunked at a megabyte, as it was, so a
+ * multi-chunk file exercises the loop rather than one lucky pass.
+ */
+async function seedSealed(fileName: string, plaintext: Uint8Array): Promise<void> {
+  const CHUNK = 1024 * 1024;
+  const parts: Uint8Array[] = [new Uint8Array([0x41, 0x56, 0x4d, 0x31])];
+
+  for (let at = 0; at < plaintext.length; at += CHUNK) {
+    const sealed = await sealBytes(plaintext.subarray(at, Math.min(at + CHUNK, plaintext.length)));
+    const length = sealed.length;
+    parts.push(new Uint8Array([(length >>> 24) & 0xff, (length >>> 16) & 0xff, (length >>> 8) & 0xff, length & 0xff]));
+    parts.push(sealed);
+  }
+
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+
+  const directory = new Directory(Paths.document, 'media');
+  if (!directory.exists) directory.create({ intermediates: true });
+  new File(directory, fileName).write(bytes);
 }
 
 beforeEach(() => {
@@ -137,17 +173,19 @@ describe('writeMedia', () => {
     expect(new File('file:///mock/cache/capture-1.jpg').exists).toBe(false);
   });
 
-  it('writes something that is not the plaintext', async () => {
+  // A move, not an encrypt-and-copy. The bytes on disk are the bytes the camera
+  // produced, byte for byte, which is what lets the player read frames out of
+  // them instead of waiting for forty megabytes of JavaScript AEAD.
+  it('stores exactly what the camera produced', async () => {
     const bytes = pattern(512);
     __seed('file:///mock/cache/capture-1.jpg', bytes);
 
     const written = await writeMedia('file:///mock/cache/capture-1.jpg', 'm-1767600000000', 'photo');
-    const onDisk = sealedFileOf(item({ fileName: written.fileName })).bytesSync();
+    const onDisk = storedFileOf(item({ fileName: written.fileName })).bytesSync();
 
-    expect(sameBytes(onDisk, bytes)).toBe(false);
-    // Magic, a length prefix, a nonce and a tag, all on top of the payload.
-    expect(onDisk.length).toBeGreaterThan(bytes.length);
-    expect(written.byteLength).toBe(onDisk.length);
+    expectSameBytes(onDisk, bytes);
+    expect(written.byteLength).toBe(bytes.length);
+    expect(written.fileName).toBe('m-1767600000000.jpg');
   });
 
   it('overwrites rather than failing when the same id is captured twice', async () => {
@@ -167,47 +205,90 @@ describe('openForPlayback', () => {
     expect(await openForPlayback(item())).toBeNull();
   });
 
-  // The three ways a container goes bad. All of them must fail closed: a
-  // truncated video that decrypts into noise is worse than one that will not
-  // open, because it looks like a recording and is not.
+  it('hands over the stored file itself, with nothing copied or decrypted', async () => {
+    __seed('file:///mock/cache/a.jpg', pattern(4_000));
+    const written = await writeMedia('file:///mock/cache/a.jpg', 'm-1767600000000', 'photo');
+
+    const uri = await openForPlayback(item({ fileName: written.fileName }));
+    expect(uri).toBe(storedFileOf(item({ fileName: written.fileName })).uri);
+    expectSameBytes(new File(uri as string).bytesSync(), pattern(4_000));
+  });
+});
+
+/**
+ * The migration off the sealed container.
+ *
+ * Media used to be encrypted at rest in this module's own format. It is not any
+ * more — iOS encrypts the container already, and a second pass in JavaScript
+ * cost every read. But a library sealed by an earlier build has to keep
+ * working: losing every photo somebody took because a storage decision changed
+ * is not a thing an app gets to do.
+ *
+ * The three ways a container goes bad still matter here, and all of them must
+ * fail closed. A truncated video that decrypts into noise is worse than one
+ * that will not open, because it looks like a recording and is not — and here
+ * failing closed also means the sealed original is left alone rather than
+ * replaced by rubbish.
+ */
+describe('unsealing what an earlier build wrote', () => {
+  it('turns a sealed capture into the bytes it was made from', async () => {
+    const bytes = pattern(3 * 1024 * 1024 + 77);
+    await seedSealed('m-1767600000000.jpg.avm', bytes);
+
+    const plainName = await unsealInPlace('m-1767600000000.jpg.avm');
+    expect(plainName).toBe('m-1767600000000.jpg');
+
+    expectSameBytes(new File(Paths.document, 'media', plainName as string).bytesSync(), bytes);
+    // The sealed original is gone: two copies of every video is the one thing
+    // a phone has no room for.
+    expect(new File(Paths.document, 'media', 'm-1767600000000.jpg.avm').exists).toBe(false);
+  });
+
+  it('is null for a file that is not there', async () => {
+    expect(await unsealInPlace('nothing.jpg.avm')).toBeNull();
+  });
+
   it('refuses a file that is not one of ours', async () => {
     new File(Paths.document, 'media').create();
-    const sealed = sealedFileOf(item());
-    sealed.write(pattern(300));
-    expect(await openForPlayback(item())).toBeNull();
+    new File(Paths.document, 'media', 'x.jpg.avm').write(pattern(300));
+
+    expect(await unsealInPlace('x.jpg.avm')).toBeNull();
   });
 
   it('refuses a container truncated mid-chunk', async () => {
-    __seed('file:///mock/cache/a.jpg', pattern(4_000));
-    const written = await writeMedia('file:///mock/cache/a.jpg', 'm-1767600000000', 'photo');
-
-    const media = item({ fileName: written.fileName });
-    const sealed = sealedFileOf(media);
+    await seedSealed('x.jpg.avm', pattern(4_000));
+    const sealed = new File(Paths.document, 'media', 'x.jpg.avm');
     sealed.write(sealed.bytesSync().slice(0, 200));
 
-    expect(await openForPlayback(media)).toBeNull();
+    expect(await unsealInPlace('x.jpg.avm')).toBeNull();
   });
 
   it('refuses a container whose bytes were altered', async () => {
-    __seed('file:///mock/cache/a.jpg', pattern(4_000));
-    const written = await writeMedia('file:///mock/cache/a.jpg', 'm-1767600000000', 'photo');
-
-    const media = item({ fileName: written.fileName });
-    const sealed = sealedFileOf(media);
+    await seedSealed('x.jpg.avm', pattern(4_000));
+    const sealed = new File(Paths.document, 'media', 'x.jpg.avm');
     const bytes = sealed.bytesSync();
     // Well past the magic and the length prefix, so this is the ciphertext.
     bytes[100] = (bytes[100] ?? 0) ^ 0xff;
     sealed.write(bytes);
 
-    expect(await openForPlayback(media)).toBeNull();
+    expect(await unsealInPlace('x.jpg.avm')).toBeNull();
   });
 
-  it('leaves no half-written plaintext behind when it refuses', async () => {
+  // Left sealed rather than deleted: a file that will not open here may open on
+  // a device that still has its key, and half a file is worse than none.
+  it('leaves the sealed original alone and writes no half a file when it refuses', async () => {
     new File(Paths.document, 'media').create();
-    sealedFileOf(item()).write(pattern(300));
+    new File(Paths.document, 'media', 'x.jpg.avm').write(pattern(300));
 
-    await openForPlayback(item());
-    expect(new File(Paths.cache, 'play-m-1767600000000.jpg').exists).toBe(false);
+    await unsealInPlace('x.jpg.avm');
+
+    expect(new File(Paths.document, 'media', 'x.jpg.avm').exists).toBe(true);
+    expect(new File(Paths.document, 'media', 'x.jpg').exists).toBe(false);
+  });
+
+  it('knows which names still need it', () => {
+    expect(isSealed('m-1.jpg.avm')).toBe(true);
+    expect(isSealed('m-1.jpg')).toBe(false);
   });
 });
 
@@ -221,7 +302,7 @@ describe('deleting', () => {
     expect(new File(uri as string).exists).toBe(true);
 
     deleteMedia(media);
-    expect(sealedFileOf(media).exists).toBe(false);
+    expect(storedFileOf(media).exists).toBe(false);
     expect(new File(uri as string).exists).toBe(false);
   });
 
@@ -233,7 +314,7 @@ describe('deleting', () => {
     await openForPlayback(media);
     releasePlayback(media);
 
-    expect(sealedFileOf(media).exists).toBe(true);
+    expect(storedFileOf(media).exists).toBe(true);
     // Still openable afterwards: releasing is not deleting.
     expect(await openForPlayback(media)).not.toBeNull();
   });
@@ -249,13 +330,13 @@ describe('deleting', () => {
     __seed('file:///mock/cache/b.jpg', pattern(100));
     const second = await writeMedia('file:///mock/cache/b.jpg', 'm-2', 'photo');
 
-    expect(sealedFileOf(item({ fileName: first.fileName })).exists).toBe(true);
-    expect(sealedFileOf(item({ fileName: second.fileName })).exists).toBe(true);
+    expect(storedFileOf(item({ fileName: first.fileName })).exists).toBe(true);
+    expect(storedFileOf(item({ fileName: second.fileName })).exists).toBe(true);
 
     eraseAllMedia();
 
-    expect(sealedFileOf(item({ fileName: first.fileName })).exists).toBe(false);
-    expect(sealedFileOf(item({ fileName: second.fileName })).exists).toBe(false);
+    expect(storedFileOf(item({ fileName: first.fileName })).exists).toBe(false);
+    expect(storedFileOf(item({ fileName: second.fileName })).exists).toBe(false);
   });
 });
 
@@ -322,8 +403,8 @@ describe('sweeping orphans', () => {
 
     expect(sweepOrphans([kept.fileName])).toBe(1);
 
-    expect(sealedFileOf(item({ fileName: kept.fileName })).exists).toBe(true);
-    expect(sealedFileOf(item({ fileName: orphan.fileName })).exists).toBe(false);
+    expect(storedFileOf(item({ fileName: kept.fileName })).exists).toBe(true);
+    expect(storedFileOf(item({ fileName: orphan.fileName })).exists).toBe(false);
   });
 
   it('does nothing when everything on disk is accounted for', async () => {
@@ -363,26 +444,24 @@ describe('sweeping orphans', () => {
 });
 
 /**
- * A filmstrip of full captures would decrypt every photo to draw a row of
- * 60-point squares — the same whole-file cost as playing a video, multiplied by
- * everything ever taken. A few kilobytes sealed beside each capture avoids it.
+ * A filmstrip drawn from full captures would read every photo to fill a row of
+ * 60-point squares, and every video whole. A few kilobytes beside each capture
+ * avoids it — that is still true when nothing is encrypted, because the cost
+ * was never only the cipher.
  */
 describe('thumbnails', () => {
-  it('seals one beside a photo, separate from the photo', async () => {
+  it('writes one beside the photo, far smaller than it', async () => {
     __seed('file:///mock/cache/shot.jpg', pattern(50_000));
 
     const thumbName = await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
-    expect(thumbName).toBe('m-1.thumb.avm');
+    expect(thumbName).toBe('m-1.thumb.jpg');
 
-    const sealed = new File(Paths.document, 'media', thumbName as string);
-    expect(sealed.exists).toBe(true);
-    // Sealed, not the raw scaled bytes.
-    expect(sameBytes(sealed.bytesSync(), new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).toBe(false);
-    // And far smaller than the capture it came from.
-    expect(sealed.size).toBeLessThan(50_000);
+    const thumb = new File(Paths.document, 'media', thumbName as string);
+    expect(thumb.exists).toBe(true);
+    expect(thumb.size).toBeLessThan(50_000);
   });
 
-  it('opens one back to the bytes it was made from', async () => {
+  it('hands back the bytes it was made from', async () => {
     __seed('file:///mock/cache/shot.jpg', pattern(4_000));
     const thumbName = await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
 
@@ -392,7 +471,7 @@ describe('thumbnails', () => {
 
   it('pulls a frame out of a video first', async () => {
     __seed('file:///mock/cache/clip.mov', pattern(4_000));
-    expect(await writeThumbnail('file:///mock/cache/clip.mov', 'm-2', 'video')).toBe('m-2.thumb.avm');
+    expect(await writeThumbnail('file:///mock/cache/clip.mov', 'm-2', 'video')).toBe('m-2.thumb.jpg');
   });
 
   // Nothing to show, and inventing a grey square would be worse than nothing.
@@ -405,12 +484,14 @@ describe('thumbnails', () => {
     expect(await writeThumbnail('file:///mock/cache/missing.jpg', 'm-4', 'photo')).not.toBe(undefined);
   });
 
-  it('leaves no plaintext scaled copy behind in the media directory', async () => {
+  // The scaled copy and, for a video, the extracted frame are both temp files.
+  // Leaving them means the media directory grows a duplicate per capture.
+  it('leaves no working copy behind in the media directory', async () => {
     __seed('file:///mock/cache/shot.jpg', pattern(4_000));
     await writeThumbnail('file:///mock/cache/shot.jpg', 'm-1', 'photo');
 
-    const stray = new Directory(Paths.document, 'media').list().filter((entry) => !entry.uri.endsWith('.avm'));
-    expect(stray).toEqual([]);
+    const names = new Directory(Paths.document, 'media').list().map((entry) => entry.uri.split('/').pop());
+    expect(names).toEqual(['m-1.thumb.jpg']);
   });
 
   // The capture and its thumbnail are two files; forgetting one must not leave
@@ -424,6 +505,6 @@ describe('thumbnails', () => {
     deleteMedia(item({ fileName: written.fileName, thumbFileName: thumbName }));
 
     expect(new File(Paths.document, 'media', thumbName as string).exists).toBe(false);
-    expect(sealedFileOf(item({ fileName: written.fileName })).exists).toBe(false);
+    expect(storedFileOf(item({ fileName: written.fileName })).exists).toBe(false);
   });
 });

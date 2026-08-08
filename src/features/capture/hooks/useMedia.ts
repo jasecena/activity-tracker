@@ -9,9 +9,11 @@ import {
   deleteMedia as deleteBytes,
   discardPending,
   filesOf,
+  isSealed,
   listPending,
   stageCapture,
   sweepOrphans,
+  unsealInPlace,
   writeMedia,
   writeThumbnail,
 } from '@/services/mediaStore';
@@ -120,26 +122,21 @@ export function useMedia(): UseMedia {
       if (!touched.current) setItems(all);
       setReady(true);
 
-      // Captures stored before thumbnails existed, given one now. After
-      // `setReady`, because it decrypts each capture whole and the gallery
-      // should be usable — drawing what it can — while it runs. One at a time
-      // and never retried within a session: a video that cannot yield a frame
-      // will not start being able to on the second attempt.
+      // Bringing the old library up to date, after `setReady` so the gallery
+      // is usable — drawing what it can — while it runs. One capture at a time,
+      // and never retried within a session: whatever stopped a file being read
+      // will not stop being true on the second attempt.
       for (const item of all) {
         if (!live) return;
-        if (item.kind === 'audio' || item.thumbFileName) continue;
-
-        const thumbFileName = await backfillThumbnail(item);
-        if (!live || !thumbFileName) continue;
-
-        // Merged into whatever the list is *now*, not into `all`: a capture
-        // taken or deleted while this was running must not be undone by it.
-        setItems((current) => {
-          const next = current.map((existing) =>
-            existing.id === item.id && !existing.thumbFileName ? { ...existing, thumbFileName } : existing,
-          );
-          void writeJson(STORAGE_KEYS.media, next);
-          return next;
+        await bringUpToDate(item, (patch) => {
+          if (!live) return;
+          // Merged into whatever the list is *now*, not into `all`: a capture
+          // taken or deleted while this was running must not be undone by it.
+          setItems((current) => {
+            const next = current.map((existing) => (existing.id === item.id ? { ...existing, ...patch } : existing));
+            void writeJson(STORAGE_KEYS.media, next);
+            return next;
+          });
         });
       }
     })();
@@ -219,4 +216,43 @@ export function useMedia(): UseMedia {
   );
 
   return { ready, items, keep, annotate, forget };
+}
+
+/**
+ * Whatever this capture still needs, done once.
+ *
+ * Two migrations, in order, because the second depends on the first:
+ *
+ * **Unsealing.** Media used to be encrypted at rest in its own container. It is
+ * not any more — iOS already encrypts the app's files with a key derived from
+ * the passcode, so a second pass in JavaScript bought little against a stolen
+ * phone and cost every single read. But a library sealed by an earlier build is
+ * unreadable to a build that no longer decrypts, and quietly losing every photo
+ * somebody took is not something an app gets to do because its storage decision
+ * changed. Each file is unsealed in place, once.
+ *
+ * **Thumbnails**, for anything captured before they existed. Cheap now: there
+ * is nothing to decrypt before there is a frame to scale.
+ *
+ * Reports each step as it lands rather than at the end, so the strip fills in
+ * while the rest of the library is still being worked through.
+ */
+async function bringUpToDate(item: MediaItem, onProgress: (patch: Partial<MediaItem>) => void): Promise<void> {
+  let current = item;
+
+  if (isSealed(current.fileName)) {
+    const fileName = await unsealInPlace(current.fileName);
+    // Null means it would not open — a file from a restored backup, most
+    // likely. Left sealed rather than deleted: it may still open on a device
+    // that has its key.
+    if (!fileName) return;
+
+    current = { ...current, fileName };
+    onProgress({ fileName });
+  }
+
+  if (current.kind === 'audio' || current.thumbFileName) return;
+
+  const thumbFileName = await backfillThumbnail(current);
+  if (thumbFileName) onProgress({ thumbFileName });
 }

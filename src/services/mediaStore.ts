@@ -4,7 +4,7 @@ import { getThumbnailAsync } from 'expo-video-thumbnails';
 
 import type { MediaItem, MediaKind } from '@/core/media';
 
-import { openBytes, sealBytes } from './vault';
+import { openBytes } from './vault';
 
 /**
  * Photos, video and voice notes on disk — encrypted, like everything else.
@@ -193,10 +193,6 @@ function ensureDirectory(): Directory {
   return directory;
 }
 
-function beUint32(value: number): Uint8Array {
-  return new Uint8Array([(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]);
-}
-
 function readBeUint32(bytes: Uint8Array): number {
   return ((bytes[0] ?? 0) << 24) | ((bytes[1] ?? 0) << 16) | ((bytes[2] ?? 0) << 8) | (bytes[3] ?? 0);
 }
@@ -227,77 +223,47 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Seal a file the camera or recorder just produced, and delete the plaintext.
+ * Take the file the camera produced and put it where it belongs.
  *
- * The source is a temp file the OS handed us; leaving it behind would mean the
- * app's own container holds an unencrypted copy of everything ever captured,
- * which is the exact thing this module exists to prevent. It is deleted whether
- * or not the sealing succeeded — a half-written sealed file is unopenable and
- * gets cleaned up too.
+ * A **move**, not an encrypt-and-copy. Both directories live in the same
+ * container, so this is a rename: free however long the clip is, and instant
+ * where sealing forty megabytes was seconds of pure-JavaScript AEAD on the one
+ * thread the interface also runs on.
+ *
+ * This reverses the decision that media is sealed at rest, and the reasoning is
+ * in `docs/ARCHITECTURE.md` § 11. In short: iOS already encrypts the container
+ * with a key derived from the passcode, so a second pass in JavaScript bought
+ * very little against a stolen phone and cost every read. Encryption belongs at
+ * the boundary where data actually leaves — the sync that is coming — and the
+ * bytes are sealed on the way out rather than on the way in.
+ *
+ * `onProgress` survives the change and is called once, with 1. There is nothing
+ * to report on a rename, and callers already know how to draw a bar.
  */
 export async function writeMedia(
   sourceUri: string,
   id: string,
   kind: MediaKind,
-  /** Fraction sealed so far, 0 to 1. Called once per chunk, for a progress bar. */
   onProgress?: (fraction: number) => void,
 ): Promise<{ readonly fileName: string; readonly byteLength: number }> {
   ensureDirectory();
 
   const source = new File(sourceUri);
-  const fileName = `${id}.${EXTENSIONS[kind]}.avm`;
+  const fileName = `${id}.${EXTENSIONS[kind]}`;
   const destination = new File(mediaDirectory(), fileName);
 
   if (destination.exists) destination.delete();
-  destination.create();
-
-  const totalBytes = Math.max(1, source.size);
-  const input = source.open(FileMode.ReadOnly);
-  const output = destination.open(FileMode.WriteOnly);
-
-  try {
-    output.writeBytes(MAGIC);
-    let read = 0;
-
-    for (;;) {
-      const plain = input.readBytes(CHUNK_BYTES);
-      if (plain.length === 0) break;
-
-      const sealed = await sealBytes(plain);
-      output.writeBytes(beUint32(sealed.length));
-      output.writeBytes(sealed);
-
-      read += plain.length;
-      onProgress?.(Math.min(1, read / totalBytes));
-
-      // A short read is the last chunk. Asking again would return zero bytes
-      // and cost another round trip through the bridge.
-      if (plain.length < CHUNK_BYTES) break;
-
-      // Only between chunks, never after the last: the caller is waiting on
-      // this promise and an extra tick before resolving is pure latency.
-      await breathe();
-    }
-  } catch (error) {
-    if (destination.exists) destination.delete();
-    throw error;
-  } finally {
-    input.close();
-    output.close();
-    // The plaintext the OS gave us. Gone either way.
-    if (source.exists) source.delete();
-  }
+  source.moveSync(destination);
+  onProgress?.(1);
 
   return { fileName, byteLength: destination.size };
 }
 
 /**
- * Make a small image for the filmstrip and seal it beside the capture.
+ * Make a small image for the filmstrip and put it beside the capture.
  *
- * Takes the **plaintext**, so it must be called while the staged file still
- * exists — before `writeMedia` consumes it. Generating one later means
- * decrypting the whole capture first, which is exactly the cost thumbnails
- * exist to avoid; that path is for old captures only.
+ * Must be called while the source file still exists — before `writeMedia`
+ * moves it.
  *
  * Returns null when there is nothing to show (a voice note) or when the
  * platform cannot produce a frame. A missing thumbnail is a state the UI
@@ -317,19 +283,14 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
     const rendered = await context.renderAsync();
     const small = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.6 });
 
-    const fileName = `${id}.thumb.avm`;
+    const fileName = `${id}.thumb.jpg`;
     const destination = new File(mediaDirectory(), fileName);
     if (destination.exists) destination.delete();
+    new File(small.uri).moveSync(destination);
 
-    // Small enough to seal in one pass: no chunking, no yielding, no progress.
-    const plain = await new File(small.uri).bytes();
-    destination.create();
-    destination.write(await sealBytes(plain));
-
-    // The extracted frame and the scaled copy are both plaintext temp files.
-    for (const uri of [small.uri, frameUri]) {
-      if (uri === sourceUri) continue;
-      const temp = new File(uri);
+    // The extracted video frame is a temp file of its own.
+    if (frameUri !== sourceUri) {
+      const temp = new File(frameUri);
       if (temp.exists) temp.delete();
     }
 
@@ -340,89 +301,38 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
   }
 }
 
-/**
- * Make a thumbnail for a capture that was stored before thumbnails existed.
- *
- * The expensive path, and deliberately the only one that is: the capture has to
- * be decrypted whole before there is an image to scale. That is the cost
- * thumbnails avoid on every subsequent read, which is why this is a one-off
- * over the old library rather than something the gallery ever does on demand.
- *
- * The plaintext is released either way, including when the thumbnail fails —
- * a decrypted video left in the cache because a frame could not be pulled out
- * of it is the worst outcome available here.
- */
-export async function backfillThumbnail(item: MediaItem): Promise<string | null> {
-  if (item.kind === 'audio') return null;
-
-  const opened = await openForPlayback(item);
-  if (!opened) return null;
-
-  try {
-    return await writeThumbnail(opened, item.id, item.kind);
-  } finally {
-    releasePlayback(item);
-  }
+/** Anything written before media stopped being sealed at rest. */
+export function isSealed(fileName: string): boolean {
+  return fileName.endsWith('.avm');
 }
 
-/** Decrypt a thumbnail for display. Small, so read whole rather than streamed. */
-export async function openThumbnail(fileName: string): Promise<string | null> {
+/**
+ * Unseal one file written by the old container, in place.
+ *
+ * The migration, and the reason it exists at all: a library sealed by an
+ * earlier build is unreadable to a build that no longer decrypts, and silently
+ * losing every photo somebody took is not a thing an app gets to do because its
+ * storage decision changed. Run once per file, on launch, after the index has
+ * settled; the result is a plain file under the same id and a new name.
+ *
+ * Breathes between chunks like everything else that reads a whole capture, so
+ * a library of clips migrates without the interface stopping.
+ *
+ * Returns the new file name, or null if it could not be read — in which case
+ * the sealed file is left exactly where it is rather than deleted, because a
+ * file that failed to open once may open on a device that still has its key.
+ */
+export async function unsealInPlace(fileName: string): Promise<string | null> {
   const sealed = new File(mediaDirectory(), fileName);
   if (!sealed.exists) return null;
 
-  try {
-    const plain = await openBytes(await sealed.bytes());
-    if (!plain) return null;
-
-    const destination = new File(Paths.cache, `thumb-${fileName.replace(/\.avm$/, '')}.jpg`);
-    if (destination.exists) destination.delete();
-    destination.create();
-    destination.write(plain);
-    return destination.uri;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Decrypt an item into the cache and return a URI something can play.
- *
- * Returns null when the file is missing or will not authenticate — a restored
- * backup carries the ciphertext and not the key, and "this cannot be read" is
- * handled the same way as "this is not there", because there is nothing else to
- * do about either.
- *
- * Call `releasePlayback` when the screen showing it goes away.
- *
- * **Breathes between chunks, exactly like the write does.** Reading is the same
- * shape of work as writing — dozens of megabyte-sized AEAD passes — and it was
- * shipped without the yield the write had. Awaiting `openBytes` drains the
- * microtask queue and nothing else, so opening a minute of video ran the whole
- * loop without the UI getting a frame: the tab took a visible age to appear,
- * and the swipe that got you there had already been forgotten. Slightly slower
- * in wall-clock, entirely responsive.
- *
- * `onProgress` is the other half of that: something a person waits for should
- * say how far along it is.
- */
-export async function openForPlayback(
-  item: MediaItem,
-  onProgress?: (fraction: number) => void,
-): Promise<string | null> {
-  const sealed = new File(mediaDirectory(), item.fileName);
-  if (!sealed.exists) return null;
-
-  const plainName = item.fileName.replace(/\.avm$/, '');
-  const destination = new File(Paths.cache, `play-${plainName}`);
+  const plainName = fileName.replace(/\.avm$/, '');
+  const destination = new File(mediaDirectory(), plainName);
   if (destination.exists) destination.delete();
   destination.create();
 
   const input = sealed.open(FileMode.ReadOnly);
   const output = destination.open(FileMode.WriteOnly);
-  // Sealed bytes, not plaintext — close enough for a progress bar, and the
-  // plaintext size is not known until the last chunk is open.
-  const total = Math.max(1, sealed.size);
-  let read = MAGIC.length;
 
   try {
     if (!sameBytes(input.readBytes(MAGIC.length), MAGIC)) throw new Error('Not a sealed media file');
@@ -445,13 +355,10 @@ export async function openForPlayback(
       if (!plain) throw new Error('Chunk failed to authenticate');
       output.writeBytes(plain);
 
-      read += 4 + chunk.length;
-      onProgress?.(Math.min(1, read / total));
-
-      // The yield that was missing. See the note above.
       await breathe();
     }
-  } catch {
+  } catch (error) {
+    console.warn('Could not unseal a capture', error);
     if (destination.exists) destination.delete();
     return null;
   } finally {
@@ -459,14 +366,67 @@ export async function openForPlayback(
     output.close();
   }
 
-  return destination.uri;
+  sealed.delete();
+  return plainName;
 }
 
-/** Drop the decrypted copy. Safe to call for something that was never opened. */
-export function releasePlayback(item: MediaItem): void {
-  const plainName = item.fileName.replace(/\.avm$/, '');
-  const decrypted = new File(Paths.cache, `play-${plainName}`);
-  if (decrypted.exists) decrypted.delete();
+/**
+ * Make a thumbnail for a capture stored before thumbnails existed.
+ *
+ * Cheap now that the capture is a plain file: there is nothing to decrypt
+ * first, so this reads the frame straight off disk.
+ */
+export async function backfillThumbnail(item: MediaItem): Promise<string | null> {
+  if (item.kind === 'audio' || isSealed(item.fileName)) return null;
+
+  const file = new File(mediaDirectory(), item.fileName);
+  if (!file.exists) return null;
+
+  return writeThumbnail(file.uri, item.id, item.kind);
+}
+
+/**
+ * A URI for a thumbnail. No work: it is a file on disk.
+ *
+ * Kept async because every caller already awaits it, and because a future
+ * format would need the room.
+ */
+export async function openThumbnail(fileName: string): Promise<string | null> {
+  const file = new File(mediaDirectory(), fileName);
+  return file.exists ? file.uri : null;
+}
+
+/**
+ * A URI something can show or play.
+ *
+ * **This is the change that made the gallery quick.** It used to decrypt the
+ * whole capture into the cache before anything could look at it — forty
+ * megabytes of JavaScript AEAD on the thread that also draws the screen, for
+ * every clip you swiped past. Now `expo-video` is handed the file and reads
+ * the frames it needs, which is what streaming meant all along.
+ *
+ * `onProgress` is called once, with 1, so callers that draw a bar keep working
+ * and simply never show one.
+ */
+export async function openForPlayback(
+  item: MediaItem,
+  onProgress?: (fraction: number) => void,
+): Promise<string | null> {
+  const file = new File(mediaDirectory(), item.fileName);
+  if (!file.exists) return null;
+  onProgress?.(1);
+  return file.uri;
+}
+
+/**
+ * Nothing to release: playback reads the stored file directly.
+ *
+ * Kept, and kept called, because the shape is right — a screen that opens a
+ * capture should say when it is done with it, and the sync that is coming will
+ * decrypt to a temporary file again on the way down.
+ */
+export function releasePlayback(_item: MediaItem): void {
+  // Deliberately empty.
 }
 
 /** Forget one capture, bytes and all — the thumbnail included. */

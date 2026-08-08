@@ -1,10 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system';
 
 import { mediaIdFor } from '@/core/media';
 import { openThumbnail, stageCapture, writeMedia, writeThumbnail } from '@/services/mediaStore';
 import { STORAGE_KEYS, writeJson } from '@/services/storage';
+import { sealBytes } from '@/services/vault';
 
 import { useMedia } from './useMedia';
 
@@ -18,6 +19,34 @@ import { useMedia } from './useMedia';
 const { __reset, __seed } = FileSystem as unknown as typeof import('../../../../__mocks__/expo-file-system');
 
 const CAPTURED_AT = 1_767_600_000_000;
+
+function bytes4(length: number): Uint8Array {
+  return bytes(length);
+}
+
+/** A container in the format an earlier build wrote: "AVM1" then [len][sealed]. */
+async function seedSealed(fileName: string, plaintext: Uint8Array): Promise<void> {
+  const sealed = await sealBytes(plaintext);
+  const length = sealed.length;
+  const header = new Uint8Array([
+    0x41,
+    0x56,
+    0x4d,
+    0x31,
+    (length >>> 24) & 0xff,
+    (length >>> 16) & 0xff,
+    (length >>> 8) & 0xff,
+    length & 0xff,
+  ]);
+
+  const out = new Uint8Array(header.length + sealed.length);
+  out.set(header, 0);
+  out.set(sealed, header.length);
+
+  const directory = new Directory(Paths.document, 'media');
+  if (!directory.exists) directory.create({ intermediates: true });
+  new File(directory, fileName).write(out);
+}
 
 function bytes(length: number): Uint8Array {
   const out = new Uint8Array(length);
@@ -100,7 +129,7 @@ describe('captures stored before thumbnails existed', () => {
     const { result } = await renderHook(() => useMedia());
     // `waitFor`, not a drained microtask queue: opening a capture yields to the
     // UI between chunks with `setTimeout(0)`, which is a macrotask.
-    await waitFor(() => expect(result.current.items[0]?.thumbFileName).toBe('m-1.thumb.avm'));
+    await waitFor(() => expect(result.current.items[0]?.thumbFileName).toBe('m-1.thumb.jpg'));
 
     const thumbFileName = result.current.items[0]?.thumbFileName;
     expect(await openThumbnail(thumbFileName as string)).not.toBeNull();
@@ -160,5 +189,62 @@ describe('captures stored before thumbnails existed', () => {
     });
 
     expect(result.current.items[0]?.thumbFileName).toBeNull();
+  });
+});
+
+/**
+ * A library sealed by an earlier build has to keep working. Losing every photo
+ * somebody took because a storage decision changed is not a thing an app gets
+ * to do, so the files are unsealed in place on the next launch.
+ */
+describe('captures sealed by an earlier build', () => {
+  it('unseals them in place and points the index at the plain file', async () => {
+    const bytes = bytes4(2_000);
+    await seedSealed('m-1.jpg.avm', bytes);
+    await writeJson(STORAGE_KEYS.media, [
+      {
+        id: 'm-1',
+        kind: 'photo',
+        capturedAt: CAPTURED_AT,
+        durationMs: null,
+        fileName: 'm-1.jpg.avm',
+        thumbFileName: null,
+        byteLength: bytes.length,
+        at: null,
+        note: '',
+      },
+    ]);
+
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.items[0]?.fileName).toBe('m-1.jpg'));
+
+    const stored = new File(Paths.document, 'media', 'm-1.jpg');
+    expect(stored.exists).toBe(true);
+    expect(stored.bytesSync().length).toBe(bytes.length);
+    // No second copy: two of every video is what a phone has no room for.
+    expect(new File(Paths.document, 'media', 'm-1.jpg.avm').exists).toBe(false);
+  });
+
+  // Unsealed first, then given a thumbnail — the second step reads the file the
+  // first one produced, so the order is not incidental.
+  it('gives one a thumbnail once it can read it', async () => {
+    await seedSealed('m-2.jpg.avm', bytes4(2_000));
+    await writeJson(STORAGE_KEYS.media, [
+      {
+        id: 'm-2',
+        kind: 'photo',
+        capturedAt: CAPTURED_AT,
+        durationMs: null,
+        fileName: 'm-2.jpg.avm',
+        thumbFileName: null,
+        byteLength: 2_000,
+        at: null,
+        note: '',
+      },
+    ]);
+
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.items[0]?.thumbFileName).toBe('m-2.thumb.jpg'));
+    expect(result.current.items[0]?.fileName).toBe('m-2.jpg');
   });
 });
