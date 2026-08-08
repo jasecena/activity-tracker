@@ -9,7 +9,7 @@ import type { MediaItem, MediaKind } from '@/core/media';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
-import { currentFix } from '@/services/location';
+import { askPosition } from '@/services/position';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import type { UseMedia } from './hooks/useMedia';
@@ -157,7 +157,7 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
     // that should feel instant.
     const [picture, at] = await Promise.all([
       camera.current?.takePictureAsync({ quality: 0.8, exif: false }),
-      currentFix(),
+      askPosition(),
     ]);
     await store(picture?.uri, 'photo', null, at);
   }, [store]);
@@ -176,7 +176,7 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
     setElapsedMs(0);
     // Not awaited: the recording starts now, and the reading lands a moment
     // later without holding up the shutter.
-    void currentFix().then(setStartedAtPlace);
+    void askPosition().then(setStartedAtPlace);
 
     const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
     await store(clip?.uri, 'video', null, startedAtPlace);
@@ -196,7 +196,7 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
     setElapsedMs(0);
     setSince(readNow());
     setState('recording');
-    void currentFix().then(setStartedAtPlace);
+    void askPosition().then(setStartedAtPlace);
   }, [recorder, since, startedAtPlace, state, store]);
 
   const missingPermission =

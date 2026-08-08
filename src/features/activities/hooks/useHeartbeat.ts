@@ -3,7 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { now as readNow } from '@/services/clock';
 import { appendFixes } from '@/services/fixBuffer';
-import { currentFix } from '@/services/location';
+import { askPosition } from '@/services/position';
 
 /**
  * How often to ask where the phone is while the app is open.
@@ -101,7 +101,7 @@ export function useHeartbeat(enabled: boolean, onRecorded: () => void): void {
 
     const timer = setTimeout(() => {
       void (async () => {
-        const fix = await currentFix();
+        const fix = await askPosition();
         if (!live) return;
 
         if (fix) {

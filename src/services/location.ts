@@ -235,7 +235,7 @@ const MAX_FIX_AGE_MS = 60_000;
  * taken?", where 100 m is a street and 3 km is a city — the first is worth
  * keeping and the second is not.
  */
-const MAX_FIX_ACCURACY_M = 150;
+export const MAX_FIX_ACCURACY_M = 150;
 
 /**
  * One fix, now, asked for rather than waited for.

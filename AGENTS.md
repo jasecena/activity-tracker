@@ -164,13 +164,20 @@ The reading is taken at the moment that _matters_, which the caller decides:
 the shutter for a photo, the **start** for a video or a voice note. By the time
 either finishes you may be somewhere else.
 
-**`currentFix` judges its own answer, because nothing downstream will.** It is
-the one path that puts a coordinate somewhere the fold never sees it — a pin
-drawn straight off `item.at` — so a reading older than a minute or wider than
-150 m is refused outright. `getCurrentPositionAsync` answers from a cache that
-survives a flight, and a cached fix keeps its original timestamp, which is the
-only thing giving it away when its coordinates and accuracy look perfect. Null
-is the honest answer and every caller already handles it.
+**Ask for a position through `services/position.ts`, never `currentFix`
+directly.** A capture draws a pin straight off `item.at`, so this is the one
+path that states a position where the fold never gets to reject it. Core
+Location's worst failure here is not a vague reading but a **confident and
+wrong** one: positioned from a Wi-Fi network whose database entry was recorded
+in another city, reported at 25 m accuracy. No property of the reading gives it
+away — only the step from the last fix on record does, which is `judgeFix`'s
+`teleport` rule, reused so a photo's pin and the timeline can never disagree
+about which readings are real. `currentFix` still refuses a stale or
+kilometre-wide reading on its own; `askPosition` is what adds the step. Null is
+the honest answer and every caller already handles it.
+
+The same jump becomes believable once enough time has passed to cover it, which
+is what keeps a flight from being permanently unrepresentable.
 
 **A capture is two files, and everything that walks the directory must know
 it.** `sweepOrphans` deletes sealed files the index has never heard of, and
