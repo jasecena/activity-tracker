@@ -2,11 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type CameraType } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { formatClockTime, formatDuration } from '@/core/format';
-import type { MediaItem, MediaKind } from '@/core/media';
-import { ScreenHeader } from '@/components/ScreenHeader';
+import { formatDuration } from '@/core/format';
+import type { MediaKind } from '@/core/media';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { askPosition } from '@/services/position';
@@ -16,7 +15,6 @@ import type { UseMedia } from './hooks/useMedia';
 
 interface CaptureScreenProps {
   readonly media: UseMedia;
-  readonly tzOffsetMinutes: number;
   /**
    * Whether the Capture tab is the one on screen.
    *
@@ -27,7 +25,6 @@ interface CaptureScreenProps {
    * are reading Settings.
    */
   readonly visible: boolean;
-  readonly onOpenItem: (item: MediaItem) => void;
 }
 
 /**
@@ -46,13 +43,18 @@ const MODES: readonly { readonly key: Mode; readonly label: string; readonly ico
     { key: 'voice', label: 'Voice', icon: 'mic-outline' },
   ];
 
-const KIND_ICONS: Readonly<Record<MediaKind, keyof typeof Ionicons.glyphMap>> = {
-  photo: 'image-outline',
-  video: 'film-outline',
-  audio: 'musical-notes-outline',
-};
-
-export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: CaptureScreenProps) {
+/**
+ * The viewfinder fills the screen and the shutter sits at the bottom.
+ *
+ * Both because this is the one tab that is a thing you *do*. A preview boxed
+ * into 320 points with a list of filenames under it is a screen about
+ * capturing; a full-bleed frame with the shutter under your thumb is a camera.
+ *
+ * The list that used to sit here is gone rather than moved — Media is a whole
+ * tab now, and showing the last twelve captures in two places means two things
+ * to keep in step and one of them always slightly wrong.
+ */
+export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const [mode, setMode] = useState<Mode>('photo');
   const [facing, setFacing] = useState<CameraType>('back');
 
@@ -203,16 +205,33 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
     (needsCamera && cameraPermission?.granted === false) ||
     (needsMicrophone && microphonePermission?.granted === false);
 
-  const recent = [...media.items].reverse().slice(0, 12);
-
   return (
     <View style={styles.screen}>
-      <ScreenHeader
-        title="Capture"
-        subtitle={media.items.length === 1 ? '1 capture' : `${media.items.length} captures`}
-      />
+      {/* The viewfinder is the screen, not a panel on it. */}
+      {needsCamera && visible ? (
+        <CameraView
+          ref={camera}
+          style={StyleSheet.absoluteFill}
+          facing={facing}
+          mode={mode === 'video' ? 'video' : 'picture'}
+          // The default on iOS already focuses continuously; saying so keeps it
+          // from being switched off by a future default change.
+          autofocus="on"
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.voiceStage]}>
+          <Ionicons
+            name={state === 'recording' ? 'radio-button-on' : 'mic-outline'}
+            size={56}
+            color={state === 'recording' ? colors.danger : colors.textMuted}
+          />
+          <Text style={styles.voiceTime}>
+            {state === 'recording' ? formatDuration(Math.max(0, elapsedMs)) : 'Ready'}
+          </Text>
+        </View>
+      )}
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.topBar} pointerEvents="box-none">
         <View style={styles.modes}>
           {MODES.map((option) => {
             const selected = option.key === mode;
@@ -228,92 +247,64 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
                 accessibilityLabel={option.label}
                 style={({ pressed }) => [styles.modeChip, selected && styles.modeChipOn, pressed && styles.pressed]}
               >
-                <Ionicons name={option.icon} size={16} color={selected ? colors.onAccent : colors.textSecondary} />
+                <Ionicons name={option.icon} size={16} color={selected ? colors.onAccent : colors.textPrimary} />
                 <Text style={[styles.modeText, selected && styles.modeTextOn]}>{option.label}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        {missingPermission ? (
-          <Pressable
-            onPress={() => {
-              if (needsCamera) void requestCamera();
-              if (needsMicrophone) void requestMicrophone();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Allow camera and microphone"
-            style={({ pressed }) => [styles.notice, pressed && styles.pressed]}
-          >
-            <Text style={styles.noticeTitle}>Access is off</Text>
-            <Text style={styles.noticeBody}>
-              Capture needs the camera and microphone. Turn them on in iOS Settings — nothing recorded here leaves this
-              phone.
-            </Text>
-          </Pressable>
+        {state === 'recording' && needsCamera ? (
+          <View style={styles.recordingBadge}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {missingPermission ? (
+        <Pressable
+          onPress={() => {
+            if (needsCamera) void requestCamera();
+            if (needsMicrophone) void requestMicrophone();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Allow camera and microphone"
+          style={({ pressed }) => [styles.notice, pressed && styles.pressed]}
+        >
+          <Text style={styles.noticeTitle}>Access is off</Text>
+          <Text style={styles.noticeBody}>
+            Capture needs the camera and microphone. Turn them on in iOS Settings — nothing recorded here leaves this
+            phone.
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {/* Over the preview rather than under it. Sealing a minute of video takes
+          seconds, and a screen that looks idle while it happens is what got the
+          Stop button pressed three times. */}
+      {state === 'saving' ? (
+        <View style={styles.saving} accessible accessibilityLabel={`Saving, ${Math.round(progress * 100)}%`}>
+          <Text style={styles.savingText}>Saving… {Math.round(progress * 100)}%</Text>
+          {/* Not decoration. Leaving now suspends the app mid-write; the capture
+              is recovered on the next launch, but only if it gets one, and cache
+              is the first thing iOS reclaims. */}
+          <Text style={styles.savingHint}>Keep the app open</Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+          </View>
+        </View>
+      ) : null}
+
+      <View style={styles.bottomBar} pointerEvents="box-none">
+        {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+
+        {mode === 'video' && state !== 'recording' ? (
+          <Text style={styles.footnote}>Clips stop at {MAX_VIDEO_SECONDS} seconds.</Text>
         ) : null}
 
-        <View style={styles.stage}>
-          {needsCamera && visible ? (
-            <CameraView
-              ref={camera}
-              style={StyleSheet.absoluteFill}
-              facing={facing}
-              mode={mode === 'video' ? 'video' : 'picture'}
-              // The default on iOS already focuses continuously; saying so
-              // keeps it from being switched off by a future default change.
-              autofocus="on"
-            />
-          ) : (
-            <View style={styles.voiceStage}>
-              <Ionicons
-                name={state === 'recording' ? 'radio-button-on' : 'mic-outline'}
-                size={44}
-                color={state === 'recording' ? colors.danger : colors.textMuted}
-              />
-              <Text style={styles.voiceTime}>
-                {state === 'recording' ? formatDuration(Math.max(0, elapsedMs)) : 'Ready'}
-              </Text>
-            </View>
-          )}
-
-          {/* Over the preview rather than under it. Sealing a minute of video
-              takes seconds, and a screen that looks idle while it happens is
-              what got the Stop button pressed three times. */}
-          {state === 'saving' ? (
-            <View style={styles.saving} accessible accessibilityLabel={`Saving, ${Math.round(progress * 100)}%`}>
-              <Text style={styles.savingText}>Saving… {Math.round(progress * 100)}%</Text>
-              {/* Not decoration. Leaving now suspends the app mid-write; the
-                  capture is recovered on the next launch, but only if it gets
-                  one, and cache is the first thing iOS reclaims. */}
-              <Text style={styles.savingHint}>Keep the app open</Text>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-              </View>
-            </View>
-          ) : null}
-
-          {state === 'recording' && needsCamera ? (
-            <View style={styles.recordingBadge}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
-            </View>
-          ) : null}
-        </View>
-
         <View style={styles.controls}>
-          {needsCamera ? (
-            <Pressable
-              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
-              accessibilityRole="button"
-              accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
-              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-            >
-              <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ) : (
-            <View style={styles.secondaryPlaceholder} />
-          )}
+          <View style={styles.secondaryPlaceholder} />
 
           <Pressable
             onPress={() => {
@@ -336,50 +327,20 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
             <View style={[styles.shutterInner, state === 'recording' && styles.shutterInnerActive]} />
           </Pressable>
 
-          <View style={styles.secondaryPlaceholder} />
-        </View>
-
-        {mode === 'video' ? (
-          <Text style={styles.footnote}>
-            Clips stop at {MAX_VIDEO_SECONDS} seconds. Everything captured is encrypted as it is written and decrypted
-            only to play, and a longer clip makes both passes something you would wait for.
-          </Text>
-        ) : null}
-
-        {problem ? <Text style={styles.problem}>{problem}</Text> : null}
-
-        <Text style={styles.sectionLabel}>RECENT</Text>
-        <View style={styles.card}>
-          {recent.length === 0 ? (
-            <Text style={styles.empty}>Nothing captured yet.</Text>
+          {needsCamera ? (
+            <Pressable
+              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+              accessibilityRole="button"
+              accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+            >
+              <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
+            </Pressable>
           ) : (
-            recent.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => onOpenItem(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`${item.kind} at ${formatClockTime(item.capturedAt, tzOffsetMinutes)}`}
-                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-              >
-                <Ionicons name={KIND_ICONS[item.kind]} size={18} color={colors.manual} />
-                <Text style={styles.rowTitle}>{formatClockTime(item.capturedAt, tzOffsetMinutes)}</Text>
-                <Text style={styles.rowDetail}>
-                  {item.durationMs === null ? '' : `${formatDuration(item.durationMs)} · `}
-                  {Math.round(item.byteLength / 1024)} kB
-                </Text>
-              </Pressable>
-            ))
+            <View style={styles.secondaryPlaceholder} />
           )}
         </View>
-
-        {/* Where a capture happened is not recorded with it — it is worked out
-            from the day's own fixes. Saying so is the point: the shutter does
-            not touch the GPS. */}
-        <Text style={styles.footnote}>
-          A capture stores the time it was taken and nothing else about where you were. The map works that out from the
-          fixes the day already had, so pressing the shutter never asks for your location.
-        </Text>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -392,31 +353,44 @@ function shutterLabel(mode: Mode, state: 'idle' | 'recording' | 'saving'): strin
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
+  // Black rather than the app background: what sits behind a viewfinder while
+  // it starts up should look like a camera, not like a missing screen.
+  screen: { flex: 1, backgroundColor: '#000' },
+  topBar: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.xs,
+  },
   modes: { flexDirection: 'row', gap: spacing.xs },
   modeChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    // Its own backing, because what is behind it is a live camera and a chip
+    // with a border alone disappears against a bright sky.
+    backgroundColor: 'rgba(11,15,20,0.55)',
   },
-  modeChipOn: { backgroundColor: colors.manual, borderColor: colors.manual },
-  modeText: { ...typography.caption, color: colors.textSecondary },
+  modeChipOn: { backgroundColor: colors.manual },
+  modeText: { ...typography.caption, color: colors.textPrimary },
   modeTextOn: { color: colors.onAccent, fontWeight: '600' },
-  stage: {
-    height: 320,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  voiceStage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  voiceStage: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   voiceTime: { ...typography.clock, color: colors.textSecondary },
   controls: {
     flexDirection: 'row',
@@ -430,12 +404,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: 'rgba(11,15,20,0.55)',
   },
   secondaryPlaceholder: { width: 44, height: 44 },
   shutter: {
-    width: 68,
-    height: 68,
+    width: 72,
+    height: 72,
     borderRadius: radius.pill,
     borderWidth: 3,
     borderColor: colors.textPrimary,
@@ -444,7 +418,8 @@ const styles = StyleSheet.create({
   },
   shutterActive: { borderColor: colors.danger },
   shutterDisabled: { opacity: 0.4 },
-  shutterInnerActive: { width: 26, height: 26, borderRadius: radius.sm, backgroundColor: colors.danger },
+  shutterInner: { width: 56, height: 56, borderRadius: radius.pill, backgroundColor: colors.textPrimary },
+  shutterInnerActive: { width: 28, height: 28, borderRadius: radius.sm, backgroundColor: colors.danger },
   saving: {
     position: 'absolute',
     top: 0,
@@ -468,9 +443,6 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: 4, backgroundColor: colors.move },
   recordingBadge: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -481,8 +453,11 @@ const styles = StyleSheet.create({
   },
   recordingDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.danger },
   recordingText: { ...typography.caption, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
-  shutterInner: { width: 52, height: 52, borderRadius: radius.pill, backgroundColor: colors.textPrimary },
   notice: {
+    position: 'absolute',
+    top: 64,
+    left: spacing.md,
+    right: spacing.md,
     backgroundColor: colors.surfaceRaised,
     borderRadius: radius.md,
     padding: spacing.md,
@@ -492,13 +467,7 @@ const styles = StyleSheet.create({
   },
   noticeTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   noticeBody: { ...typography.caption, color: colors.textSecondary },
-  sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
-  card: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
-  rowTitle: { ...typography.body, color: colors.textPrimary, flex: 1 },
-  rowDetail: { ...typography.caption, color: colors.textSecondary },
-  empty: { ...typography.body, color: colors.textMuted, paddingVertical: spacing.lg, textAlign: 'center' },
-  footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
-  problem: { ...typography.caption, color: colors.danger, paddingHorizontal: spacing.xs },
+  footnote: { ...typography.caption, color: colors.textPrimary, textAlign: 'center' },
+  problem: { ...typography.caption, color: colors.danger, textAlign: 'center' },
   pressed: { opacity: 0.6 },
 });

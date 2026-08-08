@@ -101,11 +101,16 @@ describe('the shell', () => {
     expect(await screen.findByText('Nothing recorded yet today.')).toBeOnTheScreen();
   });
 
-  it('shows all three tabs and switches between them', async () => {
+  it('shows every tab and switches between them', async () => {
     await render(<TabShell />);
 
+    // Capture has no header to find: it is a viewfinder filling the screen with
+    // the shutter under your thumb, so the shutter is what proves it is up.
     await press('Capture tab');
-    expect(screen.getByRole('header', { name: 'Capture' })).toBeOnTheScreen();
+    expect(screen.getByLabelText('Take photo')).toBeOnTheScreen();
+
+    await press('Media tab');
+    expect(screen.getByRole('header', { name: 'Media' })).toBeOnTheScreen();
 
     await press('Settings tab');
     expect(screen.getByText('Track my day')).toBeOnTheScreen();

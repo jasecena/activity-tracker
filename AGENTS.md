@@ -238,6 +238,13 @@ running recording or a timeline that was just derived. This reasoning survives a
 fifth tab and one level of depth; it would not survive a fifth level, deep links
 or modal routes.
 
+**Capture is a viewfinder, not a page.** The preview fills the screen and the
+shutter sits at the bottom under a thumb; there is no header and no list. The
+recent-captures list that used to live here is gone rather than moved — Media is
+a whole tab now, and the same twelve rows in two places is two things to keep in
+step and one of them always slightly wrong. It is the only tab with no detail
+page above it.
+
 Two screens are deliberate exceptions, both because they hold something a hidden
 tab must not. `CaptureScreen` mounts `CameraView` only while Capture is visible:
 a session running behind three hidden screens costs battery and leaves the

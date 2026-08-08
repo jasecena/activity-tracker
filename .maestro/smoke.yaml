@@ -88,10 +88,16 @@ appId: ${APP_ID}
 # missing native module would surface as a blank rectangle rather than a crash.
 # Deliberately does NOT press the shutter: that writes a file and, on a fresh
 # install, raises the permission dialog, which has no Maestro affordance here.
+# The viewfinder fills the screen, so there is no header to assert on — the
+# shutter is what proves it came up. Deliberately does NOT press it: that writes
+# a file and, on a fresh install, raises the permission dialog, which has no
+# Maestro affordance here.
 - tapOn: 'Capture tab'
-- assertVisible: 'Capture'
+- assertVisible: 'Take photo'
 - tapOn: 'Voice'
+- assertVisible: 'Start voice note'
 - tapOn: 'Photo'
+- assertVisible: 'Take photo'
 
 # Media mounts expo-video and expo-audio, and on a fresh install has nothing to
 # show. The empty state is the assertion worth having: it proves the media index

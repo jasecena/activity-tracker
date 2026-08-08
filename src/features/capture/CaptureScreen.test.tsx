@@ -20,7 +20,7 @@ function mediaStub(keep: UseMedia['keep']): UseMedia {
 }
 
 function renderCapture(keep: UseMedia['keep']) {
-  return render(<CaptureScreen media={mediaStub(keep)} tzOffsetMinutes={0} visible onOpenItem={() => undefined} />);
+  return render(<CaptureScreen media={mediaStub(keep)} visible />);
 }
 
 async function press(label: string) {

@@ -35,6 +35,14 @@ import { usePageStack } from './usePageStack';
 
 type Tab = 'replay' | 'capture' | 'gallery' | 'settings';
 
+/**
+ * The tabs that can have a detail page over them.
+ *
+ * Capture is not one. It is a viewfinder and a shutter, and the list it used to
+ * carry — the one route it had to a detail page — belongs to Media now.
+ */
+type PagedTab = Exclude<Tab, 'capture'>;
+
 /** Pages that can sit above a tab's root. */
 type Page =
   | { readonly kind: 'segment'; readonly segment: Segment }
@@ -105,9 +113,8 @@ export function TabShell() {
   // being off means the app writes down nowhere you are.
   useHeartbeat(settings.tracking, timeline.refresh);
 
-  const stacks: Record<Tab, ReturnType<typeof usePageStack<Page>>> = {
+  const stacks: Record<PagedTab, ReturnType<typeof usePageStack<Page>>> = {
     replay: usePageStack<Page>(),
-    capture: usePageStack<Page>(),
     gallery: usePageStack<Page>(),
     settings: usePageStack<Page>(),
   };
@@ -130,8 +137,8 @@ export function TabShell() {
     [allSegments, timeline.tzOffsetMinutes],
   );
 
-  const openSegment = (which: Tab) => (segment: Segment) => stacks[which].push({ kind: 'segment', segment });
-  const openMedia = (which: Tab) => (item: MediaItem) => stacks[which].push({ kind: 'media', item });
+  const openSegment = (which: PagedTab) => (segment: Segment) => stacks[which].push({ kind: 'segment', segment });
+  const openMedia = (which: PagedTab) => (item: MediaItem) => stacks[which].push({ kind: 'media', item });
 
   /**
    * Where a capture happened.
@@ -152,7 +159,7 @@ export function TabShell() {
     return day ? positionAt(buildTrack(day.segments), item.capturedAt) : null;
   };
 
-  function renderPage(which: Tab) {
+  function renderPage(which: PagedTab) {
     const page = stacks[which].current;
     if (!page) return null;
 
@@ -257,15 +264,7 @@ export function TabShell() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.screens}>
         <View style={[styles.screen, tab !== 'capture' && styles.hidden]}>
-          <CaptureScreen
-            media={media}
-            tzOffsetMinutes={timeline.tzOffsetMinutes}
-            visible={tab === 'capture'}
-            onOpenItem={openMedia('capture')}
-          />
-          {stacks.capture.current ? (
-            <SwipeBackPage onBack={stacks.capture.pop}>{renderPage('capture')}</SwipeBackPage>
-          ) : null}
+          <CaptureScreen media={media} visible={tab === 'capture'} />
         </View>
 
         <View style={[styles.screen, tab !== 'replay' && styles.hidden]}>
