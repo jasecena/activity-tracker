@@ -1,6 +1,7 @@
+import { dayKeyOf, type TzOffsetMinutes } from '@/core/day';
 import type { Fix } from '@/core/geo';
 
-import { readJson, STORAGE_KEYS, writeJson } from './storage';
+import { archiveKeyFor, archivedDayKeys, readJson, removeKeys, STORAGE_KEYS, writeJson } from './storage';
 
 /**
  * The raw fix buffer: everything Core Location has handed over that has not yet
@@ -83,36 +84,69 @@ export async function appendFixes(fixes: readonly Fix[]): Promise<void> {
 }
 
 /**
- * Drop fixes older than `before`, once the days they belong to are frozen.
+ * Drop everything older than `before`, keeping it for the export.
  *
- * Only ever called from the foreground, after the segments they produced have
- * been written to the day log. Losing the race here would cost a day's detail,
- * so it goes through the same queue as the appends.
+ * Called when a day is frozen: the fold never needs those readings again,
+ * because the day's segments are its record. They used to be deleted outright,
+ * which is why exporting "all raw fixes" produced today and nothing else.
+ *
+ * **One key per day is written, never the whole archive.** A single blob meant
+ * every freeze read a year, sorted it and wrote it back — sealed, as hex, on
+ * the thread that draws the screen. See `STORAGE_KEYS.fixArchive`.
  */
-export async function pruneBuffer(before: number): Promise<void> {
+export async function pruneBuffer(before: number, tzOffsetMinutes: TzOffsetMinutes): Promise<void> {
   await serialise(async () => {
     const existing = await readBuffer();
     const kept = existing.filter((fix) => fix.at >= before);
     if (kept.length === existing.length) return;
 
-    // Moved, not dropped. Everything the fold needs from a frozen day is in its
-    // segments, so nothing here is ever read to build a timeline — but "export
-    // everything" used to mean today and nothing else, because what left the
-    // buffer left the phone. See `STORAGE_KEYS.fixArchive`.
-    const leaving = existing.filter((fix) => fix.at < before);
-    const archive = normalizeFixes(await readJson<unknown>(STORAGE_KEYS.fixArchive));
-    await writeJson(
-      STORAGE_KEYS.fixArchive,
-      [...archive, ...leaving].sort((a, b) => a.at - b.at),
-    );
+    const byDay = new Map<string, Fix[]>();
+    for (const fix of existing) {
+      if (fix.at >= before) continue;
+      const key = dayKeyOf(fix.at, tzOffsetMinutes);
+      const day = byDay.get(key);
+      if (day) day.push(fix);
+      else byDay.set(key, [fix]);
+    }
+
+    for (const [dayKey, leaving] of byDay) {
+      // Merged with whatever that day already holds. A freeze interrupted and
+      // rerun must not lose the first half — and appending twice is caught by
+      // the timestamps, which are unique per reading.
+      const stored = normalizeFixes(await readJson<unknown>(archiveKeyFor(dayKey)));
+      const seen = new Set(stored.map((fix) => fix.at));
+      const merged = [...stored, ...leaving.filter((fix) => !seen.has(fix.at))].sort((a, b) => a.at - b.at);
+      await writeJson(archiveKeyFor(dayKey), merged);
+    }
 
     await writeJson(STORAGE_KEYS.fixBuffer, kept);
   });
 }
 
-/** Raw fixes for days already frozen. Only the export reads these. */
+/**
+ * Raw fixes for days already frozen, oldest first. Only the export reads these.
+ *
+ * Every day at once, which is the one operation that genuinely needs them all —
+ * and it happens when somebody presses Export, never while a timeline is being
+ * drawn.
+ */
 export async function readArchive(): Promise<Fix[]> {
-  return normalizeFixes(await readJson<unknown>(STORAGE_KEYS.fixArchive));
+  const days = await archivedDayKeys();
+  const all: Fix[] = [];
+  for (const dayKey of days) {
+    all.push(...normalizeFixes(await readJson<unknown>(archiveKeyFor(dayKey))));
+  }
+  return all.sort((a, b) => a.at - b.at);
+}
+
+/** How many readings are archived, without holding them all at once. */
+export async function archivedCount(): Promise<number> {
+  const days = await archivedDayKeys();
+  let total = 0;
+  for (const dayKey of days) {
+    total += normalizeFixes(await readJson<unknown>(archiveKeyFor(dayKey))).length;
+  }
+  return total;
 }
 
 /**
@@ -128,15 +162,29 @@ export async function allFixes(): Promise<Fix[]> {
 }
 
 /**
- * Drop archived fixes older than the cutoff.
+ * Drop archived readings older than the cutoff.
  *
  * Called with the same instant the day log is trimmed by, so the archive can
  * never outlive the days it belongs to — "keep 30 days" has to mean one thing.
+ *
+ * Whole days go by their key, which is why the key is a date: `YYYY-MM-DD`
+ * compares as a string exactly as it compares as a day. Only the day the cutoff
+ * lands inside is read, and only that one is rewritten.
  */
-export async function trimArchive(before: number): Promise<void> {
+export async function trimArchive(before: number, tzOffsetMinutes: TzOffsetMinutes): Promise<void> {
+  const edge = dayKeyOf(before, tzOffsetMinutes);
+  const days = await archivedDayKeys();
+
+  const doomed = days.filter((dayKey) => dayKey < edge);
+  await removeKeys(doomed.map(archiveKeyFor));
+
+  if (!days.includes(edge)) return;
+
   await serialise(async () => {
-    const existing = normalizeFixes(await readJson<unknown>(STORAGE_KEYS.fixArchive));
-    const kept = existing.filter((fix) => fix.at >= before);
-    if (kept.length !== existing.length) await writeJson(STORAGE_KEYS.fixArchive, kept);
+    const stored = normalizeFixes(await readJson<unknown>(archiveKeyFor(edge)));
+    const kept = stored.filter((fix) => fix.at >= before);
+    if (kept.length === stored.length) return;
+    if (kept.length === 0) await removeKeys([archiveKeyFor(edge)]);
+    else await writeJson(archiveKeyFor(edge), kept);
   });
 }

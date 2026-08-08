@@ -67,11 +67,11 @@ export async function freezeFinishedDays({
   if (kept !== existing) {
     await writeJson(STORAGE_KEYS.dayLog, kept);
   }
-  await pruneBuffer(keepFixesFrom);
+  await pruneBuffer(keepFixesFrom, tzOffsetMinutes);
   // The same cutoff as the log, so "keep 30 days" means one thing rather than
   // two — an archive outliving the days it describes would be a store of
   // coordinates for a period the app claims to have forgotten.
-  if (cutoff !== null) await trimArchive(cutoff);
+  if (cutoff !== null) await trimArchive(cutoff, tzOffsetMinutes);
 
   return [...kept];
 }

@@ -9,7 +9,7 @@ import type { Place } from '@/core/places';
 import type { Segment } from '@/core/segments';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { shareCsv } from '@/services/exportFile';
-import { allFixes, readArchive } from '@/services/fixBuffer';
+import { allFixes, archivedCount } from '@/services/fixBuffer';
 import { TRACKING_PRESETS, type TrackingPresetId } from '@/services/location';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -64,14 +64,14 @@ export function DataScreen({
 }: DataScreenProps) {
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Counted, not held: this is a year of readings at its largest, and the only
-  // thing this screen does with them is say how many there are and write them
-  // out when asked.
+  // Counted a day at a time, never held: this is a year of readings at its
+  // largest, and the only thing this screen does with them is say how many
+  // there are and write them out when asked.
   const [archived, setArchived] = useState(0);
   useEffect(() => {
     let live = true;
-    void readArchive().then((fixesOnDisk) => {
-      if (live) setArchived(fixesOnDisk.length);
+    void archivedCount().then((total) => {
+      if (live) setArchived(total);
     });
     return () => {
       live = false;

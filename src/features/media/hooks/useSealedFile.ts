@@ -7,8 +7,6 @@ export interface SealedFile {
   /** A URI something can show or play, or null while it is still being opened. */
   readonly uri: string | null;
   readonly failed: boolean;
-  /** How much of it is open, 0 to 1. A minute of video is worth a progress bar. */
-  readonly progress: number;
 }
 
 /**
@@ -31,23 +29,19 @@ export interface SealedFile {
 export function useSealedFile(item: MediaItem | null): SealedFile {
   const [uri, setUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [openedId, setOpenedId] = useState<string | null>(item?.id ?? null);
 
   if (openedId !== (item?.id ?? null)) {
     setOpenedId(item?.id ?? null);
     setUri(null);
     setFailed(false);
-    setProgress(0);
   }
 
   useEffect(() => {
     if (!item) return;
 
     let live = true;
-    void openForPlayback(item, (fraction) => {
-      if (live) setProgress(fraction);
-    }).then((opened) => {
+    void openForPlayback(item).then((opened) => {
       if (!live) {
         // Arrived after the item changed: clean up rather than leak a
         // decrypted capture nobody is looking at.
@@ -66,5 +60,5 @@ export function useSealedFile(item: MediaItem | null): SealedFile {
 
   // Only ever the current item's result: the id check above has already cleared
   // anything belonging to the page you just left.
-  return { uri, failed, progress };
+  return { uri, failed };
 }

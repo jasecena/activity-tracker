@@ -159,28 +159,27 @@ different tracking preset folds the same fixes into different journeys. An id
 would be orphaned by a settings change; a range is re-cut against whatever the
 day looks like now, which is what `splitSegment` below is for.
 
-### Merging is the same thing with nothing said
+### Merging was the same thing with nothing said, and it has gone
 
-Joining several rows into one journey is a label over their combined span with
-**no name and no mode**. That is why both fields are optional: a merge is not a
-second concept, it is a label that has not been filled in.
+Joining several rows into one journey was a label over their combined span with
+**no name and no mode** — not a second concept, just a label nobody had filled
+in. It was cheap to build for exactly that reason, and it was removed anyway.
 
-Three consequences fall out rather than being built:
+What went wrong was not the storage, it was the shape. A label is a span, so
+everything between the first and last selected row came too and "these two but
+not the middle" was inexpressible. Undoing a merge meant finding the label
+behind a row from its id. And because a merge and a name were one object, a
+merged journey that had also been named could not be separated without throwing
+the name away. Each had an answer; the answers did not add up to a feature.
 
-- `splitSegment` cuts at the span's edges apportioning distance, and `coalesce`
-  swallows what is inside, so the day's totals are unchanged by a merge.
-- The mode is **re-classified over the whole**, because a merged journey is
-  longer and faster than either part and inheriting from whichever piece came
-  first would usually be wrong.
-- The merged row starts where its label does, so `journeyLabelId` on it returns
-  that same label — **naming it afterwards updates the merge rather than
-  stacking a second label on top of it.**
+The merges are dropped on launch — a label with an empty name is exactly what a
+merge was, so nothing else has to be interpreted. Without that, a build with no
+merge button would go on applying every merge ever made and offer no way out of
+any of them. Names survive: naming was never the part that did not work.
 
-Everything between the first and last selected row comes too, including rows
-nobody ticked. A label is a span; there is no way to express "these two but not
-the middle". That is why the merge bar shows the **span** rather than the count
-— the middle of two journeys is usually the pause that joins them, and if it is
-not, the times say so before you commit.
+`applyJourneyLabels` still splits and coalesces, because a _name_ covering a
+span does the same thing — the stays in the middle of a labelled journey are
+part of that journey.
 
 ### Why naming is worth keeping at all
 

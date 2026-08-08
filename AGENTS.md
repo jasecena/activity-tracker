@@ -306,14 +306,28 @@ unused native module still links into the binary and still carries a permission
 the app has no reason to want. Bring both back when there is a caller, not
 before.
 
-**Pruned fixes are archived, not dropped.** Freezing a day removes its raw
-readings from the buffer — the fold never needs them again, because the day's
-segments are its record. They used to be deleted, which is why exporting "all
-raw fixes" produced a file containing today and nothing else. `pruneBuffer`
-moves them to `STORAGE_KEYS.fixArchive` instead, `allFixes()` is what the export
-reads, and `trimArchive` runs on the same cutoff as the log so an archive can
-never outlive the days it describes. Nothing reads the archive to build a
-timeline; adding a caller that does would undo the reason freezing exists.
+**Pruned fixes are archived, not dropped, and the archive is a key per day.**
+Freezing a day removes its raw readings from the buffer — the fold never needs
+them again, because the day's segments are its record. They used to be deleted,
+which is why exporting "all raw fixes" produced a file containing today and
+nothing else.
+
+`pruneBuffer` writes them under `fix-archive/<YYYY-MM-DD>`, one key for the day
+that just ended. **Never one blob**: a single entry means every freeze reads the
+whole archive, sorts it and writes it back, sealed as hex — 337 KB on day one
+and 120 MB a year later, on the thread that draws the screen. That is the same
+shape as the failure that made the media gallery unusable, and it degrades
+silently over months rather than failing where anyone would see it.
+
+The date in the key is load-bearing: `YYYY-MM-DD` compares as a string exactly
+as it compares as a day, so `trimArchive` deletes whole days by name and reads
+only the one the cutoff lands inside. It runs on the same cutoff as the log, so
+an archive can never outlive the days it describes. `eraseEverything` enumerates
+by prefix rather than by a list of names, or it would leave a year of days
+behind.
+
+Nothing reads the archive to build a timeline; adding a caller that does would
+undo the reason freezing exists.
 
 **GPX export is not built yet.** Per activity, on demand and never automatic.
 `services/dayLog.ts` stores a plain array of `Segment` precisely so that stays
