@@ -1,4 +1,5 @@
 import {
+  ACTIVITY_MODES,
   applyJourneyLabels,
   DEFAULT_SEGMENT_CONFIG,
   journeyLabelId,
@@ -235,5 +236,67 @@ describe('applyJourneyLabels', () => {
     const labels = result.filter((s) => s.kind === 'move' && s.label).map((s) => (s.kind === 'move' ? s.label : null));
 
     expect(labels).toEqual(['Morning', 'Afternoon']);
+  });
+});
+
+/**
+ * Joining several rows into one journey.
+ *
+ * A merge is a label with no name and no mode over the combined span, so it
+ * reuses everything: `splitSegment` cuts at the edges apportioning distance,
+ * `coalesce` swallows what is inside, and naming it later updates the same
+ * label rather than making a second one.
+ */
+describe('a merge', () => {
+  const { segments } = segmentFixes(DAY, CONFIG);
+
+  function merged(startedAt: number, endedAt: number): JourneyLabel {
+    return { id: journeyLabelId(startedAt), label: '', mode: null, startedAt, endedAt };
+  }
+
+  it('leaves one row where there were several', () => {
+    const span = merged(T0, T0 + 40 * MINUTE);
+    const result = applyJourneyLabels(segments, [span]);
+
+    expect(segments.length).toBeGreaterThan(1);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.startedAt).toBe(T0);
+    expect(result[0]?.endedAt).toBe(T0 + 40 * MINUTE);
+  });
+
+  it('keeps the distance the day already had', () => {
+    const result = applyJourneyLabels(segments, [merged(T0, T0 + 40 * MINUTE)]);
+    expect(totalDistance(result)).toBeCloseTo(totalDistance(segments), 6);
+  });
+
+  // Silent means silent: no name, and the mode read off the combined whole
+  // rather than inherited from whichever piece happened to come first.
+  it('says nothing about what it was', () => {
+    const row = asMove(applyJourneyLabels(segments, [merged(T0, T0 + 40 * MINUTE)])[0]);
+
+    expect(row.label).toBeNull();
+    expect(row.modeIsManual).toBe(false);
+    expect(ACTIVITY_MODES).toContain(row.mode);
+  });
+
+  // The merged row starts where the label does, so naming it afterwards
+  // produces the same id and updates the merge rather than stacking on it.
+  it('can be named afterwards without becoming a second label', () => {
+    const span = merged(T0, T0 + 40 * MINUTE);
+    const row = asMove(applyJourneyLabels(segments, [span])[0]);
+
+    expect(journeyLabelId(row.startedAt)).toBe(span.id);
+
+    const namedLater: JourneyLabel = { ...span, label: 'The errand', mode: 'cycle' };
+    const after = asMove(applyJourneyLabels(segments, [namedLater])[0]);
+
+    expect(after.label).toBe('The errand');
+    expect(after.mode).toBe('cycle');
+    expect(after.modeIsManual).toBe(true);
+  });
+
+  it('treats a name of nothing but spaces as no name', () => {
+    const blank: JourneyLabel = { ...merged(T0, T0 + 40 * MINUTE), label: '   ' };
+    expect(asMove(applyJourneyLabels(segments, [blank])[0]).label).toBeNull();
   });
 });

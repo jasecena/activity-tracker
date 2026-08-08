@@ -54,7 +54,7 @@ export function NamedJourneysScreen({
     () =>
       rows.flatMap(({ label, segment }) =>
         segment && segment.path.length > 1
-          ? [{ id: label.id, points: segment.path, color: modeColors[label.mode] }]
+          ? [{ id: label.id, points: segment.path, color: modeColors[label.mode ?? segment.mode] }]
           : [],
       ),
     [rows],
@@ -91,14 +91,14 @@ export function NamedJourneysScreen({
                 onPress={segment ? () => onOpenSegment(segment) : undefined}
                 onLongPress={() => confirmForget(label)}
                 accessibilityRole="button"
-                accessibilityLabel={`${label.label}, ${modeLabel(label.mode)}, ${
+                accessibilityLabel={`${label.label || 'Merged journey'}, ${modeLabel(label.mode ?? segment?.mode ?? 'unknown')}, ${
                   segment ? formatDistance(segment.distanceM) : 'no route recorded'
                 }`}
                 style={({ pressed }) => [styles.card, pressed && styles.pressed]}
               >
                 <View style={styles.rowText}>
                   <Text style={styles.title} numberOfLines={1}>
-                    {label.label}
+                    {label.label || 'Merged journey'}
                   </Text>
                   <Text style={styles.detail}>
                     {formatClockTime(label.startedAt, tzOffsetMinutes)} ·{' '}
@@ -107,7 +107,7 @@ export function NamedJourneysScreen({
                   </Text>
                 </View>
                 {segment && segment.path.length > 1 ? (
-                  <RouteSparkline path={segment.path} color={modeColors[label.mode]} />
+                  <RouteSparkline path={segment.path} color={modeColors[label.mode ?? segment.mode]} />
                 ) : null}
               </Pressable>
             ))}

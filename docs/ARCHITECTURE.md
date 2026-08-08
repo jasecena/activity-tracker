@@ -159,6 +159,29 @@ different tracking preset folds the same fixes into different journeys. An id
 would be orphaned by a settings change; a range is re-cut against whatever the
 day looks like now, which is what `splitSegment` below is for.
 
+### Merging is the same thing with nothing said
+
+Joining several rows into one journey is a label over their combined span with
+**no name and no mode**. That is why both fields are optional: a merge is not a
+second concept, it is a label that has not been filled in.
+
+Three consequences fall out rather than being built:
+
+- `splitSegment` cuts at the span's edges apportioning distance, and `coalesce`
+  swallows what is inside, so the day's totals are unchanged by a merge.
+- The mode is **re-classified over the whole**, because a merged journey is
+  longer and faster than either part and inheriting from whichever piece came
+  first would usually be wrong.
+- The merged row starts where its label does, so `journeyLabelId` on it returns
+  that same label — **naming it afterwards updates the merge rather than
+  stacking a second label on top of it.**
+
+Everything between the first and last selected row comes too, including rows
+nobody ticked. A label is a span; there is no way to express "these two but not
+the middle". That is why the merge bar shows the **span** rather than the count
+— the middle of two journeys is usually the pause that joins them, and if it is
+not, the times say so before you commit.
+
 ### Why naming is worth keeping at all
 
 The engine can tell a bike from a car by speed. It cannot tell a slow cycle from

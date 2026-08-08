@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { summarizeDay, type DayGroup } from '@/core/day';
@@ -34,6 +34,8 @@ interface ReplayScreenProps {
   readonly onOpenMedia: (item: MediaItem) => void;
   /** The full list of days, for going further back than the arrows are worth. */
   readonly onOpenAllDays: () => void;
+  /** Join the selected rows into one journey. */
+  readonly onMerge: (segments: readonly Segment[]) => void;
 }
 
 /**
@@ -68,7 +70,15 @@ export function ReplayScreen({
   onOpenSegment,
   onOpenMedia,
   onOpenAllDays,
+  onMerge,
 }: ReplayScreenProps) {
+  /**
+   * Which rows are being joined, by id. Empty means not selecting at all —
+   * there is no separate mode flag, because a mode you can be in with nothing
+   * selected is a mode you can get stuck in.
+   */
+  const [picked, setPicked] = useState<readonly string[]>([]);
+  const selecting = picked.length > 0;
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
   const index = Math.max(
@@ -79,6 +89,15 @@ export function ReplayScreen({
   const isToday = index === 0;
 
   const segments = useMemo<readonly Segment[]>(() => day?.segments ?? [], [day]);
+
+  // A selection belongs to the day it was made on. Adjusted during render
+  // rather than in an effect, so the new day is never painted holding the old
+  // day's ticks.
+  const [pickedOn, setPickedOn] = useState(day?.key ?? null);
+  if (pickedOn !== (day?.key ?? null)) {
+    setPickedOn(day?.key ?? null);
+    setPicked([]);
+  }
   const replay = useReplay(segments);
 
   const summary = summarizeDay(segments);
@@ -100,6 +119,15 @@ export function ReplayScreen({
   );
 
   const currentSegment = segments.find((candidate) => candidate.id === replay.position?.segmentId) ?? null;
+
+  const chosen = useMemo(() => segments.filter((segment) => picked.includes(segment.id)), [segments, picked]);
+  const mergeSpan = useMemo(
+    () => ({
+      from: Math.min(...chosen.map((segment) => segment.startedAt)),
+      to: Math.max(...chosen.map((segment) => segment.endedAt)),
+    }),
+    [chosen],
+  );
 
   const title = day ? formatDayTitle(day.startedAt, tzOffsetMinutes) : 'Today';
   const subtitle = ready
@@ -317,6 +345,45 @@ export function ReplayScreen({
         ) : null}
 
         <Text style={styles.sectionLabel}>TIMELINE</Text>
+
+        {/* Above the rows, where the selection is. A bar that floats over the
+            screen would cover the very rows being chosen. */}
+        {selecting ? (
+          <View style={styles.mergeBar}>
+            <Pressable
+              onPress={() => setPicked([])}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel selection"
+              style={({ pressed }) => [styles.mergeCancel, pressed && styles.pressed]}
+            >
+              <Text style={styles.mergeCancelText}>Cancel</Text>
+            </Pressable>
+
+            {/* The span, not the count, because everything between the first
+                and the last comes too — including rows nobody ticked. */}
+            <Text style={styles.mergeSpan} numberOfLines={1}>
+              {formatClockTime(mergeSpan.from, tzOffsetMinutes)}–{formatClockTime(mergeSpan.to, tzOffsetMinutes)}
+            </Text>
+
+            <Pressable
+              onPress={() => {
+                onMerge(chosen);
+                setPicked([]);
+              }}
+              disabled={chosen.length < 2}
+              accessibilityRole="button"
+              accessibilityLabel={`Merge ${chosen.length} rows`}
+              style={({ pressed }) => [
+                styles.mergeButton,
+                chosen.length < 2 && styles.mergeDisabled,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.mergeButtonText}>Merge</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.timeline}>
           {segments.length === 0 ? (
             <Text style={styles.empty}>
@@ -330,6 +397,14 @@ export function ReplayScreen({
                 places={places}
                 tzOffsetMinutes={tzOffsetMinutes}
                 onOpen={onOpenSegment}
+                onLongPress={(chosenSegment) =>
+                  setPicked((current) =>
+                    current.includes(chosenSegment.id)
+                      ? current.filter((id) => id !== chosenSegment.id)
+                      : [...current, chosenSegment.id],
+                  )
+                }
+                selected={selecting ? picked.includes(segment.id) : null}
               />
             ))
           )}
@@ -422,6 +497,26 @@ const styles = StyleSheet.create({
   rowTitle: { ...typography.body, color: colors.textPrimary, flex: 1 },
   rowDetail: { ...typography.caption, color: colors.textSecondary },
   timeline: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
+  mergeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  mergeCancel: { paddingVertical: spacing.xs },
+  mergeCancelText: { ...typography.caption, color: colors.textSecondary },
+  mergeSpan: { ...typography.caption, color: colors.textPrimary, flex: 1, textAlign: 'center' },
+  mergeButton: {
+    backgroundColor: colors.move,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  mergeDisabled: { opacity: 0.4 },
+  mergeButtonText: { ...typography.caption, fontWeight: '700', color: colors.onAccent },
   empty: { ...typography.body, color: colors.textMuted, paddingVertical: spacing.lg, textAlign: 'center' },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
   pressed: { opacity: 0.6 },

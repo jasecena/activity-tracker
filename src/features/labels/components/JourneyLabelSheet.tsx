@@ -10,7 +10,12 @@ interface JourneyLabelSheetProps {
   readonly journey: MoveSegment | null;
   readonly tzOffsetMinutes: number;
   readonly onSave: (label: string, mode: ActivityMode) => void;
-  /** Absent for a journey that has no name yet. */
+  /**
+   * Absent for a journey the engine produced on its own.
+   *
+   * Present for anything a label made — including a merge, which has no name
+   * to remove but very much needs undoing.
+   */
   readonly onForget?: () => void;
   readonly onClose: () => void;
 }
@@ -124,10 +129,10 @@ export function JourneyLabelSheet({ journey, tzOffsetMinutes, onSave, onForget, 
                   close();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Remove this name"
+                accessibilityLabel={journey.label ? 'Remove this name' : 'Undo this merge'}
                 style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
               >
-                <Text style={styles.forgetText}>Remove this name</Text>
+                <Text style={styles.forgetText}>{journey.label ? 'Remove this name' : 'Undo this merge'}</Text>
               </Pressable>
             ) : null}
 

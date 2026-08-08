@@ -270,6 +270,7 @@ export function TabShell() {
             onOpenSegment={openSegment('replay')}
             onOpenMedia={openMedia('replay')}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
+            onMerge={journeys.merge}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -338,7 +339,13 @@ export function TabShell() {
         onSave={(label, mode) => {
           if (namingJourney) journeys.name(namingJourney, label, mode);
         }}
-        onForget={namingJourney?.label ? () => journeys.forget(journeyLabelId(namingJourney.startedAt)) : undefined}
+        // Offered whenever a label produced this row — by name *or* by merge. A
+        // merge has no name to remove and is otherwise impossible to undo.
+        onForget={
+          namingJourney && journeys.labels.some((one) => one.id === journeyLabelId(namingJourney.startedAt))
+            ? () => journeys.forget(journeyLabelId(namingJourney.startedAt))
+            : undefined
+        }
         onClose={() => setNamingJourney(null)}
       />
     </SafeAreaView>

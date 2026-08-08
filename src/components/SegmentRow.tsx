@@ -23,6 +23,14 @@ interface SegmentRowProps {
   readonly tzOffsetMinutes: number;
   /** Opens the segment's own page. Omitted where the timeline is read-only. */
   readonly onOpen?: (segment: Segment) => void;
+  /** Starts a selection. Omitted where rows cannot be merged. */
+  readonly onLongPress?: (segment: Segment) => void;
+  /**
+   * Null when nothing is being selected. A boolean puts the row in selection
+   * mode, where a tap toggles it rather than opening it — the whole point of a
+   * mode being that the same gesture means something else while it lasts.
+   */
+  readonly selected?: boolean | null;
 }
 
 /**
@@ -35,7 +43,15 @@ interface SegmentRowProps {
  * beside it. Everything else the app holds — per-point speeds, the fix count,
  * the identifier — is one tap away rather than crammed in here.
  */
-export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMinutes, onOpen }: SegmentRowProps) {
+export const SegmentRow = memo(function SegmentRow({
+  segment,
+  places,
+  tzOffsetMinutes,
+  onOpen,
+  onLongPress,
+  selected = null,
+}: SegmentRowProps) {
+  const selecting = selected !== null;
   const startedAt = formatClockTime(segment.startedAt, tzOffsetMinutes);
   const elapsed = formatDuration(durationMs(segment));
 
@@ -90,7 +106,7 @@ export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMi
     </>
   );
 
-  if (!onOpen) {
+  if (!onOpen && !onLongPress) {
     return (
       <View style={styles.row} accessibilityLabel={label}>
         {body}
@@ -100,11 +116,18 @@ export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMi
 
   return (
     <Pressable
-      onPress={() => onOpen(segment)}
-      accessibilityRole="button"
+      onPress={() => (selecting ? onLongPress?.(segment) : onOpen?.(segment))}
+      onLongPress={onLongPress ? () => onLongPress(segment) : undefined}
+      accessibilityRole={selecting ? 'checkbox' : 'button'}
+      accessibilityState={selecting ? { checked: selected === true } : undefined}
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.row, selected === true && styles.selectedRow, pressed && styles.pressed]}
     >
+      {selecting ? (
+        <View style={[styles.tick, selected === true && styles.tickOn]}>
+          {selected === true ? <Ionicons name="checkmark" size={12} color={colors.onAccent} /> : null}
+        </View>
+      ) : null}
       {body}
     </Pressable>
   );
@@ -112,6 +135,17 @@ export const SegmentRow = memo(function SegmentRow({ segment, places, tzOffsetMi
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
+  selectedRow: { backgroundColor: colors.surfaceRaised, borderRadius: radius.sm },
+  tick: {
+    width: 18,
+    height: 18,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tickOn: { backgroundColor: colors.move, borderColor: colors.move },
   pressed: { opacity: 0.6 },
   clock: { ...typography.clock, color: colors.textMuted, width: 44 },
   // A stay is a point in time; a move is a length of it. The shapes say so

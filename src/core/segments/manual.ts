@@ -31,10 +31,24 @@ export interface JourneyLabel {
    * so naming the same journey twice updates one label rather than making two.
    */
   readonly id: string;
-  /** What you called it. */
+  /**
+   * What you called it, or empty.
+   *
+   * Empty is a real state, not a missing one: joining two journeys into one is
+   * a label over their combined span with nothing said about it yet. The row
+   * then reads as whatever the engine makes of the whole, and naming it later
+   * fills this in without creating a second label.
+   */
   readonly label: string;
-  /** Your answer, which overrules the classifier for this stretch. */
-  readonly mode: ActivityMode;
+  /**
+   * Your answer, which overrules the classifier for this stretch — or null to
+   * let the classifier decide.
+   *
+   * Null is what makes a merge silent. The merged whole is longer and faster
+   * than either part, so re-classifying it is more likely to be right than
+   * inheriting the mode of whichever piece happened to come first.
+   */
+  readonly mode: ActivityMode | null;
   readonly startedAt: number;
   readonly endedAt: number;
 }
@@ -224,6 +238,8 @@ function coalesce(inside: readonly Segment[], label: JourneyLabel, from: number,
     }
   }
 
+  const name = label.label.trim();
+
   return {
     kind: 'move',
     id: labelledSegmentId(label),
@@ -231,9 +247,11 @@ function coalesce(inside: readonly Segment[], label: JourneyLabel, from: number,
     endedAt: to,
     fixCount,
     distanceM: distance,
-    mode: label.mode,
-    label: label.label,
-    modeIsManual: true,
+    // A label with no mode of its own is a merge: classify the combined whole
+    // rather than inheriting from whichever piece came first.
+    mode: label.mode ?? classifyMode({ distanceM: distance, durationMs: to - from, topSpeedMps: topSpeed }),
+    label: name.length > 0 ? name : null,
+    modeIsManual: label.mode !== null,
     path,
     topSpeedMps: topSpeed,
   };
