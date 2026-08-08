@@ -92,11 +92,16 @@ appId: ${APP_ID}
 # shutter is what proves it came up. Deliberately does NOT press it: that writes
 # a file and, on a fresh install, raises the permission dialog, which has no
 # Maestro affordance here.
+#
+# **And deliberately does not touch Voice or Video.** Selecting either asks iOS
+# for the microphone the moment the mode changes, and the system alert that
+# follows covers the app — every assertion after it then fails on an element
+# that is rendered and not visible. That is what failed the v0.2.7 release: the
+# flow tapped Voice and looked for the shutter behind the dialog. The earlier
+# version got away with tapping Voice only because it asserted nothing
+# afterwards, which is a check that cannot fail rather than a check that
+# passes. Switching modes is covered in the Jest suite, where no dialog exists.
 - tapOn: 'Capture tab'
-- assertVisible: 'Take photo'
-- tapOn: 'Voice'
-- assertVisible: 'Start voice note'
-- tapOn: 'Photo'
 - assertVisible: 'Take photo'
 
 # Media mounts expo-video and expo-audio, and on a fresh install has nothing to
