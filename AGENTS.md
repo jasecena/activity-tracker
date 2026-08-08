@@ -281,15 +281,26 @@ tell apart. `services/motion.ts` uses the pedometer, which is reachable.
 demand and never automatic. `services/dayLog.ts` stores a plain array of
 `Segment` precisely so that stays straightforward.
 
+**Keep the Expo patch versions in step, and check the audit is still readable.**
+`npm run verify` does not run either: `npx expo-doctor` and `npx audit-ci
+--config audit-ci.jsonc` are CI's job, and both were red on every push for days
+— doctor over six patch releases that had moved upstream, the audit over two
+advisories with no fixed version published anywhere. A check that cannot pass
+is one nobody reads. `audit-ci` exists so an advisory can be _reviewed_ rather
+than merely ignored; every entry in the allowlist names why, and a stale one
+fails the build rather than passing quietly.
+
 **A precompiled Expo module can fail to link at launch, and the smoke test is
-the only thing that will tell you.** `expo-image-manipulator@57.0.8` ships an
-xcframework built against a newer `ExpoModulesCore` than `expo@57.0.9` provides,
+the only thing that will tell you.** `expo-image-manipulator@57.0.8` shipped an
+xcframework built against a newer `ExpoModulesCore` than `expo@57.0.9` provided,
 so the app aborted in dyld before any JavaScript ran — `Symbol not found:
 BaseModule.willDestroy`. Jest cannot see this; every module is mocked. The fix
 is `expo.autolinking.buildFromSource` in `package.json`, which compiles that one
 module against the core actually present. Making the JS import lazy does _not_
 help: the framework is linked because it is in the bundle, not because something
-imported it.
+imported it. It stays on now that the core is 57.0.11 and probably carries the
+symbol: compiling one module from source costs CI minutes, and finding out the
+hard way costs a release.
 
 **Expo Go no longer runs this app.** `expo-camera`, `expo-audio`, `expo-video`
 and `expo-maps` are native modules, so development needs a dev client build.

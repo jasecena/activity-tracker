@@ -59,11 +59,19 @@ jobs:
 
       - run: npm ci
 
-      # Fails the build on high/critical only. Moderate findings in build-time
-      # tooling would otherwise block every release for something that never
-      # ships in the app binary; they are still reported below.
+      # Fails on high/critical only, minus a reviewed allowlist. Moderate
+      # findings in build-time tooling would otherwise block every release for
+      # something that never ships in the app binary.
+      #
+      # `npm audit --audit-level=high` alone has no way to record "we have
+      # looked at this one", and that is not a small gap: this check was red on
+      # every push for days over two advisories with no fixed version published
+      # anywhere. A permanently red check is one nobody reads, and it would
+      # have hidden a real finding. Each allowlisted advisory is named and
+      # justified in audit-ci.jsonc, and audit-ci prints the ones it skipped
+      # rather than passing silently.
       - name: Audit (fail on high or critical)
-        run: npm audit --audit-level=high
+        run: npx audit-ci --config audit-ci.jsonc
 
       - name: Report all advisories
         if: ${{ always() }}
