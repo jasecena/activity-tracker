@@ -84,6 +84,12 @@ _from_ a segment, so it has both ends and always has something behind it —
 open-ended windows, phantom rows and the midnight rule they needed are not
 fixed so much as unrepresentable. A label covering no segments emits nothing.
 
+**A merge is undone by forgetting the label that made it.** The row a label
+produces carries the label in its id, and `journeyLabelIdOf` is the inverse of
+`labelledSegmentId` — so the timeline offers Unmerge on a merged row without
+re-deriving which label covered which range, which would be a second
+implementation of the id scheme, free to disagree with the first.
+
 **Labels are stored as time ranges, not segment ids.** A different tracking
 preset folds the same fixes into different journeys, so an id would be orphaned
 by a settings change; a range is re-cut against whatever the day looks like now.

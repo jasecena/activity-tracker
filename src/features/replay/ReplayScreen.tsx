@@ -7,7 +7,7 @@ import { activeCalories } from '@/core/energy';
 import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
-import type { Segment } from '@/core/segments';
+import { journeyLabelIdOf, type Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
@@ -36,6 +36,8 @@ interface ReplayScreenProps {
   readonly onOpenAllDays: () => void;
   /** Join the selected rows into one journey. */
   readonly onMerge: (segments: readonly Segment[]) => void;
+  /** Undo a merge, by forgetting the labels that produced the chosen rows. */
+  readonly onUnmerge: (labelIds: readonly string[]) => void;
 }
 
 /**
@@ -71,6 +73,7 @@ export function ReplayScreen({
   onOpenMedia,
   onOpenAllDays,
   onMerge,
+  onUnmerge,
 }: ReplayScreenProps) {
   /**
    * Which rows are being joined, by id. Empty means not selecting at all —
@@ -121,6 +124,24 @@ export function ReplayScreen({
   const currentSegment = segments.find((candidate) => candidate.id === replay.position?.segmentId) ?? null;
 
   const chosen = useMemo(() => segments.filter((segment) => picked.includes(segment.id)), [segments, picked]);
+
+  /**
+   * The labels behind the chosen rows, if any of them came from one.
+   *
+   * A merge produces a single row, so the usual way to undo one is to select
+   * that row alone — at which point Merge is disabled anyway, because there is
+   * nothing to merge it with. Offering Unmerge in its place is what makes the
+   * long press mean "do something to this row" rather than only ever "join
+   * this to another".
+   */
+  const undoable = useMemo(
+    () =>
+      chosen.flatMap((segment) => {
+        const id = journeyLabelIdOf(segment.id);
+        return id ? [id] : [];
+      }),
+    [chosen],
+  );
   const mergeSpan = useMemo(
     () => ({
       from: Math.min(...chosen.map((segment) => segment.startedAt)),
@@ -365,22 +386,39 @@ export function ReplayScreen({
               {formatClockTime(mergeSpan.from, tzOffsetMinutes)}–{formatClockTime(mergeSpan.to, tzOffsetMinutes)}
             </Text>
 
-            <Pressable
-              onPress={() => {
-                onMerge(chosen);
-                setPicked([]);
-              }}
-              disabled={chosen.length < 2}
-              accessibilityRole="button"
-              accessibilityLabel={`Merge ${chosen.length} rows`}
-              style={({ pressed }) => [
-                styles.mergeButton,
-                chosen.length < 2 && styles.mergeDisabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.mergeButtonText}>Merge</Text>
-            </Pressable>
+            {/* One button, and which one it is says what the selection is. A
+                row that came from a merge can be taken apart; anything else can
+                be joined to what is next to it. */}
+            {undoable.length > 0 && chosen.length < 2 ? (
+              <Pressable
+                onPress={() => {
+                  onUnmerge(undoable);
+                  setPicked([]);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={undoable.length === 1 ? 'Unmerge this journey' : `Unmerge ${undoable.length} rows`}
+                style={({ pressed }) => [styles.mergeButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.mergeButtonText}>Unmerge</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  onMerge(chosen);
+                  setPicked([]);
+                }}
+                disabled={chosen.length < 2}
+                accessibilityRole="button"
+                accessibilityLabel={`Merge ${chosen.length} rows`}
+                style={({ pressed }) => [
+                  styles.mergeButton,
+                  chosen.length < 2 && styles.mergeDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.mergeButtonText}>Merge</Text>
+              </Pressable>
+            )}
           </View>
         ) : null}
 

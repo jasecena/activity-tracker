@@ -216,7 +216,22 @@ function splitAll(segments: readonly Segment[], at: number): Segment[] {
  * most one segment per label.
  */
 export function labelledSegmentId(label: JourneyLabel): string {
-  return `named-${label.id}`;
+  return `${LABELLED_PREFIX}${label.id}`;
+}
+
+const LABELLED_PREFIX = 'named-';
+
+/**
+ * The label behind a row, or null if the row is just what the day did.
+ *
+ * The inverse of `labelledSegmentId`, and it lives here so the id scheme has
+ * exactly one owner. Undoing a merge means forgetting the label that made it,
+ * and the only thing the screen has in its hand is the row's id — a picker that
+ * re-derived which label covered which range would be a second implementation
+ * of the thing above, free to disagree with it.
+ */
+export function journeyLabelIdOf(segmentId: string): string | null {
+  return segmentId.startsWith(LABELLED_PREFIX) ? segmentId.slice(LABELLED_PREFIX.length) : null;
 }
 
 function coalesce(inside: readonly Segment[], label: JourneyLabel, from: number, to: number): MoveSegment {

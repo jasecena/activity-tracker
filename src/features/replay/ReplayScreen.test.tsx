@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { DayGroup } from '@/core/day';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { EARTH_RADIUS_M, type PathPoint } from '@/core/geo';
-import type { MoveSegment, Segment, StaySegment } from '@/core/segments';
+import { journeyLabelId, labelledSegmentId, type MoveSegment, type Segment, type StaySegment } from '@/core/segments';
 
 import { ReplayScreen } from './ReplayScreen';
 
@@ -105,6 +105,7 @@ function renderTwoDays() {
         onOpenMedia={() => undefined}
         onOpenAllDays={() => undefined}
         onMerge={() => undefined}
+        onUnmerge={() => undefined}
       />
     );
   }
@@ -127,6 +128,7 @@ function renderScreen(day: DayGroup) {
       onOpenMedia={() => undefined}
       onOpenAllDays={() => undefined}
       onMerge={() => undefined}
+      onUnmerge={() => undefined}
     />,
   );
 }
@@ -148,6 +150,7 @@ describe('the player', () => {
         onOpenMedia={() => undefined}
         onOpenAllDays={() => undefined}
         onMerge={() => undefined}
+        onUnmerge={() => undefined}
       />,
     );
 
@@ -271,6 +274,8 @@ describe('getting back to today', () => {
   });
 });
 
+const LABEL = { id: '', label: '', mode: null, startedAt: 0, endedAt: 0 } as const;
+
 describe('merging rows', () => {
   /** A day with two walks and a stop between them. */
   const THREE_ROWS: DayGroup = {
@@ -299,6 +304,7 @@ describe('merging rows', () => {
         onOpenMedia={() => undefined}
         onOpenAllDays={() => undefined}
         onMerge={onMerge}
+        onUnmerge={() => undefined}
       />,
     );
   }
@@ -357,5 +363,86 @@ describe('merging rows', () => {
     await longPress(/from 08:00$/);
 
     expect(screen.queryByLabelText('Cancel selection')).not.toBeOnTheScreen();
+  });
+});
+
+/**
+ * Taking a merge apart again.
+ *
+ * A merge produces one row, so the natural way to undo it is to hold that row
+ * alone — at which point Merge is disabled anyway, because there is nothing to
+ * join it to. Offering Unmerge in its place is what makes holding a row mean
+ * "do something to this" rather than only ever "join this to another".
+ */
+describe('unmerging a row', () => {
+  /** What `applyJourneyLabels` emits: one row, id namespaced by its label. */
+  const MERGED: DayGroup = {
+    key: '2026-01-05',
+    startedAt: Date.UTC(2026, 0, 5),
+    segments: [
+      { ...move(T0, T0 + 35 * MINUTE, 0, 1_600), id: labelledSegmentId({ ...LABEL, id: journeyLabelId(T0) }) },
+      move(T0 + 40 * MINUTE, T0 + 50 * MINUTE, 1_600, 2_000),
+    ],
+  };
+
+  const LABEL_ID = journeyLabelId(T0);
+
+  function renderWithUnmerge(onUnmerge: (ids: readonly string[]) => void) {
+    return render(
+      <ReplayScreen
+        days={[MERGED]}
+        places={[]}
+        media={[]}
+        settings={SETTINGS}
+        tzOffsetMinutes={0}
+        mapsEnabled={false}
+        ready
+        selectedDayKey={MERGED.key}
+        onSelectDay={() => undefined}
+        onOpenSegment={() => undefined}
+        onOpenMedia={() => undefined}
+        onOpenAllDays={() => undefined}
+        onMerge={() => undefined}
+        onUnmerge={onUnmerge}
+      />,
+    );
+  }
+
+  /** Both rows are walks, so they are told apart by position, not by label. */
+  async function hold(which: number) {
+    await act(async () => {
+      fireEvent(screen.getAllByLabelText(/^Walk/)[which] as never, 'longPress');
+    });
+  }
+
+  it('offers Unmerge on a row a merge produced', async () => {
+    await renderWithUnmerge(() => undefined);
+    await hold(0);
+
+    expect(screen.getByLabelText('Unmerge this journey')).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/^Merge/)).not.toBeOnTheScreen();
+  });
+
+  it('forgets the label behind it', async () => {
+    const onUnmerge = jest.fn();
+    await renderWithUnmerge(onUnmerge);
+    await hold(0);
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Unmerge this journey'));
+    });
+
+    expect(onUnmerge).toHaveBeenCalledWith([LABEL_ID]);
+  });
+
+  // An ordinary row was never merged, so there is nothing to take apart and the
+  // button must not claim otherwise.
+  it('offers Merge, not Unmerge, on a row the day produced by itself', async () => {
+    await renderWithUnmerge(() => undefined);
+    // The second row: a plain move with no label behind it.
+    await hold(1);
+
+    expect(screen.getByLabelText('Merge 1 rows')).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/^Unmerge/)).not.toBeOnTheScreen();
   });
 });
