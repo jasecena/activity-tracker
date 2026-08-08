@@ -298,9 +298,18 @@ confidence — has no Expo binding and needs a custom native module. Mode is
 inferred from speed alone, which is why a slow cycle and a fast walk are hard to
 tell apart. `services/motion.ts` uses the pedometer, which is reachable.
 
-**Export is not built yet.** GPX per activity and a JSON dump are planned, on
-demand and never automatic. `services/dayLog.ts` stores a plain array of
-`Segment` precisely so that stays straightforward.
+**Pruned fixes are archived, not dropped.** Freezing a day removes its raw
+readings from the buffer — the fold never needs them again, because the day's
+segments are its record. They used to be deleted, which is why exporting "all
+raw fixes" produced a file containing today and nothing else. `pruneBuffer`
+moves them to `STORAGE_KEYS.fixArchive` instead, `allFixes()` is what the export
+reads, and `trimArchive` runs on the same cutoff as the log so an archive can
+never outlive the days it describes. Nothing reads the archive to build a
+timeline; adding a caller that does would undo the reason freezing exists.
+
+**GPX export is not built yet.** Per activity, on demand and never automatic.
+`services/dayLog.ts` stores a plain array of `Segment` precisely so that stays
+straightforward.
 
 **Keep the Expo patch versions in step, and check the audit is still readable.**
 `npm run verify` does not run either: `npx expo-doctor` and `npx audit-ci

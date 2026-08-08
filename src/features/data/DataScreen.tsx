@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { exportFilename, fixesToCsv, pointsToCsv, segmentsToCsv } from '@/core/export';
@@ -9,6 +9,7 @@ import type { Place } from '@/core/places';
 import type { Segment } from '@/core/segments';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { shareCsv } from '@/services/exportFile';
+import { allFixes, readArchive } from '@/services/fixBuffer';
 import { TRACKING_PRESETS, type TrackingPresetId } from '@/services/location';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -63,6 +64,20 @@ export function DataScreen({
 }: DataScreenProps) {
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Counted, not held: this is a year of readings at its largest, and the only
+  // thing this screen does with them is say how many there are and write them
+  // out when asked.
+  const [archived, setArchived] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void readArchive().then((fixesOnDisk) => {
+      if (live) setArchived(fixesOnDisk.length);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const moves = segments.filter((segment) => segment.kind === 'move');
   const stays = segments.filter((segment) => segment.kind === 'stay');
   const points = moves.reduce((sum, segment) => sum + (segment.kind === 'move' ? segment.path.length : 0), 0);
@@ -71,10 +86,10 @@ export function DataScreen({
   const first = fixes[0];
   const last = fixes[fixes.length - 1];
 
-  const run = (what: string, build: () => string) => {
+  const run = (what: string, build: () => string | Promise<string>) => {
     setBusy(what);
     void (async () => {
-      const result = await shareCsv(exportFilename(what, now, tzOffsetMinutes), build());
+      const result = await shareCsv(exportFilename(what, now, tzOffsetMinutes), await build());
       setBusy(null);
       if (!result.ok && result.reason === 'unavailable') {
         Alert.alert('Sharing unavailable', 'This device has no way to share a file.');
@@ -89,7 +104,8 @@ export function DataScreen({
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionLabel}>WHAT IS STORED</Text>
         <View style={styles.card}>
-          <Row label="Raw fixes (current window)" value={`${fixes.length}`} />
+          <Row label="Raw fixes (not yet frozen)" value={`${fixes.length}`} />
+          <Row label="Raw fixes (archived)" value={`${archived}`} />
           <Row label="Route points (all history)" value={`${points}`} />
           <Row label="Journeys" value={`${moves.length}`} />
           <Row label="Stops" value={`${stays.length}`} />
@@ -133,16 +149,20 @@ export function DataScreen({
         <Text style={styles.sectionLabel}>EXPORT</Text>
         <View style={styles.card}>
           <Pressable
-            onPress={() => run('fixes', () => fixesToCsv(fixes, tzOffsetMinutes))}
-            disabled={busy !== null || fixes.length === 0}
+            // Read from the store rather than from the timeline's live buffer.
+            // The buffer holds only what has not been frozen yet, which is why
+            // this file used to contain today and nothing else.
+            onPress={() => run('fixes', async () => fixesToCsv(await allFixes(), tzOffsetMinutes))}
+            disabled={busy !== null}
             accessibilityRole="button"
             accessibilityLabel="Export raw fixes as CSV"
             style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           >
-            <Text style={[styles.actionText, fixes.length === 0 && styles.disabled]}>Raw fixes (CSV)</Text>
+            <Text style={styles.actionText}>Raw fixes (CSV)</Text>
             <Text style={styles.actionDetail}>
-              Every reading in the current window: position, accuracy, altitude, and the platform&apos;s own speed
-              estimate.
+              Every reading still on the phone: position, accuracy, altitude, and the platform&apos;s own speed
+              estimate. Days frozen before this version was installed kept their timeline and not their readings, so the
+              file starts where the archive does.
             </Text>
           </Pressable>
 

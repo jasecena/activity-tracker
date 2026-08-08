@@ -1,7 +1,7 @@
 import { applyRetention, mergeIntoLog, planFreeze, startOfLocalDay } from '@/core/day';
 import type { Segment } from '@/core/segments';
 
-import { pruneBuffer } from './fixBuffer';
+import { pruneBuffer, trimArchive } from './fixBuffer';
 import { readJson, STORAGE_KEYS, writeJson } from './storage';
 
 /**
@@ -61,12 +61,17 @@ export async function freezeFinishedDays({
 
   const existing = await readLog();
   const merged = mergeIntoLog(existing, frozen);
-  const kept = retentionDays === null ? merged : applyRetention(merged, now - retentionDays * 24 * 3_600_000);
+  const cutoff = retentionDays === null ? null : now - retentionDays * 24 * 3_600_000;
+  const kept = cutoff === null ? merged : applyRetention(merged, cutoff);
 
   if (kept !== existing) {
     await writeJson(STORAGE_KEYS.dayLog, kept);
   }
   await pruneBuffer(keepFixesFrom);
+  // The same cutoff as the log, so "keep 30 days" means one thing rather than
+  // two — an archive outliving the days it describes would be a store of
+  // coordinates for a period the app claims to have forgotten.
+  if (cutoff !== null) await trimArchive(cutoff);
 
   return [...kept];
 }

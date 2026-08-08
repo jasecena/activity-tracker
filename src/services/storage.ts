@@ -35,6 +35,18 @@ export const STORAGE_KEYS = {
   fixBuffer: `${PREFIX}fix-buffer`,
   /** Days old enough that no new fix can change them. Append-only. */
   dayLog: `${PREFIX}day-log`,
+  /**
+   * Raw fixes for days already frozen, kept only so an export can include them.
+   *
+   * Nothing reads this to build a timeline — the fold runs over `fixBuffer`
+   * alone, and a frozen day's segments are its record. It exists because
+   * "export everything" meant today and nothing else: the buffer is pruned when
+   * a day is frozen, and what was pruned used to be thrown away.
+   *
+   * Trimmed by the same retention as the log, so it can never outlive the days
+   * it belongs to.
+   */
+  fixArchive: `${PREFIX}fix-archive`,
   /** Places you have named. */
   places: `${PREFIX}places`,
   /** Names you gave journeys, as time ranges. See `core/segments/manual.ts`. */

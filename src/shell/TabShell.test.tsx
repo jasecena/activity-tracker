@@ -302,17 +302,25 @@ describe('raw data and export', () => {
     expect(await screen.findByRole('header', { name: 'Raw data' })).toBeOnTheScreen();
     // A fresh install holds nothing, and the screen says so rather than
     // showing three zeroes and leaving you to guess why.
-    expect(screen.getByLabelText('Raw fixes (current window): 0')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Raw fixes (not yet frozen): 0')).toBeOnTheScreen();
     expect(screen.getByText(/No raw fixes held/)).toBeOnTheScreen();
   });
 
+  // Raw fixes is no longer among them: it reads the archive as well as the
+  // buffer, so "nothing to export" is not something this screen knows without
+  // asking the store, and a button disabled on a stale count is worse than one
+  // that produces an empty file.
   it('offers all three exports, disabled while there is nothing to export', async () => {
     await render(<TabShell />);
 
     await press('Settings tab');
     await press('Raw data and export');
 
-    expect(screen.getByLabelText('Export raw fixes as CSV')).toBeDisabled();
+    // Raw fixes is not among them. It reads the archive as well as the live
+    // buffer, and this screen does not hold the archive — a button greyed out
+    // on a count it has not asked for is how the export came to say "today" and
+    // mean it.
+    expect(screen.getByLabelText('Export raw fixes as CSV')).not.toBeDisabled();
     expect(screen.getByLabelText('Export route points as CSV')).toBeDisabled();
     expect(screen.getByLabelText('Export timeline as CSV')).toBeDisabled();
   });

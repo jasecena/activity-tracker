@@ -93,8 +93,50 @@ export async function pruneBuffer(before: number): Promise<void> {
   await serialise(async () => {
     const existing = await readBuffer();
     const kept = existing.filter((fix) => fix.at >= before);
-    if (kept.length !== existing.length) {
-      await writeJson(STORAGE_KEYS.fixBuffer, kept);
-    }
+    if (kept.length === existing.length) return;
+
+    // Moved, not dropped. Everything the fold needs from a frozen day is in its
+    // segments, so nothing here is ever read to build a timeline — but "export
+    // everything" used to mean today and nothing else, because what left the
+    // buffer left the phone. See `STORAGE_KEYS.fixArchive`.
+    const leaving = existing.filter((fix) => fix.at < before);
+    const archive = normalizeFixes(await readJson<unknown>(STORAGE_KEYS.fixArchive));
+    await writeJson(
+      STORAGE_KEYS.fixArchive,
+      [...archive, ...leaving].sort((a, b) => a.at - b.at),
+    );
+
+    await writeJson(STORAGE_KEYS.fixBuffer, kept);
+  });
+}
+
+/** Raw fixes for days already frozen. Only the export reads these. */
+export async function readArchive(): Promise<Fix[]> {
+  return normalizeFixes(await readJson<unknown>(STORAGE_KEYS.fixArchive));
+}
+
+/**
+ * Every reading still on the phone, oldest first.
+ *
+ * Read on demand rather than held in state: this is a year of fixes at its
+ * largest, wanted once when somebody presses Export and never while the
+ * timeline is being drawn.
+ */
+export async function allFixes(): Promise<Fix[]> {
+  const [archive, buffer] = await Promise.all([readArchive(), readBuffer()]);
+  return [...archive, ...buffer].sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Drop archived fixes older than the cutoff.
+ *
+ * Called with the same instant the day log is trimmed by, so the archive can
+ * never outlive the days it belongs to — "keep 30 days" has to mean one thing.
+ */
+export async function trimArchive(before: number): Promise<void> {
+  await serialise(async () => {
+    const existing = normalizeFixes(await readJson<unknown>(STORAGE_KEYS.fixArchive));
+    const kept = existing.filter((fix) => fix.at >= before);
+    if (kept.length !== existing.length) await writeJson(STORAGE_KEYS.fixArchive, kept);
   });
 }
