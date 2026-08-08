@@ -26,6 +26,7 @@ function item(capturedAt: number, overrides: Partial<MediaItem> = {}): MediaItem
     durationMs: null,
     fileName: `${mediaIdFor(capturedAt)}.bin`,
     thumbFileName: null,
+    at: null,
     byteLength: 1_024,
     note: '',
     ...overrides,
@@ -89,6 +90,18 @@ describe('capturedAtFromMediaId', () => {
 });
 
 describe('normalizeMedia', () => {
+  it('drops a position that is not a pair of finite numbers', () => {
+    const [result] = normalizeMedia([{ ...item(T0), at: { lat: 'north', lon: 0 } }]);
+    expect(result?.at).toBeNull();
+    const [alsoNull] = normalizeMedia([{ ...item(T0), at: { lat: Number.NaN, lon: 0 } }]);
+    expect(alsoNull?.at).toBeNull();
+  });
+
+  it('keeps a position that is', () => {
+    const [result] = normalizeMedia([{ ...item(T0), at: { lat: 1.5, lon: -2.5 } }]);
+    expect(result?.at).toEqual({ lat: 1.5, lon: -2.5 });
+  });
+
   it('is empty for anything that is not a list', () => {
     expect(normalizeMedia(null)).toEqual([]);
     expect(normalizeMedia('nope')).toEqual([]);
@@ -166,6 +179,33 @@ describe('attachToSegments', () => {
 });
 
 describe('placeMedia', () => {
+  // The reading taken at the shutter beats anything worked out afterwards: it
+  // is the most direct answer there is, and it survives the fixes being pruned,
+  // the day being re-derived, and tracking having been off entirely.
+  it('prefers the position stored with the capture', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE)]);
+    const shutter = { lat: 42 * DEG_PER_METRE_LAT, lon: 0 };
+    const [placed] = placeMedia(track, [item(T0 + 5 * MINUTE, { at: shutter })]);
+
+    expect(placed?.at?.lat).toBe(shutter.lat);
+  });
+
+  it('falls back to the day for a capture taken before positions were stored', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE)]);
+    const [placed] = placeMedia(track, [item(T0 + 5 * MINUTE, { at: null })]);
+
+    expect(placed?.at?.lat).toBeCloseTo(300 * DEG_PER_METRE_LAT, 9);
+  });
+
+  it('places one the day knows nothing about, if the capture knew', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE), move(T0 + 130 * MINUTE, T0 + 140 * MINUTE)]);
+    const shutter = { lat: 7 * DEG_PER_METRE_LAT, lon: 0 };
+    const [placed] = placeMedia(track, [item(T0 + 60 * MINUTE, { at: shutter })]);
+
+    // In a hole as far as the timeline is concerned, and still placed.
+    expect(placed?.at?.lat).toBe(shutter.lat);
+  });
+
   it('gives an item the position the day was in at that instant', () => {
     const track = buildTrack([move(T0, T0 + 10 * MINUTE)]);
     const [placed] = placeMedia(track, [item(T0 + 5 * MINUTE)]);

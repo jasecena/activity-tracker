@@ -7,7 +7,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatClockTime, formatDuration } from '@/core/format';
 import type { MediaItem, MediaKind } from '@/core/media';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
+import { currentFix } from '@/services/location';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import type { UseMedia } from './hooks/useMedia';
@@ -74,6 +76,14 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
   // state by rule.
   const [elapsedMs, setElapsedMs] = useState(0);
   const [progress, setProgress] = useState(0);
+  /**
+   * Where the current recording started.
+   *
+   * Read when recording begins rather than when it ends: a minute of video or a
+   * voice note walked home would otherwise be stamped with wherever you
+   * finished, which is the one place it definitely was not taken.
+   */
+  const [startedAtPlace, setStartedAtPlace] = useState<Fix | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const [cameraPermission, requestCamera] = useCameraPermissions();
@@ -121,7 +131,7 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
    * because a write threw is worse than one that says it failed.
    */
   const store = useCallback(
-    async (uri: string | null | undefined, kind: MediaKind, durationMs: number | null) => {
+    async (uri: string | null | undefined, kind: MediaKind, durationMs: number | null, at: Fix | null) => {
       setState('saving');
       setProgress(0);
       try {
@@ -129,20 +139,27 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
           setProblem('Nothing was captured.');
           return;
         }
-        const stored = await media.keep(uri, kind, durationMs, setProgress);
+        const stored = await media.keep(uri, kind, { durationMs, at, onProgress: setProgress });
         setProblem(stored ? null : 'That capture could not be stored, so it was not kept.');
       } finally {
         setState('idle');
         setSince(null);
         setProgress(0);
+        setStartedAtPlace(null);
       }
     },
     [media],
   );
 
   const takePhoto = useCallback(async () => {
-    const picture = await camera.current?.takePictureAsync({ quality: 0.8, exif: false });
-    await store(picture?.uri, 'photo', null);
+    // Both started together: a photo's shutter *is* its start, and waiting for
+    // the fix before opening it would add a visible delay to the one capture
+    // that should feel instant.
+    const [picture, at] = await Promise.all([
+      camera.current?.takePictureAsync({ quality: 0.8, exif: false }),
+      currentFix(),
+    ]);
+    await store(picture?.uri, 'photo', null, at);
   }, [store]);
 
   const toggleVideo = useCallback(async () => {
@@ -157,16 +174,20 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
     setState('recording');
     setSince(readNow());
     setElapsedMs(0);
+    // Not awaited: the recording starts now, and the reading lands a moment
+    // later without holding up the shutter.
+    void currentFix().then(setStartedAtPlace);
+
     const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
-    await store(clip?.uri, 'video', null);
-  }, [state, store]);
+    await store(clip?.uri, 'video', null, startedAtPlace);
+  }, [startedAtPlace, state, store]);
 
   const toggleVoice = useCallback(async () => {
     if (state === 'recording') {
       const startedAt = since ?? readNow();
       setState('saving');
       await recorder.stop();
-      await store(recorder.uri, 'audio', readNow() - startedAt);
+      await store(recorder.uri, 'audio', readNow() - startedAt, startedAtPlace);
       return;
     }
 
@@ -175,7 +196,8 @@ export function CaptureScreen({ media, tzOffsetMinutes, visible, onOpenItem }: C
     setElapsedMs(0);
     setSince(readNow());
     setState('recording');
-  }, [recorder, since, state, store]);
+    void currentFix().then(setStartedAtPlace);
+  }, [recorder, since, startedAtPlace, state, store]);
 
   const missingPermission =
     (needsCamera && cameraPermission?.granted === false) ||

@@ -62,8 +62,8 @@ describe('recording a video', () => {
 
   it('shows how far along the saving is', async () => {
     let report: ((fraction: number) => void) | undefined;
-    const keep = jest.fn((_uri, _kind, _duration, onProgress) => {
-      report = onProgress;
+    const keep = jest.fn((_uri, _kind, options) => {
+      report = options?.onProgress;
       return new Promise(() => undefined);
     }) as unknown as UseMedia['keep'];
 

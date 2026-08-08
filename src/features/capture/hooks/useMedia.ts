@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { capturedAtFromMediaId, mediaIdFor, normalizeMedia, type MediaItem, type MediaKind } from '@/core/media';
+import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
+import { appendFixes } from '@/services/fixBuffer';
 import {
   deleteMedia as deleteBytes,
   discardPending,
@@ -13,6 +15,20 @@ import {
 } from '@/services/mediaStore';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
+export interface KeepOptions {
+  readonly durationMs?: number | null;
+  /**
+   * Where it was taken, read by the caller at the moment that matters.
+   *
+   * Passed in rather than read here, because "the moment that matters" differs:
+   * the shutter for a photo, but the *start* for a video or a voice note — by
+   * the time either finishes you may be somewhere else entirely.
+   */
+  readonly at?: Fix | null;
+  /** Fraction sealed so far, 0 to 1 — a video takes long enough to be worth showing. */
+  readonly onProgress?: (fraction: number) => void;
+}
+
 export interface UseMedia {
   ready: boolean;
   items: readonly MediaItem[];
@@ -23,13 +39,7 @@ export interface UseMedia {
    * nothing is added, because an index entry pointing at bytes that are not
    * there is worse than no entry at all.
    */
-  keep: (
-    sourceUri: string,
-    kind: MediaKind,
-    durationMs?: number | null,
-    /** Fraction sealed so far, 0 to 1 — a video takes long enough to be worth showing. */
-    onProgress?: (fraction: number) => void,
-  ) => Promise<MediaItem | null>;
+  keep: (sourceUri: string, kind: MediaKind, options?: KeepOptions) => Promise<MediaItem | null>;
   annotate: (id: string, note: string) => void;
   forget: (id: string) => void;
 }
@@ -82,6 +92,9 @@ export function useMedia(): UseMedia {
             fileName,
             thumbFileName,
             byteLength,
+            // Not recoverable from a staged file's name. The capture survives;
+            // only where it was taken is lost.
+            at: null,
             note: '',
           });
         } catch (error) {
@@ -115,46 +128,55 @@ export function useMedia(): UseMedia {
     void writeJson(STORAGE_KEYS.media, next);
   }, []);
 
-  const keep = useCallback(
-    async (
-      sourceUri: string,
-      kind: MediaKind,
-      durationMs: number | null = null,
-      onProgress?: (fraction: number) => void,
-    ) => {
-      const capturedAt = readNow();
-      const id = mediaIdFor(capturedAt);
+  const keep = useCallback(async (sourceUri: string, kind: MediaKind, options: KeepOptions = {}) => {
+    const { durationMs = null, at = null, onProgress } = options;
+    const capturedAt = readNow();
+    const id = mediaIdFor(capturedAt);
 
-      try {
-        // Ours before it is sealed. A rename, so it costs nothing however large
-        // the clip — and it means an interruption leaves behind a file that
-        // says what it was, rather than an OS temp file nobody will look for.
-        const staged = stageCapture(sourceUri, id, kind);
-        // Before `writeMedia`, which deletes the staged file: a thumbnail made
-        // afterwards would have to decrypt the whole capture to get a picture
-        // of it, which is the cost thumbnails exist to avoid.
-        const thumbFileName = await writeThumbnail(staged.uri, id, kind);
-        const { fileName, byteLength } = await writeMedia(staged.uri, id, kind, onProgress);
-        const item: MediaItem = { id, kind, capturedAt, durationMs, fileName, thumbFileName, byteLength, note: '' };
-        // Read from state at the moment of the write rather than from a
-        // dependency: sealing a video takes long enough for a second capture to
-        // start, and a stale closure here would drop one of them.
-        setItems((current) => {
-          const next = [...current.filter((existing) => existing.id !== id), item].sort(
-            (a, b) => a.capturedAt - b.capturedAt,
-          );
-          touched.current = true;
-          void writeJson(STORAGE_KEYS.media, next);
-          return next;
-        });
-        return item;
-      } catch (error) {
-        console.warn('Could not store the capture', error);
-        return null;
-      }
-    },
-    [],
-  );
+    try {
+      // Ours before it is sealed. A rename, so it costs nothing however large
+      // the clip — and it means an interruption leaves behind a file that
+      // says what it was, rather than an OS temp file nobody will look for.
+      const staged = stageCapture(sourceUri, id, kind);
+      // Before `writeMedia`, which deletes the staged file: a thumbnail made
+      // afterwards would have to decrypt the whole capture to get a picture
+      // of it, which is the cost thumbnails exist to avoid.
+      const thumbFileName = await writeThumbnail(staged.uri, id, kind);
+      const { fileName, byteLength } = await writeMedia(staged.uri, id, kind, onProgress);
+      // The same reading in both places. On the item it survives the day
+      // being re-derived, the fixes being pruned, and tracking having been
+      // off; in the stream it puts you on the timeline at that moment, so a
+      // photo taken while sitting still leaves a mark on the day.
+      if (at) await appendFixes([at]);
+
+      const item: MediaItem = {
+        id,
+        kind,
+        capturedAt,
+        durationMs,
+        fileName,
+        thumbFileName,
+        byteLength,
+        at: at ? { lat: at.lat, lon: at.lon } : null,
+        note: '',
+      };
+      // Read from state at the moment of the write rather than from a
+      // dependency: sealing a video takes long enough for a second capture to
+      // start, and a stale closure here would drop one of them.
+      setItems((current) => {
+        const next = [...current.filter((existing) => existing.id !== id), item].sort(
+          (a, b) => a.capturedAt - b.capturedAt,
+        );
+        touched.current = true;
+        void writeJson(STORAGE_KEYS.media, next);
+        return next;
+      });
+      return item;
+    } catch (error) {
+      console.warn('Could not store the capture', error);
+      return null;
+    }
+  }, []);
 
   const annotate = useCallback(
     (id: string, note: string) => persist(items.map((item) => (item.id === id ? { ...item, note } : item))),

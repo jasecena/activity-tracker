@@ -1,20 +1,29 @@
 import { dayKeyOf, type TzOffsetMinutes } from '../day';
+import type { LatLon } from '../geo';
 import type { Segment } from '../segments';
 import { positionAt, type Position, type Track } from '../replay';
 
 /**
  * Photos, video and voice notes, as the engine sees them.
  *
- * A capture is a **timestamp and some bytes**. It carries no coordinate of its
- * own, and that is the same decision manual recording made: there is one fix
- * stream, always, and where a photo was taken is answered by asking the day
- * where you were at that instant. Taking a fresh reading at the shutter would
- * mean a second consumer of Core Location, a second answer to "where was I",
- * and a photo whose position disagrees with the route drawn under it.
+ * A capture is **a timestamp, some bytes, and where it was taken**.
  *
- * It also means a photo taken in a lift with no signal has no position, which
- * is the honest answer rather than the last one that happened to be lying
- * around.
+ * The position is recorded twice, deliberately, and with the same reading in
+ * both places: on the item here, and appended to the fix stream. Each answers a
+ * different question. The copy on the item is what the media screen shows, and
+ * it survives the day being re-derived, the fixes being pruned, or tracking
+ * having been off entirely. The fix in the stream is what puts you on the
+ * timeline at that moment, so a photo taken during a stationary afternoon
+ * leaves a mark on the day rather than none.
+ *
+ * This revises the note that used to stand here — that a capture stores a time
+ * and never a position, deriving where from the fix stream. Deriving was the
+ * right instinct and the wrong outcome: a phone that does not move produces no
+ * fixes, so a photo taken while sitting still had nowhere to be placed, and
+ * with tracking off it had nothing to derive from at all.
+ *
+ * The tracking switch governs what the app records **on its own**. Pressing the
+ * shutter is not the app acting on its own.
  *
  * Nothing here touches a file. The bytes live in `services/mediaStore.ts`,
  * sealed under the vault key; this module owns only the index and the
@@ -53,6 +62,13 @@ export interface MediaItem {
   readonly thumbFileName: string | null;
   /** Size on disk, ciphertext included. What the Data screen reports. */
   readonly byteLength: number;
+  /**
+   * Where it was taken, or null if the platform would not say.
+   *
+   * Null is a real answer — a basement, a denied permission — and better than
+   * the last position that happened to be lying around.
+   */
+  readonly at: LatLon | null;
   /** Whatever you typed, or empty. */
   readonly note: string;
 }
@@ -76,6 +92,12 @@ export function capturedAtFromMediaId(id: string): number | null {
   if (!id.startsWith(ID_PREFIX)) return null;
   const at = Number(id.slice(ID_PREFIX.length));
   return Number.isFinite(at) && at > 0 ? at : null;
+}
+
+function isLatLon(candidate: unknown): candidate is LatLon {
+  if (typeof candidate !== 'object' || candidate === null) return false;
+  const { lat, lon } = candidate as Partial<LatLon>;
+  return typeof lat === 'number' && Number.isFinite(lat) && typeof lon === 'number' && Number.isFinite(lon);
 }
 
 function isMediaKind(candidate: unknown): candidate is MediaKind {
@@ -113,6 +135,7 @@ export function normalizeMedia(input: unknown): MediaItem[] {
       thumbFileName:
         typeof item.thumbFileName === 'string' && item.thumbFileName.length > 0 ? item.thumbFileName : null,
       byteLength: typeof item.byteLength === 'number' && item.byteLength >= 0 ? item.byteLength : 0,
+      at: isLatLon(item.at) ? { lat: item.at.lat, lon: item.at.lon } : null,
       note: typeof item.note === 'string' ? item.note : '',
     }))
     .sort((a, b) => a.capturedAt - b.capturedAt);
@@ -168,12 +191,18 @@ export interface PlacedMedia {
 /**
  * Where each item goes on the map.
  *
- * `positionAt` returns null inside a hole, and that null is carried through
- * rather than smoothed away: a photo taken during two hours the app has no
- * fixes for gets a row in the list and no pin, which is the truth.
+ * The position stored with the capture wins: it was read at the shutter, so it
+ * is the most direct answer there is. The track is the fallback for anything
+ * captured before positions were stored — and `positionAt` returns null inside
+ * a hole, which is carried through rather than smoothed away.
  */
 export function placeMedia(track: Track, items: readonly MediaItem[]): readonly PlacedMedia[] {
-  return items.map((item) => ({ item, at: positionAt(track, item.capturedAt) }));
+  return items.map((item) => ({
+    item,
+    at: item.at
+      ? { ...item.at, at: item.capturedAt, speedMps: null, segmentId: '', kind: 'stay' as const }
+      : positionAt(track, item.capturedAt),
+  }));
 }
 
 /** Total bytes on disk, for the "what is stored" list. */

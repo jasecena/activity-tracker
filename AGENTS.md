@@ -152,11 +152,20 @@ track is never sent: it is an overlay drawn on the device. With it off, every ma
 is the offline canvas in `components/MapCanvas.tsx`, which is also the only file
 that may import `expo-maps`. App Transport Security stays fully enforced.
 
-**A capture stores a time, never a position.** Photos, video and voice notes
-record `capturedAt` and nothing else about where you were; where is derived on
-read from the day's own fixes. Reading Core Location at the shutter would be a
-second consumer of the fix stream and a second answer to "where was I". It is
-also why a photo taken with no signal has no position rather than a stale one.
+**A capture stores where it was taken, in two places, from one reading.** On
+the item and in the fix stream: the copy on the item is what the media screen
+shows and survives the fixes being pruned or tracking having been off; the fix
+in the stream puts you on the timeline at that moment. This revises the note
+that used to stand here — that a capture stores only a time and derives where.
+Deriving was right in principle and wrong in outcome: a phone that does not move
+produces no fixes, so a photo taken sitting still had nowhere to be placed.
+
+The reading is taken at the moment that _matters_, which the caller decides:
+the shutter for a photo, the **start** for a video or a voice note. By the time
+either finishes you may be somewhere else.
+
+The tracking switch governs what the app records **on its own**. Pressing the
+shutter is not the app acting on its own.
 
 **The player stops at a hole; it never slides across one.** `positionAt` returns
 null wherever the fixes stopped and the screen says "No signal". An icon gliding

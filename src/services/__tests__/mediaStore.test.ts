@@ -50,6 +50,7 @@ function item(overrides: Partial<MediaItem> = {}): MediaItem {
     durationMs: null,
     fileName: 'm-1767600000000.jpg.avm',
     thumbFileName: null,
+    at: null,
     byteLength: 0,
     note: '',
     ...overrides,
