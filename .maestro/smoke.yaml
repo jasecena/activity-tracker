@@ -93,6 +93,13 @@ appId: ${APP_ID}
 - tapOn: 'Voice'
 - tapOn: 'Photo'
 
+# Media mounts expo-video and expo-audio, and on a fresh install has nothing to
+# show. The empty state is the assertion worth having: it proves the media index
+# was read and decrypted rather than the screen hanging on the store.
+- tapOn: 'Media tab'
+- assertVisible: 'Media'
+- assertVisible: 'Nothing captured yet'
+
 - tapOn: 'Settings tab'
 - assertVisible: 'Settings'
 - assertVisible: 'Track my day'

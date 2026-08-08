@@ -128,13 +128,14 @@ describe('the shell', () => {
   });
 
   // Order is invisible to every other test here — they all select a tab by its
-  // label — so without this the deliberate middle slot could be reshuffled by
-  // accident and nothing would notice.
-  it('puts Capture in the middle of the bar', async () => {
+  // label — so without this the deliberate arrangement could be reshuffled by
+  // accident and nothing would notice. Capture and Media are the two thumb
+  // slots; Settings stays last, where nobody reaches for it by mistake.
+  it('keeps the two doing-something tabs under the thumb', async () => {
     await render(<TabShell />);
 
     const labels = screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel);
-    expect(labels).toEqual(['Day tab', 'Capture tab', 'Settings tab']);
+    expect(labels).toEqual(['Day tab', 'Capture tab', 'Media tab', 'Settings tab']);
   });
 
   // Places lost its tab to Replay and Capture; it is a reference list you

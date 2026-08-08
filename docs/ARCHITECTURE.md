@@ -504,22 +504,51 @@ activity.
 
 ---
 
-## 12b. Capture stores a time, never a position
+## 12b. Capture stores a position twice, and the same one both times
 
-Photos, video and voice notes record `capturedAt` and nothing about where they
-were taken. Where is derived on read, by asking the day's own track where you
-were at that instant — `core/media`'s `placeMedia`, over `core/replay`.
+Photos, video and voice notes take one reading at the shutter and write it to
+**two** places: onto the item as `at`, and into the fix buffer as an ordinary
+fix. One reading, so the two can never disagree — the pin on the photo and the
+route drawn under it are literally the same coordinate.
 
-This is § 4's decision applied again. Reading Core Location at the shutter would
-mean a second consumer of the fix stream, a second answer to "where was I", and a
-photo whose pin disagrees with the route drawn under it. It also means a photo
-taken in a lift with no signal has _no_ position, which is the honest answer
-rather than the last one that happened to be lying around.
+This reverses an earlier decision, which was that a capture stores a time and
+nothing else and its position is derived on read from the day's own track. The
+reasoning was § 4's: one fix stream, one answer to "where was I". The reasoning
+was right and the conclusion was wrong. Deriving works only where the track has
+something to say, and the moment you most want a photo's location — indoors, at
+the end of a long stay, in a lift, seconds after the app woke — is exactly when
+the distance filter has produced no fix for minutes and the answer is null.
 
-The link from a capture to a timeline row is derived the same way
-(`attachToSegments`) rather than written onto a segment. Segments are re-derived
-from the fix buffer every time they are needed (§ 1); a stored link would orphan
-every photo the first time a day was folded under a different config.
+The single-stream rule survives intact because there is still one stream. The
+capture does not subscribe to anything; it asks `currentFix()` once, that fix
+goes through `judgeFix` like every other, and it is the same value that lands on
+the item. A capture is a reason to ask, not a second source.
+
+`placeMedia` therefore prefers `item.at` and falls back to `positionAt` over the
+day's track. The fallback is not legacy handling to be removed later: it is what
+gives every capture taken before this existed a location, and what covers a
+reading the judge rejected.
+
+The link from a capture to a timeline row is still derived (`attachToSegments`)
+rather than written onto a segment. Segments are re-derived from the fix buffer
+every time they are needed (§ 1); a stored link would orphan every photo the
+first time a day was folded under a different config.
+
+### Showing them: thumbnails are what make a gallery possible
+
+A sealed thumbnail — 240 points on the long edge — is written beside every photo
+and video at capture time, in the same container format. It costs a few
+kilobytes and it is the difference between a gallery that opens instantly and
+one that decrypts forty megabytes to show you a postage stamp.
+
+`MediaGalleryScreen` decrypts **exactly one** capture: the page you are looking
+at. Both of its lists are windowed, and the pages either side draw thumbnails.
+Video is played from the decrypted file on disk rather than read into memory, so
+a ten-minute clip costs what a ten-second one does — AVFoundation reads the
+frames it needs. That is also why the file has to exist decrypted for the length
+of playback: there is no way to hand Core Media a stream this app decrypts as it
+goes, and buffering the clip in JavaScript to avoid that would be the very thing
+being avoided.
 
 ### The bytes: a container of their own
 
@@ -584,15 +613,16 @@ install, not the thing that makes them safe.
 
 ---
 
-## 13. UI: no navigation library, one fold for three tabs
+## 13. UI: no navigation library, one fold for four tabs
 
-Three tabs — Day, Capture, Settings — with one level of detail below each.
-Capture takes the middle slot: it is the only tab that is a thing you _do_
-rather than a thing you read.
+Four tabs — Day, Capture, Media, Settings — with one level of detail below
+each. Capture and Media take the two middle slots, where a thumb reaches without
+moving the phone: Capture is the only tab that is a thing you _do_, and Media
+the only one you open to _look_ at something rather than read it.
 
-It was five. "Today", "History" and "Replay" were all _look at a day_ — the same
-stats, the same timeline, the same map — differing only in which day and whether
-it moved. Three tabs meant three renderers of one thing, a Today that could not
+It was five, then three. "Today", "History" and "Replay" were all _look at a
+day_ — the same stats, the same timeline, the same map — differing only in which
+day and whether it moved. Three tabs meant three renderers of one thing, a Today that could not
 show yesterday, and a History that could not show today. They are one screen
 now: the day is a parameter, it defaults to today, arrows walk backwards, and
 the full list of days is a page under it rather than a tab beside it.
@@ -617,8 +647,9 @@ plumbing is not. `shell/usePageStack.ts` is an array and three functions,
 against a router that would bring a native screen container, a navigation state
 tree and a serialisation format to solve the same problem.
 
-This revises the decision twice over. It first read "three tabs need no router",
-then four. The reasoning survives five tabs and one level of depth. It would not
+This revises the decision three times over. It first read "three tabs need no
+router", then four, then five, then three again, and now four. The reasoning
+survives five tabs and one level of depth. It would not
 survive a fifth level, deep links or modal routes, and at that point a router is
 the right answer rather than a heavier one.
 
@@ -632,17 +663,24 @@ renders _over_ its tab rather than replacing it. Both for the same reason: Today
 holds a running recording and a timeline it just derived, and neither should be
 lost because you opened a place you visited in March.
 
-**The camera is the one exception**, and it is the exception that proves the
-rule. `CaptureScreen` is told which tab is showing and mounts `CameraView` only
-when it is the visible one. Keeping a capture session alive behind four hidden
-screens costs battery, holds the hardware, and leaves the recording indicator lit
-while you read Settings — the opposite of what "stays mounted" is protecting.
+**Two screens are the exceptions, and they prove the rule.** Both are told which
+tab is showing, and both do less when it is not theirs.
+
+`CaptureScreen` mounts `CameraView` only when Capture is visible. Keeping a
+capture session alive behind three hidden screens costs battery, holds the
+hardware, and leaves the recording indicator lit while you read Settings — the
+opposite of what "stays mounted" is protecting.
+
+`MediaGalleryScreen` opens a capture only when Media is visible, for two reasons
+at once: a video should not keep playing where you cannot see it to stop it, and
+a decrypted file should not sit in the cache directory for a tab nobody is
+looking at. Coming back costs one decrypt, which is the right price.
 
 The hooks live in the shell rather than in the screens because they are shared —
 the timeline needs the manual windows and the segmentation settings, Settings
 needs the rejection counts the timeline produced, Places needs every segment ever
 recorded, and media is written by Capture and read by Replay. Lifting them is
-what keeps a single fold serving all five tabs. The player's selected day lives
+what keeps a single fold serving all four tabs. The player's selected day lives
 up there too, because History's "Replay this day" chooses it as well, and two
 owners of one selection means one is a copy that renders the wrong day first and
 corrects it afterwards.

@@ -181,9 +181,10 @@ written because the handler was busy segmenting the last one.
 `storage.ts` and `motion.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
-**No navigation library.** Three tabs — Day, Capture, Settings — and one level
-of detail below each. Capture sits in the middle because it is the only tab that
-is an action rather than a view.
+**No navigation library.** Four tabs — Day, Capture, Media, Settings — and one
+level of detail below each. Capture and Media take the two middle slots: one is
+the only tab that is an action rather than a view, the other the only one you
+open to _look_ at something rather than read it.
 
 **One screen shows a day, and it defaults to today.** "Today", "History" and
 "Replay" were all _look at a day_, differing only in which one and whether it
@@ -206,9 +207,17 @@ running recording or a timeline that was just derived. This reasoning survives a
 fifth tab and one level of depth; it would not survive a fifth level, deep links
 or modal routes.
 
-The camera is the deliberate exception: `CaptureScreen` mounts `CameraView` only
-while Capture is the visible tab. A capture session running behind four hidden
-screens costs battery and leaves the recording indicator lit.
+Two screens are deliberate exceptions, both because they hold something a hidden
+tab must not. `CaptureScreen` mounts `CameraView` only while Capture is visible:
+a session running behind three hidden screens costs battery and leaves the
+recording indicator lit. `MediaGalleryScreen` opens a capture only while Media is
+visible, so a video cannot play out of sight and no decrypted file sits in the
+cache for a tab nobody is looking at.
+
+**The gallery holds thumbnails, and exactly one capture.** Both lists are
+windowed and only the centre page is decrypted; the pages either side draw the
+sealed thumbnail written beside the original. A gallery that decrypted what it
+rendered would hold several videos in memory to show you one.
 
 **Naming a place asks rather than guesses.** `matchPlace` returns one place
 because a timeline row needs one label, but `rankPlaceCandidates` returns all of

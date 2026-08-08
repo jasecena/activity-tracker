@@ -17,6 +17,7 @@ import { MediaScreen } from '@/features/capture/MediaScreen';
 import { useMedia } from '@/features/capture/hooks/useMedia';
 import { DataScreen } from '@/features/data/DataScreen';
 import { HistoryScreen } from '@/features/history/HistoryScreen';
+import { MediaGalleryScreen } from '@/features/media/MediaGalleryScreen';
 import { PlaceScreen } from '@/features/places/PlaceScreen';
 import { PlacesScreen } from '@/features/places/PlacesScreen';
 import { PlacePicker } from '@/features/places/components/PlacePicker';
@@ -32,7 +33,7 @@ import { colors, spacing } from '@/theme/tokens';
 import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
 
-type Tab = 'replay' | 'capture' | 'settings';
+type Tab = 'replay' | 'capture' | 'gallery' | 'settings';
 
 /** Pages that can sit above a tab's root. */
 type Page =
@@ -50,11 +51,12 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   // is the only tab that is a thing you *do* rather than a thing you read, and
   // the only one you would ever open one-handed in a hurry.
   { key: 'capture', label: 'Capture', icon: 'camera-outline' },
+  { key: 'gallery', label: 'Media', icon: 'images-outline' },
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
 /**
- * Five tabs, each with its own stack of detail pages.
+ * Four tabs, each with its own stack of detail pages.
  *
  * Still no navigation library. `usePageStack` is an array and three functions,
  * against a router that would bring a native screen container, a navigation
@@ -62,21 +64,25 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
  * global stack, so going Today → a journey → Capture → back leaves the journey
  * where you left it.
  *
- * **Places used to be a tab and is now a page under Settings.** Replay and
- * Capture are things you do; Places is a reference list you consult, and iOS
- * collapses a sixth tab into a "More" menu that is worse than either. The
- * reasoning in `docs/ARCHITECTURE.md` §13 survives five tabs and one level of
- * depth; it would not survive a fifth level, deep links or modal routes.
+ * **Places used to be a tab and is now a page under Settings.** Day, Capture
+ * and Media are things you do or look at daily; Places is a reference list you
+ * consult, and iOS collapses a sixth tab into a "More" menu that is worse than
+ * either. The reasoning in `docs/ARCHITECTURE.md` §13 survives four tabs and
+ * one level of depth; it would not survive a fifth level, deep links or modal
+ * routes.
  *
  * Every tab stays **mounted**, with the inactive ones hidden, and a detail page
  * renders *over* its tab rather than replacing it. Both for the same reason:
  * Today holds a running recording and a timeline it just derived, and neither
  * should be lost because you opened a place you visited in March.
  *
- * The one exception is the camera, and Capture is told which tab is showing so
- * it can mount its preview only when it is the one on screen. A capture session
- * running behind four hidden screens costs battery and leaves the recording
- * indicator lit while you read Settings.
+ * The two exceptions are the ones that hold hardware or plaintext. Capture is
+ * told which tab is showing so it mounts its preview only when it is on screen
+ * — a capture session running behind three hidden screens costs battery and
+ * leaves the recording indicator lit while you read Settings. Media is told for
+ * the same reason twice over: a video should not keep playing out of sight, and
+ * a decrypted capture should not sit in the cache for a tab nobody is looking
+ * at.
  *
  * The hooks live here because they are shared. A stay can be named from Today
  * or from any day in History, media is written by Capture and read by Replay,
@@ -102,6 +108,7 @@ export function TabShell() {
   const stacks: Record<Tab, ReturnType<typeof usePageStack<Page>>> = {
     replay: usePageStack<Page>(),
     capture: usePageStack<Page>(),
+    gallery: usePageStack<Page>(),
     settings: usePageStack<Page>(),
   };
 
@@ -127,12 +134,17 @@ export function TabShell() {
   const openMedia = (which: Tab) => (item: MediaItem) => stacks[which].push({ kind: 'media', item });
 
   /**
-   * Where a capture happened, worked out from the day it belongs to.
+   * Where a capture happened.
    *
-   * Not stored with the capture, deliberately — see `core/media`. Null when the
-   * day has no fixes for that instant, which the media screen says out loud.
+   * The coordinate taken at the shutter wins, because it is an answer about
+   * *this* capture rather than an inference from the day around it. Falling
+   * back to the timeline is what makes every photo taken before the app stored
+   * one still have a location — and null, when the day has no fix for that
+   * instant, is a real answer the media screen says out loud.
    */
   const positionOf = (item: MediaItem) => {
+    if (item.at) return { ...item.at, at: item.capturedAt, speedMps: null, segmentId: '', kind: 'stay' as const };
+
     const day = replayDays.find(
       (candidate) =>
         item.capturedAt >= candidate.startedAt && item.capturedAt <= candidate.startedAt + 24 * 60 * 60_000,
@@ -274,6 +286,18 @@ export function TabShell() {
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
+          ) : null}
+        </View>
+
+        <View style={[styles.screen, tab !== 'gallery' && styles.hidden]}>
+          <MediaGalleryScreen
+            items={media.items}
+            tzOffsetMinutes={timeline.tzOffsetMinutes}
+            visible={tab === 'gallery'}
+            onOpenDetails={openMedia('gallery')}
+          />
+          {stacks.gallery.current ? (
+            <SwipeBackPage onBack={stacks.gallery.pop}>{renderPage('gallery')}</SwipeBackPage>
           ) : null}
         </View>
 

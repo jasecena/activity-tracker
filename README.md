@@ -105,10 +105,10 @@ src/core/        pure TypeScript. No React, no Expo, no clock, no I/O.
   replay/        where the day was at an instant, and where it has no idea
   media/         captures on the timeline, placed by time alone
 src/services/    the only files that touch a native module or ask the time
-src/features/    screens and their hooks — today, history, replay, capture, places,
-                 record, settings
+src/features/    screens and their hooks — replay, capture, media, places,
+                 labels, history, data, settings
 src/components/  shared UI, including the map and its offline canvas
-src/shell/       five tabs and a minimal page stack, no router
+src/shell/       four tabs and a minimal page stack, no router
 ```
 
 The whole engine is a fold — `(state, fix) => state` — with no clock, no entropy
