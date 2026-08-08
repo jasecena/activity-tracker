@@ -231,35 +231,38 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       )}
 
-      <View style={styles.topBar} pointerEvents="box-none">
-        <View style={styles.modes}>
-          {MODES.map((option) => {
-            const selected = option.key === mode;
-            return (
-              <Pressable
-                key={option.key}
-                onPress={() => setMode(option.key)}
-                // Changing what you are capturing halfway through capturing it
-                // would unmount the camera under a running recording.
-                disabled={state !== 'idle'}
-                accessibilityRole="radio"
-                accessibilityState={{ selected, disabled: state !== 'idle' }}
-                accessibilityLabel={option.label}
-                style={({ pressed }) => [styles.modeChip, selected && styles.modeChipOn, pressed && styles.pressed]}
-              >
-                <Ionicons name={option.icon} size={16} color={selected ? colors.onAccent : colors.textPrimary} />
-                <Text style={[styles.modeText, selected && styles.modeTextOn]}>{option.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {state === 'recording' && needsCamera ? (
+      {state === 'recording' && needsCamera ? (
+        <View style={styles.topBar} pointerEvents="box-none">
           <View style={styles.recordingBadge}>
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
           </View>
-        ) : null}
+        </View>
+      ) : null}
+
+      {/* Down the right edge and vertically centred, where a thumb already is.
+          Icons only: the name is what a screen reader says, not what the glass
+          shows — the same trade the tab bar makes, and here it buys the
+          viewfinder the width back. */}
+      <View style={styles.rail}>
+        {MODES.map((option) => {
+          const selected = option.key === mode;
+          return (
+            <Pressable
+              key={option.key}
+              onPress={() => setMode(option.key)}
+              // Changing what you are capturing halfway through capturing it
+              // would unmount the camera under a running recording.
+              disabled={state !== 'idle'}
+              accessibilityRole="radio"
+              accessibilityState={{ selected, disabled: state !== 'idle' }}
+              accessibilityLabel={option.label}
+              style={({ pressed }) => [styles.modeButton, selected && styles.modeButtonOn, pressed && styles.pressed]}
+            >
+              <Ionicons name={option.icon} size={26} color={selected ? colors.onAccent : colors.textPrimary} />
+            </Pressable>
+          );
+        })}
       </View>
 
       {missingPermission ? (
@@ -304,7 +307,20 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         ) : null}
 
         <View style={styles.controls}>
-          <View style={styles.secondaryPlaceholder} />
+          {/* Bottom-left, so the whole right edge belongs to the mode rail and
+              a thumb reaching for it never lands on the wrong camera. */}
+          {needsCamera ? (
+            <Pressable
+              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+              accessibilityRole="button"
+              accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+            >
+              <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
+            </Pressable>
+          ) : (
+            <View style={styles.secondaryPlaceholder} />
+          )}
 
           <Pressable
             onPress={() => {
@@ -327,18 +343,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             <View style={[styles.shutterInner, state === 'recording' && styles.shutterInnerActive]} />
           </Pressable>
 
-          {needsCamera ? (
-            <Pressable
-              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
-              accessibilityRole="button"
-              accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
-              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-            >
-              <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ) : (
-            <View style={styles.secondaryPlaceholder} />
-          )}
+          <View style={styles.secondaryPlaceholder} />
         </View>
       </View>
     </View>
@@ -359,13 +364,35 @@ const styles = StyleSheet.create({
   topBar: {
     position: 'absolute',
     top: spacing.sm,
-    left: spacing.md,
-    right: spacing.md,
-    flexDirection: 'row',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
   },
+  /**
+   * Vertically centred on the left edge: `top: 0, bottom: 0` and centred
+   * content, so the rail sits where the thumb is however tall the phone is,
+   * rather than at a hard offset that lands mid-screen on one device and under
+   * the shutter on another.
+   */
+  rail: {
+    position: 'absolute',
+    right: spacing.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  modeButton: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Its own backing, because what is behind it is a live image and an icon
+    // alone disappears against a bright sky.
+    backgroundColor: 'rgba(11,15,20,0.55)',
+  },
+  modeButtonOn: { backgroundColor: colors.manual },
   bottomBar: {
     position: 'absolute',
     left: 0,
@@ -375,21 +402,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.xs,
   },
-  modes: { flexDirection: 'row', gap: spacing.xs },
-  modeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    // Its own backing, because what is behind it is a live camera and a chip
-    // with a border alone disappears against a bright sky.
-    backgroundColor: 'rgba(11,15,20,0.55)',
-  },
-  modeChipOn: { backgroundColor: colors.manual },
-  modeText: { ...typography.caption, color: colors.textPrimary },
-  modeTextOn: { color: colors.onAccent, fontWeight: '600' },
   voiceStage: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   voiceTime: { ...typography.clock, color: colors.textSecondary },
   controls: {
