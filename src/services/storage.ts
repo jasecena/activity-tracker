@@ -68,6 +68,14 @@ export const STORAGE_KEYS = {
    */
   media: `${PREFIX}media`,
   settings: `${PREFIX}settings`,
+  /**
+   * Whether the one-off pass over impossible coordinates has run.
+   *
+   * A marker rather than an inspection: re-running over clean data is harmless,
+   * and a migration that runs on every launch is one nobody remembers to
+   * remove. Delete this together with `services/cleanup.ts`.
+   */
+  cleanedFarPositions: `${PREFIX}cleaned-far-positions`,
 } as const;
 
 /**
