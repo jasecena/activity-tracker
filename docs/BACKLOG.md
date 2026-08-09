@@ -170,6 +170,44 @@ speed estimate, for the reason already settled: Doppler speed lies for seconds
 after stopping. The cluster test is the same arithmetic `judgeFix` and the
 stay machine already trust.
 
+## 10. The assumed stay: bridging a gap whose two ends agree
+
+When the signal stops and later returns _at the same place_ — the last fix
+before the hole and the first fix after it within about twenty-five metres —
+the honest reading is that the whole silence was spent there. Two hours of
+nothing between two readings in the same kitchen is not a mystery; it is an
+afternoon indoors, which is exactly when phones go quiet.
+
+This bends a settled decision and must be built as a revision to it, not an
+exception smuggled past it. _A gap is a hole, never a straight line_ exists
+because the path through a gap is unknowable — interpolating drew
+four-kilometre walks through buildings. But this is not interpolation of a
+path: it is an inference of _absence of travel_, made only when both ends
+agree on the place, and its strength is real (going somewhere and coming back
+to within 25 m, timed exactly inside the silence, is possible but contrived).
+The reasoning in `docs/ARCHITECTURE.md` changes with it, per the house rule.
+
+Two requirements are the feature:
+
+- **It is derived, never stored.** An assumed stay is the fold's reading of
+  the gap, produced at derivation time like every other segment — nothing
+  writes an inferred fix into the buffer, because a fabricated reading in the
+  raw data is indistinguishable from a real one forever after. The buffer
+  stays honest; the lens does the assuming.
+- **It is visibly an assumption.** Its own flag on the segment
+  (`inferred: true` or a kind of its own), its own colour on the timeline and
+  the map, its own wording ("probably here"). The user's phrasing is the spec:
+  _it could be a different colour, so we know we assumed this — it's not
+  fact._ An assumed stay that looks like a measured one is a lie about the
+  data; the entire legitimacy of the feature is in the marking.
+
+Details for when it is built: the 25 m test should respect the two fixes'
+accuracy circles rather than centre-to-centre alone; the replay player should
+sit the cursor at the place through the gap rather than saying "No signal"
+(marked, again, as assumed); and the day's totals must not count inferred time
+as measured stillness anywhere the distinction could matter — calories already
+count movement only, so they are safe by construction.
+
 ---
 
 Parked separately, designs already written: photo library import (reviewed,
