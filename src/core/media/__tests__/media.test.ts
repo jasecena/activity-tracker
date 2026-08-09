@@ -30,6 +30,7 @@ function item(capturedAt: number, overrides: Partial<MediaItem> = {}): MediaItem
     byteLength: 1_024,
     note: '',
     orientation: null,
+    keyframeMs: null,
     ...overrides,
   };
 }

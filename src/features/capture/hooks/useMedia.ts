@@ -46,6 +46,14 @@ export interface KeepOptions {
    * rewrote its own pixels would be a capture that could be turned twice.
    */
   readonly orientation?: CaptureOrientation | null;
+  /**
+   * Which instant of a live capture is its picture, in ms from the start.
+   *
+   * Zero at the shutter, which is the moment you meant. It is passed rather
+   * than assumed because it is meant to move later: the still is re-extracted
+   * from the clip at whatever this says, and the clip is never touched.
+   */
+  readonly keyframeMs?: number | null;
 }
 
 export interface UseMedia {
@@ -118,6 +126,7 @@ export function useMedia(): UseMedia {
             at: null,
             note: '',
             orientation: null,
+            keyframeMs: null,
           });
         } catch (error) {
           // Given up on rather than retried on every launch for the life of
@@ -182,7 +191,7 @@ export function useMedia(): UseMedia {
   }, []);
 
   const keep = useCallback(async (sourceUri: string, kind: MediaKind, options: KeepOptions = {}) => {
-    const { durationMs = null, at = null, onProgress, orientation = null } = options;
+    const { durationMs = null, at = null, onProgress, orientation = null, keyframeMs = null } = options;
     const capturedAt = readNow();
     const id = mediaIdFor(capturedAt);
 
@@ -194,7 +203,7 @@ export function useMedia(): UseMedia {
       // Before `writeMedia`, which deletes the staged file: a thumbnail made
       // afterwards would have to decrypt the whole capture to get a picture
       // of it, which is the cost thumbnails exist to avoid.
-      const thumbFileName = await writeThumbnail(staged.uri, id, kind);
+      const thumbFileName = await writeThumbnail(staged.uri, id, kind, keyframeMs);
       const { fileName, byteLength } = await writeMedia(staged.uri, id, kind, onProgress);
       // The same reading in both places. On the item it survives the day
       // being re-derived, the fixes being pruned, and tracking having been
@@ -213,6 +222,7 @@ export function useMedia(): UseMedia {
         at: at ? { lat: at.lat, lon: at.lon } : null,
         note: '',
         orientation,
+        keyframeMs,
       };
       // Read from state at the moment of the write rather than from a
       // dependency: sealing a video takes long enough for a second capture to

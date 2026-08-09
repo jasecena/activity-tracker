@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 526
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 551
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -269,6 +269,22 @@ the honest answer and every caller already handles it.
 
 The same jump becomes believable once enough time has passed to cover it, which
 is what keeps a flight from being permanently unrepresentable.
+
+**A live capture is five seconds forwards, and forwards is the only direction
+available.** Apple's Live Photo keeps a moment either side of the shutter;
+`expo-camera` has no rolling buffer and no pre-shutter capture, so frames from
+before the press were never handed over and cannot be fetched back — that half
+needs a native module (`AVCapturePhotoOutput.livePhotoCaptureEnabled`) and is
+not built. What is built is the half that needs nothing: `maxDuration` records
+five seconds from the press and ends itself, so there is no Stop to forget.
+
+On disk it is a clip and a still, which is what a video already was, so nothing
+that walks the media directory has to learn a third file. `keyframeMs` says
+which instant of the clip is the picture — zero at the shutter, stored rather
+than assumed so it can be moved later. Moving it re-extracts the still and
+never touches the clip. The position and orientation are read at the press, not
+at the end: the seconds afterwards are what the picture was surrounded by, not
+where it was taken.
 
 **A capture is two files, and everything that walks the directory must know
 it.** `sweepOrphans` deletes sealed files the index has never heard of, and

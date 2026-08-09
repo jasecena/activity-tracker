@@ -43,7 +43,25 @@ export type { CaptureOrientation, Degrees, Edge, Size } from './orientation';
  * arithmetic of putting an item on a timeline.
  */
 
-export type MediaKind = 'photo' | 'video' | 'audio';
+/**
+ * `live` is a photograph that kept moving.
+ *
+ * Five seconds of video recorded from the shutter onwards, with one frame of it
+ * standing in as the picture. Apple's own Live Photo keeps a moment either side
+ * of the press; this keeps only the side that is possible, because
+ * `expo-camera` has no rolling buffer and frames that were never handed over
+ * cannot be retrieved. Recording forwards is the half that needs no native
+ * module, and it is the half that catches what happens next.
+ *
+ * On disk it is a video and a still, which is what a video already was — so
+ * nothing that walks the media directory has to learn a third file.
+ */
+export type MediaKind = 'photo' | 'video' | 'audio' | 'live';
+
+/** True for the kinds whose picture has to be pulled out of a clip. */
+export function isMoving(kind: MediaKind): boolean {
+  return kind === 'video' || kind === 'live';
+}
 
 export interface MediaItem {
   /**
@@ -94,6 +112,16 @@ export interface MediaItem {
    * picture only at the moment of looking at it.
    */
   readonly orientation: CaptureOrientation | null;
+  /**
+   * Which instant of a live capture is its picture, in ms from the start.
+   *
+   * Null for everything that is not one. It is stored rather than assumed so
+   * the key frame can be moved later — the still is re-extracted from the clip
+   * at whatever this says, and the clip itself is never touched. Choosing the
+   * key photo after the fact is the one part of Apple's Live Photo that costs
+   * nothing here, because the frames are all still there.
+   */
+  readonly keyframeMs: number | null;
 }
 
 const ID_PREFIX = 'm-';
@@ -124,7 +152,7 @@ function isLatLon(candidate: unknown): candidate is LatLon {
 }
 
 function isMediaKind(candidate: unknown): candidate is MediaKind {
-  return candidate === 'photo' || candidate === 'video' || candidate === 'audio';
+  return candidate === 'photo' || candidate === 'video' || candidate === 'audio' || candidate === 'live';
 }
 
 function isMediaItem(candidate: unknown): candidate is MediaItem {
@@ -161,6 +189,10 @@ export function normalizeMedia(input: unknown): MediaItem[] {
       at: isLatLon(item.at) ? { lat: item.at.lat, lon: item.at.lon } : null,
       note: typeof item.note === 'string' ? item.note : '',
       orientation: isCaptureOrientation(item.orientation) ? item.orientation : null,
+      keyframeMs:
+        typeof item.keyframeMs === 'number' && Number.isFinite(item.keyframeMs) && item.keyframeMs >= 0
+          ? item.keyframeMs
+          : null,
     }))
     .sort((a, b) => a.capturedAt - b.capturedAt);
 }

@@ -1,11 +1,19 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { CameraView } from 'expo-camera';
+import * as CameraModule from 'expo-camera';
 import * as LocationModule from 'expo-location';
 
 import type { UseMedia } from './hooks/useMedia';
 import { CaptureScreen } from './CaptureScreen';
 
 const location = LocationModule as unknown as typeof import('../../../__mocks__/expo-location');
+/**
+ * The camera mock's own controls, narrowed the same way the location mock is.
+ *
+ * `stopRecording` is a method on the view in the real module and a module-level
+ * function here, because a test has to be able to end a recording the camera
+ * would have ended itself.
+ */
+const camera = CameraModule as unknown as typeof import('../../../__mocks__/expo-camera');
 
 /**
  * Reported from a phone: video recording felt laggy, the Stop button worked
@@ -266,10 +274,78 @@ describe('where a capture happened', () => {
  * because the alternative is a feature that appears to work on a desk and
  * records nothing on a phone.
  */
+/**
+ * A photograph that kept moving.
+ *
+ * Five seconds forwards from the shutter, because backwards is impossible:
+ * `expo-camera` has no rolling buffer, and frames from before the press were
+ * never handed over. What can be tested here is that the press is the whole
+ * gesture, that the clip is a clip, and that the key frame is the moment you
+ * pressed rather than wherever the extractor happened to land.
+ */
+describe('a live capture', () => {
+  /**
+   * The camera ends it, not a button — so the test has to end it the way the
+   * camera would. `stopRecording` here stands for the five-second limit being
+   * reached, which is the only thing that resolves `recordAsync`.
+   */
+  async function reachTheLimit() {
+    await act(async () => {
+      camera.stopRecording();
+    });
+  }
+
+  it('records a clip of its own accord and stores it as one', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await press('Live');
+    await press('Take live photo');
+    await reachTheLimit();
+
+    expect(keep).toHaveBeenCalledWith(
+      expect.any(String),
+      'live',
+      expect.objectContaining({ durationMs: 5_000, keyframeMs: 0 }),
+    );
+  });
+
+  /**
+   * The press is the whole gesture. `maxDuration` ends it, so there is no Stop
+   * to forget — which is the difference between a live photograph and a video
+   * somebody left running.
+   */
+  it('offers no Stop, because the camera ends it', async () => {
+    const keep = jest.fn(() => new Promise(() => undefined)) as unknown as UseMedia['keep'];
+    await renderCapture(keep);
+
+    await press('Live');
+    expect(screen.getByLabelText('Take live photo')).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Stop video')).not.toBeOnTheScreen();
+  });
+
+  // Read at the press, unlike a video's: the four seconds afterwards are what
+  // the picture was surrounded by, not where it was taken.
+  it('stamps it with where and how the phone was at the shutter', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await press('Live');
+    await press('Take live photo');
+    await reachTheLimit();
+
+    expect(keep).toHaveBeenCalledWith(
+      expect.any(String),
+      'live',
+      expect.objectContaining({ at: expect.any(Object), orientation: 'portrait' }),
+    );
+  });
+});
+
 describe('holding the phone sideways', () => {
   /** The prop iOS calls. Without it the callback never fires and none of this happens. */
   function cameraProps(): Record<string, unknown> {
-    const calls = (CameraView as unknown as jest.Mock).mock.calls;
+    const calls = (camera.CameraView as unknown as jest.Mock).mock.calls;
     return calls[calls.length - 1][0] as Record<string, unknown>;
   }
 

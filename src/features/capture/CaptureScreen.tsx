@@ -36,6 +36,19 @@ interface CaptureScreenProps {
 const MAX_VIDEO_SECONDS = 60;
 
 /**
+ * A photograph that kept moving, and how long it keeps moving for.
+ *
+ * Apple's Live Photo holds a moment either side of the shutter. This holds only
+ * the side that can be held: `expo-camera` has no rolling buffer, and frames
+ * from before the press were never handed over, so there is nothing to go back
+ * and fetch. Five seconds forwards needs no native module and catches the half
+ * that a still misses — what happened next.
+ *
+ * The camera stops itself, so there is nothing to press twice.
+ */
+const LIVE_SECONDS = 5;
+
+/**
  * How far one press of the zoom moves it.
  *
  * `CameraView`'s `zoom` is 0 to 1 across whatever range the lens has, not a
@@ -50,11 +63,12 @@ const MAX_VIDEO_SECONDS = 60;
  */
 const ZOOM_STEP = 0.1;
 
-type Mode = 'photo' | 'video' | 'voice';
+type Mode = 'photo' | 'live' | 'video' | 'voice';
 
 const MODES: readonly { readonly key: Mode; readonly label: string; readonly icon: keyof typeof Ionicons.glyphMap }[] =
   [
     { key: 'photo', label: 'Photo', icon: 'camera-outline' },
+    { key: 'live', label: 'Live', icon: 'aperture-outline' },
     { key: 'video', label: 'Video', icon: 'videocam-outline' },
     { key: 'voice', label: 'Voice', icon: 'mic-outline' },
   ];
@@ -140,6 +154,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const needsCamera = mode !== 'voice';
+  // A live capture is a clip, so it carries sound and needs the permission for it.
   const needsMicrophone = mode !== 'photo';
 
   /**
@@ -194,6 +209,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
       durationMs: number | null,
       at: Fix | null,
       heldAs: CaptureOrientation | null,
+      keyframeMs: number | null = null,
     ) => {
       setState('saving');
       setProgress(0);
@@ -206,6 +222,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           durationMs,
           at,
           orientation: heldAs,
+          keyframeMs,
           onProgress: setProgress,
         });
         setProblem(stored ? null : 'That capture could not be stored, so it was not kept.');
@@ -257,6 +274,33 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
     await store(clip?.uri, 'video', null, started.current.at, started.current.orientation);
   }, [orientation, state, store]);
+
+  /**
+   * A photograph that kept moving.
+   *
+   * There is no Stop. `maxDuration` ends it, so the press is the whole gesture
+   * — which is what makes it feel like a shutter rather than a recording, and
+   * what stops a live capture becoming a video somebody forgot to end.
+   *
+   * The position and the orientation are read at the press, like a photograph's
+   * and unlike a video's, because the press *is* the moment: the four seconds
+   * after it are what the picture was surrounded by, not where it was taken.
+   */
+  const takeLive = useCallback(async () => {
+    setState('recording');
+    setSince(readNow());
+    setElapsedMs(0);
+    started.current = { at: null, orientation };
+    void askPosition().then((at) => {
+      started.current = { ...started.current, at };
+    });
+
+    const clip = await camera.current?.recordAsync({ maxDuration: LIVE_SECONDS });
+    // The key frame is the shutter, which is the start. It is stored rather
+    // than assumed so it can be moved later, and moving it re-extracts the
+    // still from a clip that is never itself touched.
+    await store(clip?.uri, 'live', LIVE_SECONDS * 1_000, started.current.at, started.current.orientation, 0);
+  }, [orientation, store]);
 
   const toggleVoice = useCallback(async () => {
     if (state === 'recording') {
@@ -312,7 +356,8 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           style={StyleSheet.absoluteFill}
           facing={facing}
           zoom={zoom}
-          mode={mode === 'video' ? 'video' : 'picture'}
+          // A live capture records, so the session has to be configured for it.
+          mode={mode === 'video' || mode === 'live' ? 'video' : 'picture'}
           /**
            * `"off"` is continuous autofocus. Read that twice, because the
            * naming is a trap and this app fell in it.
@@ -490,6 +535,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           <Pressable
             onPress={() => {
               if (mode === 'photo') void takePhoto();
+              else if (mode === 'live') void takeLive();
               else if (mode === 'video') void toggleVideo();
               else void toggleVoice();
             }}
@@ -538,6 +584,8 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
 function shutterLabel(mode: Mode, state: 'idle' | 'recording' | 'saving'): string {
   if (state === 'saving') return 'Saving';
   if (mode === 'photo') return 'Take photo';
+  // No Stop: the camera ends it, so the button never becomes one.
+  if (mode === 'live') return state === 'recording' ? 'Capturing' : 'Take live photo';
   if (mode === 'video') return state === 'recording' ? 'Stop video' : 'Start video';
   return state === 'recording' ? 'Stop voice note' : 'Start voice note';
 }

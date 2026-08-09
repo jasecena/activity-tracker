@@ -5,7 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { formatClockTime, formatDuration } from '@/core/format';
-import { displayRotationFor, stageSizeFor, type CaptureOrientation, type MediaItem, type Size } from '@/core/media';
+import {
+  displayRotationFor,
+  isMoving,
+  stageSizeFor,
+  type CaptureOrientation,
+  type MediaItem,
+  type Size,
+} from '@/core/media';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { useSealedFile } from './hooks/useSealedFile';
@@ -199,9 +206,11 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
               {/* A video's poster frame is a photograph until something says
                   otherwise. The badge is what tells the two apart in a strip of
                   60-point squares. */}
-              {item.kind === 'video' ? (
+              {isMoving(item.kind) ? (
                 <View style={styles.thumbBadge}>
-                  <Ionicons name="play" size={11} color={colors.textPrimary} />
+                  {/* Told apart from a video: one is a clip you chose to
+                      record, the other is a photograph that kept going. */}
+                  <Ionicons name={item.kind === 'live' ? 'aperture' : 'play'} size={11} color={colors.textPrimary} />
                 </View>
               ) : null}
             </Pressable>
@@ -311,7 +320,10 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
       </Turned>
     );
   }
-  if (item.kind === 'video') return <VideoPlaying uri={uri} orientation={item.orientation} />;
+  // A live capture plays like a video because it is one. Apple presses and
+  // holds to start it; here the centre page is already "the one you chose to
+  // look at", so it simply runs, as a video on this screen already does.
+  if (isMoving(item.kind)) return <VideoPlaying uri={uri} orientation={item.orientation} />;
   return <AudioPlaying uri={uri} durationMs={item.durationMs} />;
 }
 
