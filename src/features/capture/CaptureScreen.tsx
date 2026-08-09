@@ -149,9 +149,25 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    * module missing. The viewfinder still works; there is simply no wheel.
    */
   const [dial, setDial] = useState<DialSpec | null>(null);
-  const [displayZoom, setDisplayZoom] = useState(1);
-  const [turnFrom, setTurnFrom] = useState({ zoom: 1, dx: 0 });
-
+  /**
+   * The zoom, and the finger's displacement it was last measured against, in
+   * **one** piece of state — updated only through the functional form.
+   *
+   * Three attempts got here. A `PanResponder` is rebuilt every render, so its
+   * callbacks close over the render that made them; a gesture that gets
+   * re-granted mid-drag runs an *older* closure, whose idea of the current
+   * zoom is whatever it was when that render happened. Reported exactly: the
+   * wheel rose a little and then snapped back to the stop it started from,
+   * before the finger even lifted — the stale base reasserting itself.
+   *
+   * Reading nothing and accumulating instead removes the whole class. Each
+   * move applies the distance since the last event to whatever the zoom
+   * *actually* is, inside the updater, where React hands over the current
+   * value. A re-grant can then do no harm: it re-baselines the displacement
+   * and leaves the zoom alone.
+   */
+  const [turn, setTurn] = useState({ zoom: 1, dx: 0 });
+  const displayZoom = turn.zoom;
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
 
@@ -195,21 +211,22 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     // Nothing may take it back mid-turn. Without this the scroll views and
     // buttons underneath can reclaim it, which reads as the wheel sticking.
     onPanResponderTerminationRequest: () => false,
+    // Only the baseline moves here. The zoom is deliberately untouched: a
+    // grant that adjusted it would be the stale-closure bug again.
     onPanResponderGrant: (_event, gesture) => {
-      setTurnFrom({ zoom: displayZoom, dx: gesture.dx });
+      setTurn((current) => ({ ...current, dx: gesture.dx }));
       setTurning(true);
     },
     onPanResponderMove: (_event, gesture) => {
       if (!dial) return;
-      // Before the grant's state has committed, this render's own values are
-      // the ones the finger landed on — both branches read the same numbers,
-      // the guard is only about which copy has arrived.
-      const from = turning ? turnFrom : { zoom: displayZoom, dx: gesture.dx };
-      // Leftward drag is negative dx and means "more", so the sign flips.
-      // Setting state is setting the zoom: the camera's own prop carries the
-      // factor, exactly inverted — see `zoomPropFor` for why writing to the
-      // device directly could never win.
-      setDisplayZoom(displayFromDrag(dial, from.zoom, -(gesture.dx - from.dx), WHEEL_TRAVEL));
+      setTurn((current) => ({
+        dx: gesture.dx,
+        // Leftward is negative and means "more", so the sign flips. Applied to
+        // `current.zoom` — what the zoom actually is — rather than to anything
+        // this closure remembers. Setting it *is* setting the camera: the prop
+        // carries the factor, exactly inverted.
+        zoom: displayFromDrag(dial, current.zoom, -(gesture.dx - current.dx), WHEEL_TRAVEL),
+      }));
     },
     onPanResponderRelease: () => setTurning(false),
     onPanResponderTerminate: () => setTurning(false),
@@ -254,7 +271,9 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
       if (!live) return;
       const spec = dialSpecFor(pickDialCamera(cameras));
       setDial(spec);
-      setDisplayZoom(1);
+      // Back to the main lens, and the baseline with it: a stale displacement
+      // against a fresh camera is a turn that starts by jumping.
+      setTurn({ zoom: 1, dx: 0 });
     })();
     return () => {
       live = false;
@@ -652,7 +671,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
               return (
                 <Pressable
                   key={stop.deviceType}
-                  onPress={() => setDisplayZoom(stop.display)}
+                  onPress={() => setTurn((current) => ({ ...current, zoom: stop.display }))}
                   accessibilityRole="button"
                   accessibilityLabel={`Zoom to ${formatDisplayFactor(stop.display)}x, ${stop.mm} millimetres`}
                   style={({ pressed }) => [
