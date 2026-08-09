@@ -24,6 +24,7 @@ export {
   type SegmenterState,
 } from './machine';
 export { applyJourneyLabels, journeyLabelId, labelledSegmentId, splitSegment, type JourneyLabel } from './manual';
+export { overrideFor, saysSomething } from './override';
 export {
   ACTIVITY_MODES,
   averageSpeedMps,

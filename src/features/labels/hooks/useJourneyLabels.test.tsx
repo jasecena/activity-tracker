@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { journeyLabelId, type JourneyLabel } from '@/core/segments';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
@@ -64,5 +64,81 @@ describe('merges made by an earlier build', () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
 
     expect(result.current.labels).toHaveLength(2);
+  });
+});
+
+/**
+ * Correcting what a journey was.
+ *
+ * Mode is inferred from speed alone, so the app gets a slow cycle and a fast
+ * walk mixed up sometimes. A correction is a label carrying a mode and no name
+ * — which is why the sweep above had to learn the difference between "says
+ * nothing" and "has no name".
+ */
+describe('correcting an activity type', () => {
+  const journey = { startedAt: T0, endedAt: T0 + 30 * 60_000 } as never;
+
+  it('stores the correction as a label over the journey it covers', async () => {
+    const { result } = await renderHook(() => useJourneyLabels());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => result.current.setMode(journey, 'cycle'));
+
+    expect(result.current.labels).toEqual([
+      expect.objectContaining({ mode: 'cycle', label: '', startedAt: T0, endedAt: T0 + 30 * 60_000 }),
+    ]);
+  });
+
+  /**
+   * The bug this feature would otherwise have shipped with. The launch sweep
+   * dropped every nameless label, and a correction is nameless by design — so
+   * it would have vanished on the next launch, silently, while the app looked
+   * like it had saved it.
+   */
+  it('survives the launch sweep that takes apart old merges', async () => {
+    const { result } = await renderHook(() => useJourneyLabels());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => result.current.setMode(journey, 'cycle'));
+
+    // A second launch, reading what the first one wrote.
+    const relaunched = await renderHook(() => useJourneyLabels());
+    await waitFor(() => expect(relaunched.result.current.ready).toBe(true));
+
+    expect(relaunched.result.current.labels).toEqual([expect.objectContaining({ mode: 'cycle' })]);
+  });
+
+  it('replaces the correction rather than stacking a second one', async () => {
+    const { result } = await renderHook(() => useJourneyLabels());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => result.current.setMode(journey, 'cycle'));
+    await act(async () => result.current.setMode(journey, 'drive'));
+
+    expect(result.current.labels).toEqual([expect.objectContaining({ mode: 'drive' })]);
+  });
+
+  // Reverting is the absence of the override, not another one: the detected
+  // mode is re-derived from the fixes every fold, so there is nothing to keep a
+  // copy of and nothing to restore.
+  it('leaves nothing behind when the correction is taken back', async () => {
+    const { result } = await renderHook(() => useJourneyLabels());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => result.current.setMode(journey, 'cycle'));
+    await act(async () => result.current.setMode(journey, null));
+
+    expect(result.current.labels).toEqual([]);
+    await waitFor(async () => expect(await readJson(STORAGE_KEYS.journeyLabels)).toEqual([]));
+  });
+
+  it('keeps a name that was given, when the correction is taken back', async () => {
+    await writeJson(STORAGE_KEYS.journeyLabels, [{ ...label(T0, 'The commute'), mode: 'drive' }]);
+
+    const { result } = await renderHook(() => useJourneyLabels());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => result.current.setMode(journey, null));
+
+    expect(result.current.labels).toEqual([expect.objectContaining({ label: 'The commute', mode: null })]);
   });
 });

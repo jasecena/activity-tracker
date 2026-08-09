@@ -7,7 +7,8 @@ import { groupByDay } from '@/core/day';
 import type { MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
-import { journeyLabelId } from '@/core/segments';
+import { modeLabel } from '@/core/format';
+import { ACTIVITY_MODES, journeyLabelId } from '@/core/segments';
 import type { MoveSegment, Segment, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
 import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
@@ -23,6 +24,7 @@ import { PlacesScreen } from '@/features/places/PlacesScreen';
 import { PlacePicker } from '@/features/places/components/PlacePicker';
 import { usePlaces } from '@/features/places/hooks/usePlaces';
 import { NamedJourneysScreen } from '@/features/labels/NamedJourneysScreen';
+import { MenuSheet } from '@/components/MenuSheet';
 import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
 import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
@@ -100,6 +102,14 @@ export function TabShell() {
   const [tab, setTab] = useState<Tab>('replay');
   const [naming, setNaming] = useState<StaySegment | null>(null);
   const [namingJourney, setNamingJourney] = useState<MoveSegment | null>(null);
+  /**
+   * The journey whose activity type is being corrected, or null.
+   *
+   * Separate from `namingJourney`: naming asks what a journey was *for* and
+   * wants a keyboard, correcting asks what it *was* and wants one tap. Sharing
+   * a sheet would put a text field in front of a one-tap correction.
+   */
+  const [correcting, setCorrecting] = useState<MoveSegment | null>(null);
   const [replayDayKey, setReplayDayKey] = useState<string | null>(null);
 
   const settings = useSettings();
@@ -281,6 +291,7 @@ export function TabShell() {
             onOpenSegment={openSegment('replay')}
             onOpenMedia={openMedia('replay')}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
+            onCorrectMode={setCorrecting}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -370,9 +381,45 @@ export function TabShell() {
         }
         onClose={() => setNamingJourney(null)}
       />
+
+      {/* Correcting what a journey was, reached by pulling its row to the left.
+          Mode is inferred from speed alone — Core Motion's classifier has no
+          Expo binding — so a slow cycle and a fast walk are genuinely hard to
+          tell apart, and this is how you say which it was.
+
+          The revert is offered only where there is something to revert, and it
+          is not destructive: the detected mode is re-derived from the fixes
+          every fold, so taking the correction away is enough to get it back.
+          There is no original being overwritten to lose. */}
+      <MenuSheet
+        visible={correcting !== null}
+        title={correcting ? `This was actually…` : undefined}
+        items={[
+          ...CORRECTABLE.map((mode) => ({
+            label: modeLabel(mode),
+            onPress: () => {
+              if (correcting) journeys.setMode(correcting, mode);
+            },
+          })),
+          ...(correcting?.modeIsManual
+            ? [
+                {
+                  label: 'Use what the app detected',
+                  onPress: () => {
+                    if (correcting) journeys.setMode(correcting, null);
+                  },
+                },
+              ]
+            : []),
+        ]}
+        onClose={() => setCorrecting(null)}
+      />
     </SafeAreaView>
   );
 }
+
+/** Everything except `unknown`, which is what the classifier says when it cannot tell, not an answer you give. */
+const CORRECTABLE = ACTIVITY_MODES.filter((mode) => mode !== 'unknown');
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },

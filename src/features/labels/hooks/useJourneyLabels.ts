@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { journeyLabelId, type ActivityMode, type JourneyLabel, type Segment } from '@/core/segments';
+import {
+  journeyLabelId,
+  overrideFor,
+  saysSomething,
+  type ActivityMode,
+  type JourneyLabel,
+  type Segment,
+} from '@/core/segments';
 import { dropRetiredKeys, readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
 export interface UseJourneyLabels {
@@ -8,6 +15,13 @@ export interface UseJourneyLabels {
   labels: readonly JourneyLabel[];
   /** Name a journey, or rename one already named. The mode is your answer, and it wins. */
   name: (segment: Segment, label: string, mode: ActivityMode) => void;
+  /**
+   * Say what a stretch really was, or pass null to stop saying it.
+   *
+   * Null is a genuine revert rather than a second opinion: the detected mode is
+   * never stored, so taking the override away is enough to get it back.
+   */
+  setMode: (segment: Segment, mode: ActivityMode | null) => void;
   forget: (id: string) => void;
 }
 
@@ -60,19 +74,27 @@ export function useJourneyLabels(): UseJourneyLabels {
       const stored = normalizeLabels(await readJson<unknown>(STORAGE_KEYS.journeyLabels));
 
       // Merging rows into one journey is gone, and the merges go with it. A
-      // merge was stored as a label with no name over a span — which is exactly
-      // what an empty name still is — so dropping those takes apart every row
-      // that was ever joined, in one pass, with nothing left to interpret.
-      // Without this a build with no merge button would go on applying every
-      // merge ever made, and offer no way to undo any of them.
+      // merge was stored as a label with no name over a span, so dropping the
+      // ones that say nothing takes apart every row that was ever joined, in
+      // one pass, with nothing left to interpret. Without this a build with no
+      // merge button would go on applying every merge ever made, and offer no
+      // way to undo any of them.
       //
-      // Names survive. Naming a journey was never the part that did not work,
-      // and a name is the one thing here that nobody could reconstruct.
-      const named = stored.filter((label) => label.label.length > 0);
-      if (named.length !== stored.length) await writeJson(STORAGE_KEYS.journeyLabels, named);
+      // "Says nothing" is nameless *and* modeless, which is narrower than the
+      // rule this replaces. That rule asked only about the name, and it was
+      // right for exactly as long as a mode could not arrive without one — a
+      // mode correction is nameless by design, so the old test would have
+      // deleted every correction on the next launch. Silently, and while the
+      // app looked like it had saved them.
+      //
+      // Names survive, and so do corrections. Both are things nobody could
+      // reconstruct; the detected mode underneath is re-derived from the fixes
+      // every fold and cannot be lost.
+      const meaningful = stored.filter(saysSomething);
+      if (meaningful.length !== stored.length) await writeJson(STORAGE_KEYS.journeyLabels, meaningful);
 
       if (!live) return;
-      if (!touched.current) setLabels(named);
+      if (!touched.current) setLabels(meaningful);
       setReady(true);
     })();
     return () => {
@@ -108,7 +130,25 @@ export function useJourneyLabels(): UseJourneyLabels {
     [labels, persist],
   );
 
+  const setMode = useCallback(
+    (segment: Segment, mode: ActivityMode | null) => {
+      const id = journeyLabelId(segment.startedAt);
+      const without = labels.filter((existing) => existing.id !== id);
+      const next = overrideFor(
+        segment,
+        mode,
+        labels.find((existing) => existing.id === id),
+        journeyLabelId,
+      );
+
+      // Null means there is nothing left worth storing — no name and no
+      // opinion — so the row goes rather than staying behind as an empty one.
+      persist(next ? [...without, next].sort((a, b) => a.startedAt - b.startedAt) : without);
+    },
+    [labels, persist],
+  );
+
   const forget = useCallback((id: string) => persist(labels.filter((label) => label.id !== id)), [labels, persist]);
 
-  return { ready, labels, name, forget };
+  return { ready, labels, name, setMode, forget };
 }

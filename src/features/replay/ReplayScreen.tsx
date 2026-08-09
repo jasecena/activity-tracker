@@ -7,11 +7,12 @@ import { activeCalories } from '@/core/energy';
 import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
-import type { Segment } from '@/core/segments';
+import type { MoveSegment, Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
+import { SwipeToCorrect } from '@/components/SwipeToCorrect';
 import { StatTile } from '@/components/StatTile';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
@@ -34,7 +35,14 @@ interface ReplayScreenProps {
   readonly onOpenMedia: (item: MediaItem) => void;
   /** The full list of days, for going further back than the arrows are worth. */
   readonly onOpenAllDays: () => void;
-  /** Join the selected rows into one journey. */
+  /**
+   * Correct what a journey really was. Omitted where the timeline is read-only.
+   *
+   * Speed alone cannot separate a slow cycle from a fast walk — Core Motion's
+   * classifier has no Expo binding — so the app gets it wrong sometimes and
+   * this is how you say so.
+   */
+  readonly onCorrectMode?: (segment: MoveSegment) => void;
 }
 
 /**
@@ -69,6 +77,7 @@ export function ReplayScreen({
   onOpenSegment,
   onOpenMedia,
   onOpenAllDays,
+  onCorrectMode,
 }: ReplayScreenProps) {
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
@@ -326,15 +335,31 @@ export function ReplayScreen({
               {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
             </Text>
           ) : (
-            segments.map((segment) => (
-              <SegmentRow
-                key={segment.id}
-                segment={segment}
-                places={places}
-                tzOffsetMinutes={tzOffsetMinutes}
-                onOpen={onOpenSegment}
-              />
-            ))
+            segments.map((segment) => {
+              const row = (
+                <SegmentRow
+                  key={segment.id}
+                  segment={segment}
+                  places={places}
+                  tzOffsetMinutes={tzOffsetMinutes}
+                  onOpen={onOpenSegment}
+                />
+              );
+
+              // Only a journey. A stay has no activity type, so a stay that
+              // slid sideways would be a gesture that leads nowhere.
+              if (segment.kind !== 'move' || !onCorrectMode) return row;
+
+              return (
+                <SwipeToCorrect
+                  key={segment.id}
+                  onSwipe={() => onCorrectMode(segment)}
+                  accessibilityLabel={`Change what ${modeLabel(segment.mode)} at ${formatClockTime(segment.startedAt, tzOffsetMinutes)} really was`}
+                >
+                  {row}
+                </SwipeToCorrect>
+              );
+            })
           )}
         </View>
       </ScrollView>
