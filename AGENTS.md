@@ -237,9 +237,23 @@ where the home button went, `AVCaptureVideoOrientation` for where the top of
 the frame points — and the prop's documentation names neither. `UPRIGHT` in
 `core/media/orientation.ts` is one table and swapping its two landscape rows
 fixes the photographs and the rails together. The tests assert only what holds
-either way: that the two are opposite quarter turns. `CAMERA_WRITES_UPRIGHT_PIXELS`
-is the other half of the same unknown — if the camera turns the pixels itself,
-that constant stops the display turning them again.
+either way: that the two are opposite quarter turns.
+
+**The camera turns the pixels itself, so the display turns nothing.** That was
+the other half of the same unknown, and a phone settled it:
+`CAMERA_WRITES_UPRIGHT_PIXELS` is `true`. The photograph came out **ninety**
+degrees off rather than a hundred and eighty, which is the whole diagnosis —
+half a turn would have meant the landscape rows were the wrong way round, a
+quarter meant the rotation had been applied to a file that was already upright.
+The orientation is still recorded and the controls still turn, because the
+screen is locked whatever the file does.
+
+**A wrapper on the media stage must not take layout space.** Everything drawn
+there positions itself with `absoluteFill`, so a plain sized `View` around the
+picture stops being an overlay and becomes a flex child: the thumbnail beneath
+the capture became a band across the top with the photograph pushed below it.
+`Turned` returns its children untouched when there is no angle, and overlays
+rather than wraps when there is.
 
 **Ask for a position through `services/position.ts`, never `currentFix`
 directly.** A capture draws a pin straight off `item.at`, so this is the one

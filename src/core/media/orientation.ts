@@ -77,20 +77,26 @@ export function uprightRotationFor(orientation: CaptureOrientation | null): Degr
 }
 
 /**
- * Whether `expo-camera` has already turned the pixels for us.
+ * `expo-camera` turns the pixels itself. Settled on a phone, not guessed.
  *
- * `responsiveOrientationWhenOrientationLocked` is documented as making the
- * camera "responsive" while the interface is locked, and a note elsewhere in
- * the same page says photos are rotated to match the device — but not whether
- * that survives the lock, and the two claims cannot both be tested from here.
- * Every native module is mocked under Jest and Expo Go will not run this app,
- * so it takes a dev client, one photograph held sideways, and a look.
+ * The documentation would not answer it — `responsiveOrientationWhenOrientationLocked`
+ * is described as making the camera "responsive" while the interface is
+ * locked, and a note elsewhere on the same page says photos are rotated to
+ * match the device, without saying whether that survives the lock. Jest mocks
+ * every native module and Expo Go will not run this app, so the only way to
+ * know was to take a photograph sideways and look at it.
  *
- * If the file comes out already upright, flip this to `true`: the capture then
- * keeps its orientation as a record of how it was taken, the controls still
- * turn, and the display stops turning anything so it cannot turn it twice.
+ * What that photograph showed: the picture came out **ninety degrees** off,
+ * not a hundred and eighty. That distinction is the whole answer. A hundred
+ * and eighty would have meant the two landscape rows below were the wrong way
+ * round; ninety means the rotation was applied to a file that was already
+ * upright — so the camera had done it, and we did it again.
+ *
+ * With this `true` the display turns nothing. The orientation is still
+ * recorded, because it is a fact about the capture worth having, and the
+ * controls still turn, because the *screen* is locked whatever the file does.
  */
-export const CAMERA_WRITES_UPRIGHT_PIXELS = false;
+export const CAMERA_WRITES_UPRIGHT_PIXELS = true;
 
 /** How far to turn a stored capture when showing it, and never when storing it. */
 export function displayRotationFor(orientation: CaptureOrientation | null): Degrees {

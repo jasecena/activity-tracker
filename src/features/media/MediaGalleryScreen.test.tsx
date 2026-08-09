@@ -62,32 +62,46 @@ describe('MediaGalleryScreen', () => {
   });
 
   /**
-   * The rotation is a property of looking, so it has to be visible on the view
-   * and absent from everything else. Asserting the transform is the only way to
-   * tell "turned for display" from "turned on the way in", which is the whole
-   * distinction the feature rests on.
+   * A phone settled this, and the answer was "do nothing".
+   *
+   * `expo-camera` turns the pixels itself, so a capture taken sideways arrives
+   * already upright and turning it again is what put it on its side — ninety
+   * degrees off, which is the signature of one rotation too many rather than
+   * one in the wrong direction. `CAMERA_WRITES_UPRIGHT_PIXELS` is the switch,
+   * and this asserts the behaviour it selects rather than the constant itself.
    */
-  it('turns a capture taken sideways, without touching the capture', async () => {
+  it('leaves a sideways capture alone, because the camera already turned it', async () => {
     const sideways = media(1, 'photo', 'landscapeLeft');
 
     await render(<MediaGalleryScreen items={[sideways]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
 
     const photo = await screen.findByLabelText('Photo');
-    // The picture itself is drawn plainly; the box around it carries the turn.
-    const turned = photo.parent;
-    expect(turned).toHaveStyle({ transform: [{ rotate: '90deg' }] });
-    // Nothing asked the store to rewrite anything.
-    expect(openForPlayback).toHaveBeenCalledWith(sideways);
+    expect(photo).toHaveStyle({ transform: undefined });
+    // The orientation is still recorded; it is simply not acted on here.
     expect(sideways.orientation).toBe('landscapeLeft');
+    // And nothing ever asked the store to rewrite the file.
+    expect(openForPlayback).toHaveBeenCalledWith(sideways);
   });
 
-  it('leaves an upright capture, and one that never said, exactly as it was', async () => {
+  /**
+   * The layout half of the same bug, and the reason it was so visible: the
+   * turning wrapper was a plain sized `View`, so it stopped being an overlay
+   * and became a flex child. The thumbnail drawn underneath the photograph
+   * became a band across the top with the photograph pushed below it.
+   */
+  it('draws the thumbnail underneath the capture rather than above it', async () => {
     await render(
-      <MediaGalleryScreen items={[media(1, 'photo', null)]} tzOffsetMinutes={0} visible onOpenDetails={noop} />,
+      <MediaGalleryScreen
+        items={[media(1, 'photo', 'landscapeLeft')]}
+        tzOffsetMinutes={0}
+        visible
+        onOpenDetails={noop}
+      />,
     );
 
     const photo = await screen.findByLabelText('Photo');
-    expect(photo.parent).not.toHaveStyle({ transform: [{ rotate: '90deg' }] });
+    // Same parent, both absolutely filling it: stacked, not stacked *up*.
+    expect(photo).toHaveStyle({ position: 'absolute' });
   });
 
   it('draws a thumbnail for the neighbours it is not opening', async () => {

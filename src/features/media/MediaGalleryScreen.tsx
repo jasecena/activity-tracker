@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { formatClockTime, formatDuration } from '@/core/format';
-import { displayRotationFor, stageSizeFor, type CaptureOrientation, type MediaItem } from '@/core/media';
+import { displayRotationFor, stageSizeFor, type CaptureOrientation, type MediaItem, type Size } from '@/core/media';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { useSealedFile } from './hooks/useSealedFile';
@@ -274,12 +274,33 @@ function Stage({ item, live, uri, failed, opening, thumbUri }: StageProps) {
  * before it was ever drawn, rather than something that happens while you watch.
  */
 function Turned({ orientation, children }: { readonly orientation: CaptureOrientation | null; children: ReactNode }) {
-  const { width, height } = useWindowDimensions();
+  // Measured rather than taken from the window: the stage is a page of the
+  // pager, not the screen — there is a filmstrip under it — and sizing the box
+  // from the window makes a turned capture overhang both.
+  const [frame, setFrame] = useState<Size>({ width: 0, height: 0 });
   const degrees = displayRotationFor(orientation);
+
+  // The common case, and now the only one on a real phone: the camera writes
+  // the picture upright already. Passing the children straight through matters
+  // beyond saving a view — everything drawn on the stage positions itself with
+  // `absoluteFill`, so a wrapper here is a flex child that takes layout space
+  // and pushes what follows it down the screen. That is exactly what it did:
+  // the thumbnail underneath stopped being underneath and became a band across
+  // the top with the photograph below it.
   if (degrees === 0) return <>{children}</>;
 
-  const box = stageSizeFor({ width, height }, degrees);
-  return <View style={[box, { transform: [{ rotate: `${degrees}deg` }] }]}>{children}</View>;
+  const box = stageSizeFor(frame, degrees);
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      onLayout={(event) => setFrame(event.nativeEvent.layout)}
+      pointerEvents="box-none"
+    >
+      <View style={styles.turning}>
+        <View style={[box, { transform: [{ rotate: `${degrees}deg` }] }]}>{children}</View>
+      </View>
+    </View>
+  );
 }
 
 function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string }) {
@@ -382,6 +403,7 @@ const styles = StyleSheet.create({
   },
   stripBar: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 1, flexGrow: 0 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  turning: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   opening: {
     alignItems: 'center',
     gap: spacing.sm,
