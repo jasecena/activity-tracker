@@ -41,10 +41,19 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
   // The rim's radius: comfortably wider than the screen, so the visible arc is
   // shallow like a wheel seen edge-on rather than a lollipop.
   const radius = width * 0.78;
-  const height = radius * 0.42;
+  /**
+   * Tall enough for the arc to dip to the screen edges, the way the built-in
+   * camera's does. The first build sized this from a fraction of the radius
+   * that put the rim's crown below the canvas — reported from a phone as a
+   * wheel of which "a very small part is visible". The height is derived from
+   * the same angles the drawing uses, so the two cannot disagree again: the
+   * crown sits at CROWN_Y and the ±72° endpoints define the bottom.
+   */
+  const CROWN_Y = 28;
+  const height = CROWN_Y + radius * (1 - Math.cos((72 * Math.PI) / 180)) + 24;
   const hubX = width / 2;
-  // The hub is below the visible box; only the top of the rim shows.
-  const hubY = height + radius - 24;
+  // The hub is below the canvas; the crown of the rim sits CROWN_Y from its top.
+  const hubY = CROWN_Y + radius;
 
   /** Angle of a display factor, given the wheel's current rotation. */
   const angleOf = (factor: number) => -90 + (dialPositionOf(spec, factor) - dialPositionOf(spec, display)) * SWEEP_DEG;

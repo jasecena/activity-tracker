@@ -6,11 +6,11 @@ import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/core/format';
 import {
-  deviceFactorFor,
   dialSpecFor,
   displayFromDrag,
   formatDisplayFactor,
   pickDialCamera,
+  zoomPropFor,
   topEdgeFor,
   uprightRotationFor,
   type CaptureOrientation,
@@ -20,7 +20,7 @@ import {
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { ensureForegroundPermission } from '@/services/location';
-import { describeBackCameras, describeFrontCameras, rampZoomTo } from '@/services/optics';
+import { describeBackCameras, describeFrontCameras } from '@/services/optics';
 import { askPosition } from '@/services/position';
 import { holdScreenAwake, releaseScreenAwake } from '@/services/wakefulness';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -189,9 +189,10 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
       if (!dial) return;
       const base = turning ? zoomAtTouch : displayZoom;
       // Leftward drag is negative dx and means "more", so the sign flips.
-      const next = displayFromDrag(dial, base, -gesture.dx, WHEEL_TRAVEL);
-      setDisplayZoom(next);
-      if (dial.cameraName) void rampZoomTo(dial.cameraName, deviceFactorFor(dial, next));
+      // Setting state is setting the zoom: the camera's own prop carries the
+      // factor, exactly inverted — see `zoomPropFor` for why writing to the
+      // device directly could never win.
+      setDisplayZoom(displayFromDrag(dial, base, -gesture.dx, WHEEL_TRAVEL));
     },
     onPanResponderRelease: () => setTurning(false),
     onPanResponderTerminate: () => setTurning(false),
@@ -420,9 +421,19 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           ref={camera}
           style={StyleSheet.absoluteFill}
           facing={facing}
-          /* No `zoom` prop, deliberately. The wheel sets the factor on the
-             device itself — exact and rampable — and the prop's own writes
-             would fight it, each one snapping the glass to a stale value. */
+          /**
+           * The zoom, through the camera's own prop and never past it.
+           *
+           * The first build wrote the factor to the device natively — exact,
+           * rampable, and wrong: expo-camera resets the device's zoom every
+           * time the session configures, and the session queue races direct
+           * writes in between. Reported from a phone as a wheel that shook
+           * without zooming. The prop's mapping is exponential and the module
+           * reports its base, so `zoomPropFor` inverts it exactly — the camera
+           * applies our factor itself, on its own queue, on the device its
+           * session actually holds, including at every reconfigure.
+           */
+          zoom={dial ? zoomPropFor(dial, displayZoom) : 0}
           mode={mode === 'video' ? 'video' : 'picture'}
           /**
            * `"off"` is continuous autofocus. Read that twice, because the
@@ -463,13 +474,17 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
            */
           selectedLens={dial?.cameraName ?? undefined}
           /**
-           * The session resets the device's zoom as it configures, so 1× is
-           * re-applied once the camera says it is ready — otherwise a back
-           * camera whose device space starts at the ultra-wide opens at 0.5×,
-           * which nobody asked to wake up to.
+           * Re-described once the session runs: the zoom prop's exponent base
+           * is the *running* format's ceiling, and the value read before the
+           * session existed can differ from it. The stops are recomputed from
+           * the live answer so tapping "3" lands on the telephoto, not near it.
            */
           onCameraReady={() => {
-            if (dial?.cameraName) void rampZoomTo(dial.cameraName, deviceFactorFor(dial, displayZoom));
+            void (async () => {
+              const cameras = facing === 'back' ? await describeBackCameras() : await describeFrontCameras();
+              const spec = dialSpecFor(pickDialCamera(cameras));
+              if (spec) setDial(spec);
+            })();
           }}
           responsiveOrientationWhenOrientationLocked
           onResponsiveOrientationChanged={(event) => setOrientation(event.orientation)}
@@ -586,10 +601,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
               return (
                 <Pressable
                   key={stop.deviceType}
-                  onPress={() => {
-                    setDisplayZoom(stop.display);
-                    if (dial.cameraName) void rampZoomTo(dial.cameraName, stop.factor);
-                  }}
+                  onPress={() => setDisplayZoom(stop.display)}
                   accessibilityRole="button"
                   accessibilityLabel={`Zoom to ${formatDisplayFactor(stop.display)}x, ${stop.mm} millimetres`}
                   style={({ pressed }) => [

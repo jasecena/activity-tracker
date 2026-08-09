@@ -1,6 +1,7 @@
 import {
   deviceFactorFor,
   mmAt,
+  zoomPropFor,
   dialPositionOf,
   dialSpecFor,
   displayFromDrag,
@@ -266,5 +267,29 @@ describe('formatDisplayFactor', () => {
     expect(formatDisplayFactor(2.0)).toBe('2');
     expect(formatDisplayFactor(2.5)).toBe('2.5');
     expect(formatDisplayFactor(12.4)).toBe('12');
+  });
+});
+
+describe('zoomPropFor', () => {
+  const spec = dialSpecFor(TRIPLE)!;
+
+  /**
+   * The inverse of expo-camera's own mapping, factor = maxZoom^prop. On the
+   * triple camera the main lens is device factor 2 under a ceiling of 16, so
+   * the prop is log16(2) — exactly a quarter.
+   */
+  it('inverts the exponential mapping exactly', () => {
+    expect(zoomPropFor(spec, 1)).toBeCloseTo(0.25, 9);
+    expect(zoomPropFor(spec, 0.5)).toBeCloseTo(0, 9);
+  });
+
+  it('stays inside the prop range whatever it is asked', () => {
+    expect(zoomPropFor(spec, 100)).toBeLessThanOrEqual(1);
+    expect(zoomPropFor(spec, 0.001)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('answers zero for a camera with no zoom range at all', () => {
+    const point = dialSpecFor({ ...WIDE_ONLY, videoMaxZoomFactor: 1 })!;
+    expect(zoomPropFor(point, 1)).toBe(0);
   });
 });

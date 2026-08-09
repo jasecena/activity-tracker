@@ -24,6 +24,7 @@ export {
   formatDisplayFactor,
   mmAt,
   pickDialCamera,
+  zoomPropFor,
 } from './optics';
 export type { CameraDescription, DialSpec, DialStop, LensDescription } from './optics';
 

@@ -55,6 +55,8 @@ export interface DialSpec {
   readonly maxDisplay: number;
   /** Device-space factor per display unit — the wide lens's device factor. */
   readonly wideFactor: number;
+  /** The running format's ceiling, device space — the base of the zoom prop's exponent. */
+  readonly videoMaxZoomFactor: number;
 }
 
 /**
@@ -123,7 +125,25 @@ export function dialSpecFor(camera: CameraDescription | null): DialSpec | null {
     // last labelled stop sits a tenth of the way along is unreadable.
     maxDisplay: Math.min(camera.videoMaxZoomFactor / wideFactor, 2 * (stops[stops.length - 1]?.display ?? 1)),
     wideFactor,
+    videoMaxZoomFactor: camera.videoMaxZoomFactor,
   };
+}
+
+/**
+ * The value for `expo-camera`'s own `zoom` prop that lands on a display factor.
+ *
+ * Its mapping is `videoZoomFactor = videoMaxZoomFactor ^ zoom` — read from its
+ * source, not its documentation, which says nothing — so the inverse is a
+ * logarithm. Driving the prop rather than the device is what ends the fight:
+ * the camera applies this value itself, on its own queue, on the device its
+ * session actually holds, including when the session reconfigures. A value
+ * written to the device directly was reset at every configure and raced the
+ * session queue in between — a wheel that shook without zooming.
+ */
+export function zoomPropFor(spec: DialSpec, display: number): number {
+  const base = Math.log(spec.videoMaxZoomFactor);
+  if (!Number.isFinite(base) || base <= 0) return 0;
+  return Math.max(0, Math.min(1, Math.log(deviceFactorFor(spec, display)) / base));
 }
 
 /** Display space to device space: what to ask the hardware for. */
