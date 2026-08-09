@@ -321,20 +321,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         ) : null}
 
         <View style={styles.controls}>
-          {/* Bottom-left, so the whole right edge belongs to the mode rail and
-              a thumb reaching for it never lands on the wrong camera. */}
-          {needsCamera ? (
-            <Pressable
-              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
-              accessibilityRole="button"
-              accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
-              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-            >
-              <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ) : (
-            <View style={styles.secondaryPlaceholder} />
-          )}
+          <View style={styles.secondaryPlaceholder} />
 
           <Pressable
             onPress={() => {
@@ -357,7 +344,21 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             <View style={[styles.shutterInner, state === 'recording' && styles.shutterInnerActive]} />
           </Pressable>
 
-          <View style={styles.secondaryPlaceholder} />
+          {/* Bottom-right, under the mode rail rather than beside it: the rail
+              is vertically centred, so the corner is clear, and both things a
+              right hand reaches for are now on the same side. */}
+          {needsCamera ? (
+            <Pressable
+              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+              accessibilityRole="button"
+              accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+            >
+              <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
+            </Pressable>
+          ) : (
+            <View style={styles.secondaryPlaceholder} />
+          )}
         </View>
       </View>
     </View>
