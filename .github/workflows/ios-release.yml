@@ -286,12 +286,15 @@ jobs:
             # tilde literally — so every failure shipped an artifact with no
             # screen hierarchy in it, and the v0.2.14 "Element not found: Back"
             # had to be diagnosed by guesswork.
-            # `--debug-output` is a *global* option, so it belongs before the
-            # subcommand. After it, Maestro ignores it silently — which is why
-            # the artifact still arrived with no hierarchy in it after the
-            # first attempt at this fix.
-            if maestro --device "$SIM_UDID" --debug-output "$RUNNER_TEMP/maestro-debug" \
-                 test "$RUNNER_TEMP/smoke.yaml" \
+            # No `--debug-output`: Maestro 2.8.0 has no such option, and
+            # passing it made every attempt exit with "Unknown options" — five
+            # rebooted simulators, no step ever run, on a release whose only
+            # change was a deletion. Twice now this has cost a release: first
+            # placed after the subcommand where it was ignored, then before it
+            # where it was fatal. The dumps Maestro writes go under
+            # ~/.maestro/tests, and `upload-artifact` cannot expand `~`, so
+            # they are copied into the temp directory after the run instead.
+            if maestro --device "$SIM_UDID" test "$RUNNER_TEMP/smoke.yaml" \
                  --format junit --output "$RUNNER_TEMP/maestro-report.xml"; then
               echo "::endgroup::"
               echo "Smoke passed on attempt ${attempt}."
@@ -317,6 +320,12 @@ jobs:
               attempt=$((attempt + 1))
               continue
             fi
+
+            # Copied where the artifact upload can see it: `~` is taken
+            # literally by upload-artifact, so anything left in the home
+            # directory never reaches a download.
+            mkdir -p "$RUNNER_TEMP/maestro-debug"
+            cp -R ~/.maestro/tests/. "$RUNNER_TEMP/maestro-debug/" 2>/dev/null || true
 
             if [[ -n "$(find ~/.maestro/tests "$RUNNER_TEMP/maestro-debug" -name commands.json 2>/dev/null)" ]]; then
               echo "::error::Smoke flow ran and failed. This is the app or the flow, not the driver."
