@@ -620,6 +620,33 @@ jobs:
           rm -f "$p12"
           echo "Distribution certificate imported."
 
+      # -----------------------------------------------------------------------
+      # Snapshot the account's certificates before anything can create one.
+      #
+      # Archive and export each ask Apple for a certificate — development for
+      # the first, distribution for the second — and both private keys are
+      # destroyed with the keychain at the end of the job. Without a cleanup the
+      # account fills with certificates nobody holds a key for, and Apple
+      # eventually refuses to issue the next one; that is exactly how v0.2.9
+      # died. The cleanup step near the end of this job revokes whatever appears
+      # between this snapshot and then.
+      #
+      # Written via a temp file and moved on success, so a half-written list can
+      # never be read as "the account was empty" — the cleanup skips entirely
+      # when the snapshot is missing.
+      # -----------------------------------------------------------------------
+      - name: Snapshot existing certificates
+        id: certs_before
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/asc-certificates.mjs list --ids > "$RUNNER_TEMP/certs-before.tmp"
+          mv "$RUNNER_TEMP/certs-before.tmp" "$RUNNER_TEMP/certs-before.txt"
+          echo "Snapshot: $(wc -l < "$RUNNER_TEMP/certs-before.txt" | tr -d ' ') certificate(s) already on the account."
+
       - name: Resolve workspace and scheme
         id: xcode
         run: .github/scripts/resolve-xcode-target.sh >> "$GITHUB_OUTPUT"
@@ -791,6 +818,30 @@ jobs:
           echo "- Bundle id: \`${IOS_BUNDLE_IDENTIFIER}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Apple processes the build for 5–30 minutes before it appears in TestFlight." >> "$GITHUB_STEP_SUMMARY"
+
+      # -----------------------------------------------------------------------
+      # Revoke the certificates this run created.
+      #
+      # Symmetric with destroying the keychain below: the private keys are about
+      # to be deleted, so leaving the certificates on the account leaves nothing
+      # but occupied slots. Revoking one is safe by the time we get here — a
+      # build already on TestFlight is re-signed by Apple and is unaffected, and
+      # anything still installed from here is a runner's own archive.
+      #
+      # `always()` because a failed archive can create a certificate too, and a
+      # release that dies halfway is precisely when the slot must not leak.
+      # Nothing that existed before this run is ever touched, so a certificate
+      # on a Mac is none of this step's business.
+      # -----------------------------------------------------------------------
+      - name: Revoke certificates created by this run
+        if: ${{ always() && steps.certs_before.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/asc-certificates.mjs revoke --not-in "$RUNNER_TEMP/certs-before.txt" --yes
 
       - name: Upload build artifacts
         # Keep artifacts even when a later step failed — the logs are the whole

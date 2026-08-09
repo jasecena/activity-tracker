@@ -7,11 +7,12 @@ repository secret or variable; nothing account-specific is committed.
 
 ## 1. The pipeline
 
-| Workflow          | Trigger                           | What it does                                                                                           |
-| ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `ci.yml`          | every push and PR                 | typecheck, lint, format, 248 tests, `expo config`, `expo-doctor`. All on Linux, all under a minute.    |
-| `security.yml`    | every push/PR + Mondays 03:00 UTC | gitleaks over full history, `npm audit`, CodeQL, and a job that fails if any action is not SHA-pinned. |
-| `ios-release.yml` | a `v*` tag, or manual dispatch    | macOS runner: prebuild, archive, sign, optional Maestro smoke test, upload to TestFlight.              |
+| Workflow           | Trigger                           | What it does                                                                                           |
+| ------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `ci.yml`           | every push and PR                 | typecheck, lint, format, 248 tests, `expo config`, `expo-doctor`. All on Linux, all under a minute.    |
+| `security.yml`     | every push/PR + Mondays 03:00 UTC | gitleaks over full history, `npm audit`, CodeQL, and a job that fails if any action is not SHA-pinned. |
+| `ios-release.yml`  | a `v*` tag, or manual dispatch    | macOS runner: prebuild, archive, sign, optional Maestro smoke test, upload to TestFlight.              |
+| `certificates.yml` | manual dispatch only              | Lists or revokes the signing certificates on the Apple account. See §6.                                |
 
 The release workflow derives the marketing version from the tag (`v1.2.3` →
 `1.2.3`) and the build number from the workflow run number, which is unique and
@@ -169,7 +170,56 @@ the API key lacks the App Manager role.
 
 ---
 
-## 6. Rotating a credential
+## 6. Certificates
+
+Cloud-managed signing asks Apple for a **certificate on every release run** —
+one for the development-signed archive, one for the distribution export — and
+both private keys are destroyed with the runner's ephemeral keychain when the
+job ends. What survives is a certificate nobody can ever sign with again,
+holding one of the handful of slots Apple allows per account. Enough releases
+and the next request is refused:
+
+```
+error: Choose a certificate to revoke. Your account has reached the maximum
+number of certificates.
+error: No profiles for 'com.example.activitytracker' were found
+```
+
+That is a full account, not a broken build, and it is what stopped `v0.2.9`.
+
+**The release workflow now cleans up after itself.** It lists the account's
+certificates before signing, and after the upload — under `always()`, because a
+failed archive can create one too — revokes anything that appeared in between.
+It never touches a certificate that predates the run, so the one on your Mac is
+never in scope. If the snapshot fails, the cleanup skips: a missing list means
+"nothing is known to be new", never "everything is new".
+
+**Revoking is safe for builds already on TestFlight or the App Store.** Apple
+re-signs an uploaded build with its own certificate, so revoking the one that
+archived it changes nothing for a tester. What it does break is a build
+installed directly on a device from Xcode — a new certificate is issued on the
+next local run, but that build must be rebuilt before it will launch again.
+
+For the certificates left behind by earlier releases, run the **Certificates**
+workflow from Actions:
+
+- `action: list` — what is actually on the account, no Mac required.
+- `action: revoke-all` with `confirm: revoke` — revoke every one of them.
+
+Or from a terminal, with the `.p8` to hand:
+
+```bash
+export ASC_KEY_ID=ABCD123456 ASC_ISSUER_ID=0000...  ASC_KEY_PATH=~/AuthKey_ABCD123456.p8
+node scripts/asc-certificates.mjs list
+node scripts/asc-certificates.mjs revoke --all        # dry run: prints the selection
+node scripts/asc-certificates.mjs revoke --all --yes  # does it
+```
+
+Without `--yes` nothing is revoked and the selection is printed instead.
+
+---
+
+## 7. Rotating a credential
 
 If a key is ever exposed:
 

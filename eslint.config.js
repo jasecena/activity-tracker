@@ -54,6 +54,19 @@ module.exports = [
     },
   },
   {
+    // Build-time scripts run under Node, not the app. Globals are listed rather
+    // than pulled from the `globals` package: a lint config is not worth a
+    // dependency, and the list is exactly as long as the scripts need.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { Buffer: 'readonly', console: 'readonly', fetch: 'readonly', process: 'readonly' },
+    },
+    rules: {
+      // stdout is the output of a command-line tool, not a stray debug print.
+      'no-console': 'off',
+    },
+  },
+  {
     files: ['**/__tests__/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
     rules: {
       // Tests may reach across the core/UI boundary that production code may not.
