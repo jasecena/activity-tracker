@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import * as LocationModule from 'expo-location';
 
 import type { UseMedia } from './hooks/useMedia';
 import { CaptureScreen } from './CaptureScreen';
+
+const location = LocationModule as unknown as typeof import('../../../__mocks__/expo-location');
 
 /**
  * Reported from a phone: video recording felt laggy, the Stop button worked
@@ -151,5 +154,82 @@ describe('zooming', () => {
     await press('Voice');
 
     expect(screen.queryByLabelText('Zoom in')).not.toBeOnTheScreen();
+  });
+});
+
+/**
+ * A capture stores where it was taken, on the item and in the fix stream, from
+ * one reading. This is the path that was quietly broken: location permission
+ * was only ever asked for by the tracking switch, so a phone that had never
+ * turned tracking on got no position on any photograph and said nothing.
+ */
+describe('where a capture happened', () => {
+  // Scoped, not global: the mock's call log outlives a test in this file, and
+  // every assertion below counts calls rather than inspecting a result.
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('checks for location as soon as the tab appears', async () => {
+    await renderCapture(async () => null);
+
+    expect(location.getForegroundPermissionsAsync).toHaveBeenCalled();
+  });
+
+  it('does not check while another tab is showing', async () => {
+    await render(<CaptureScreen media={mediaStub(async () => null)} visible={false} />);
+
+    expect(location.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  // The gap this closes: permission was only ever asked for by the tracking
+  // switch, so a phone that had never turned tracking on got no position on any
+  // photograph, and said nothing about it.
+  it('asks when nobody has answered yet', async () => {
+    location.getForegroundPermissionsAsync.mockResolvedValueOnce({
+      status: location.PermissionStatus.UNDETERMINED,
+      canAskAgain: true,
+    } as never);
+
+    await renderCapture(async () => null);
+
+    expect(location.requestForegroundPermissionsAsync).toHaveBeenCalled();
+  });
+
+  // A dialog nobody needed is worse than no dialog.
+  it('does not ask again once it has been granted', async () => {
+    await renderCapture(async () => null);
+
+    expect(location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  // iOS will not show the dialog a second time, so asking is a round trip that
+  // always fails.
+  it('does not ask again once it has been refused', async () => {
+    location.getForegroundPermissionsAsync.mockResolvedValueOnce({
+      status: location.PermissionStatus.DENIED,
+      canAskAgain: false,
+    } as never);
+
+    await renderCapture(async () => null);
+
+    expect(location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  // The background upgrade is offered once per install and belongs to the
+  // tracking switch, which is the thing that records while the app is closed.
+  it('never asks for the background upgrade', async () => {
+    await renderCapture(async () => null);
+
+    expect(location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('hands the reading to the store with the photo', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await press('Take photo');
+
+    expect(keep).toHaveBeenCalledWith(expect.any(String), 'photo', expect.objectContaining({ at: expect.any(Object) }));
   });
 });

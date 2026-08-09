@@ -8,8 +8,12 @@ import type { MediaItem } from '@/core/media';
 import type { Position } from '@/core/replay';
 import { MapCanvas } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { openForPlayback, releasePlayback } from '@/services/mediaStore';
+import { openForPlayback, openThumbnail, releasePlayback } from '@/services/mediaStore';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
+
+/** Big enough to recognise the capture, small enough not to be the map. */
+const PIN_SIZE = 56;
+const PIN_TAIL = 7;
 
 interface MediaScreenProps {
   readonly item: MediaItem;
@@ -32,6 +36,23 @@ interface MediaScreenProps {
 export function MediaScreen({ item, at, tzOffsetMinutes, mapsEnabled, onBack, onForget }: MediaScreenProps) {
   const [uri, setUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+
+  // The thumbnail, not the capture: this is a 56-point square over a map, and
+  // decrypting — or now simply reading — a whole video to fill it would be the
+  // cost thumbnails exist to avoid. Null for a voice note, which has none.
+  const [thumbUri, setThumbUri] = useState<string | null>(null);
+  useEffect(() => {
+    const fileName = item.thumbFileName;
+    if (!fileName) return;
+
+    let live = true;
+    void openThumbnail(fileName).then((opened) => {
+      if (live) setThumbUri(opened);
+    });
+    return () => {
+      live = false;
+    };
+  }, [item.thumbFileName]);
 
   useEffect(() => {
     let live = true;
@@ -87,13 +108,26 @@ export function MediaScreen({ item, at, tzOffsetMinutes, mapsEnabled, onBack, on
         {at ? (
           <>
             <Text style={styles.sectionLabel}>WHERE</Text>
-            <MapCanvas
-              mapsEnabled={mapsEnabled}
-              tracks={[]}
-              marks={[{ id: item.id, at, label: 'Captured here', kind: 'media' }]}
-              height={200}
-              label="Map of where this was captured"
-            />
+            {/* The map holds exactly one mark, so it is centred on that
+                coordinate and the middle of the view *is* the place. That is
+                what lets the capture itself sit over the spot instead of a
+                label saying "captured here" next to a dot — the picture says
+                which capture this is, which the words never did. */}
+            <View>
+              <MapCanvas
+                mapsEnabled={mapsEnabled}
+                tracks={[]}
+                marks={[{ id: item.id, at, label: '', kind: 'media' }]}
+                height={200}
+                label="Map of where this was captured"
+              />
+              {thumbUri ? (
+                <View style={styles.pin} pointerEvents="none">
+                  <Image source={{ uri: thumbUri }} style={styles.pinImage} resizeMode="cover" />
+                  <View style={styles.pinTail} />
+                </View>
+              ) : null}
+            </View>
           </>
         ) : (
           <Text style={styles.footnote}>
@@ -172,6 +206,35 @@ function Field({ label, value }: { readonly label: string; readonly value: strin
 }
 
 const styles = StyleSheet.create({
+  /**
+   * Centred, and lifted by half its own height plus the tail, so the point of
+   * the tail lands on the coordinate rather than the middle of the picture.
+   */
+  pin: {
+    position: 'absolute',
+    top: 100 - (PIN_SIZE + PIN_TAIL) / 2 - PIN_TAIL,
+    left: '50%',
+    marginLeft: -PIN_SIZE / 2,
+    alignItems: 'center',
+  },
+  pinImage: {
+    width: PIN_SIZE,
+    height: PIN_SIZE,
+    borderRadius: radius.sm,
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+    backgroundColor: colors.surface,
+  },
+  pinTail: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: PIN_TAIL,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: colors.textPrimary,
+  },
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
   stage: {

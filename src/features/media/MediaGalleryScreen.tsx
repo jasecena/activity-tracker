@@ -189,6 +189,15 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
                   color={colors.textMuted}
                 />
               )}
+
+              {/* A video's poster frame is a photograph until something says
+                  otherwise. The badge is what tells the two apart in a strip of
+                  60-point squares. */}
+              {item.kind === 'video' ? (
+                <View style={styles.thumbBadge}>
+                  <Ionicons name="play" size={11} color={colors.textPrimary} />
+                </View>
+              ) : null}
             </Pressable>
           );
         }}
@@ -255,9 +264,18 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
  * encryption bought: there was no way to hand Core Media a stream this app
  * decrypted as it went, so every clip had to be written out whole first.
  */
+/**
+ * Plays as soon as it is the page you are on.
+ *
+ * Only the centre page mounts this at all — the pages either side are their
+ * thumbnails — so "mounted" and "chosen to look at" are the same thing here,
+ * and a video you have deliberately swiped to should not need a second tap to
+ * begin. Swiping away unmounts it, which stops it.
+ */
 function VideoPlaying({ uri }: { readonly uri: string }) {
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
+    instance.play();
   });
   return <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls contentFit="contain" />;
 }
@@ -348,6 +366,17 @@ const styles = StyleSheet.create({
   },
   thumbOn: { borderColor: colors.move },
   thumbImage: { width: '100%', height: '100%' },
+  thumbBadge: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    width: 18,
+    height: 18,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,15,20,0.7)',
+  },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   emptyTitle: { ...typography.title, color: colors.textPrimary },
   emptyText: { ...typography.body, color: colors.textSecondary },

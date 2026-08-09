@@ -155,6 +155,36 @@ export async function requestPermission(): Promise<TrackingPermission> {
   }
 }
 
+/**
+ * Ask for foreground location only, and only if nobody has answered yet.
+ *
+ * Capture needs this. The tracking switch is what governs recording on its own,
+ * and pressing the shutter is not the app acting on its own — but a capture
+ * still has to ask Core Location where it is, and Core Location will not say
+ * without permission. Before this, a phone that had never turned tracking on
+ * got no position on any photograph, silently: `getCurrentPositionAsync`
+ * rejects and every caller reads that as "we do not know".
+ *
+ * Foreground only, and **never the background upgrade** — that prompt is
+ * offered once per install, and spending it here would take it away from the
+ * switch that actually needs it.
+ *
+ * Returns whether it can be used. `denied` is not re-asked: iOS will not show
+ * the dialog again, and calling anyway is a round trip that always fails.
+ */
+export async function ensureForegroundPermission(): Promise<boolean> {
+  try {
+    const existing = await Location.getForegroundPermissionsAsync();
+    if (existing.status === Location.PermissionStatus.GRANTED) return true;
+    if (!existing.canAskAgain) return false;
+
+    const asked = await Location.requestForegroundPermissionsAsync();
+    return asked.status === Location.PermissionStatus.GRANTED;
+  } catch {
+    return false;
+  }
+}
+
 export async function isTracking(): Promise<boolean> {
   try {
     return await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);

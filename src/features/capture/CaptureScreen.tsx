@@ -8,6 +8,7 @@ import { formatDuration } from '@/core/format';
 import type { MediaKind } from '@/core/media';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
+import { ensureForegroundPermission } from '@/services/location';
 import { askPosition } from '@/services/position';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -116,6 +117,20 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
 
   const needsCamera = mode !== 'voice';
   const needsMicrophone = mode !== 'photo';
+
+  /**
+   * A capture stores where it was taken, and Core Location will not say without
+   * being asked. Requested when the tab appears rather than at the shutter: the
+   * dialog is a wait, and a photograph should not be waiting behind one.
+   *
+   * Foreground only. The background upgrade is offered once per install and
+   * belongs to the tracking switch, which is the thing that actually records
+   * while the app is closed.
+   */
+  useEffect(() => {
+    if (!visible) return;
+    void ensureForegroundPermission();
+  }, [visible]);
 
   useEffect(() => {
     if (!visible || !needsMicrophone) return;
