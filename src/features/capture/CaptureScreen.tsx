@@ -6,25 +6,26 @@ import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/core/format';
 import {
-  dragUpBy,
-  lensLabel,
-  orderLenses,
-  worthOffering,
-  oppositeEdge,
+  deviceFactorFor,
+  dialSpecFor,
+  displayFromDrag,
+  formatDisplayFactor,
+  pickDialCamera,
   topEdgeFor,
   uprightRotationFor,
-  zoomFromDrag,
   type CaptureOrientation,
+  type DialSpec,
   type MediaKind,
 } from '@/core/media';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { ensureForegroundPermission } from '@/services/location';
+import { describeBackCameras, describeFrontCameras, rampZoomTo } from '@/services/optics';
 import { askPosition } from '@/services/position';
 import { holdScreenAwake, releaseScreenAwake } from '@/services/wakefulness';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
-import { ZoomDial } from '@/components/ZoomDial';
+import { ZoomWheel } from '@/components/ZoomWheel';
 
 import type { UseMedia } from './hooks/useMedia';
 
@@ -50,19 +51,13 @@ interface CaptureScreenProps {
 const MAX_VIDEO_SECONDS = 60;
 
 /**
- * How far one press of the zoom moves it.
+ * How far the finger travels along the wheel to cross the whole range.
  *
- * `CameraView`'s `zoom` is 0 to 1 across whatever range the lens has, not a
- * magnification — 0.5 is not "2×" and there is no way to ask what it would be.
- * So the buttons step it and the readout is a percentage of the range, which is
- * the only honest thing to call it.
- *
- * There is no pinch. `expo-camera` has no gesture of its own, so pinching would
- * mean a multi-touch responder and a hand-rolled scale, and two buttons you can
- * hit without looking are worth more on a camera than a gesture that fights the
- * swipe between pages.
+ * The wheel's rim, in points. Long enough that the stops have room between
+ * them, short enough that ultra-wide to full telephoto is one comfortable
+ * sweep of a thumb.
  */
-const ZOOM_STEP = 0.1;
+const WHEEL_TRAVEL = 320;
 
 type Mode = 'photo' | 'video' | 'voice';
 
@@ -87,7 +82,6 @@ const MODES: readonly { readonly key: Mode; readonly label: string; readonly ico
 export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const [mode, setMode] = useState<Mode>('photo');
   const [facing, setFacing] = useState<CameraType>('back');
-  const [zoom, setZoom] = useState(0);
 
   /**
    * Recording and saving are separate states, and conflating them was a bug.
@@ -143,29 +137,20 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    */
   const started = useRef<{ at: Fix | null; orientation: CaptureOrientation | null }>({ at: null, orientation: null });
 
-  /** True while a finger is on the glass turning the zoom, which is when the dial shows. */
+  /** True while a finger is on the wheel, which is when the whole wheel shows. */
   const [turning, setTurning] = useState(false);
   /**
-   * The zoom the current gesture started from.
+   * What the cameras on this side of the phone actually are, and where the
+   * zoom is in *display* space — the space where the main lens is 1× and the
+   * ultra-wide is 0.5×, which is the only space a person thinks in.
    *
-   * A ref because the responder is built once and this is written at the moment
-   * a finger lands — nothing renders it, which is what the refs rule cares
-   * about. Taking each movement from the *start* rather than accumulating
-   * deltas is what stops the value drifting, and what makes letting go and
-   * starting again from the same place give the same answer twice.
+   * Null spec means the phone would not say: a simulator, a test, or the
+   * module missing. The viewfinder still works; there is simply no wheel.
    */
-  /** The zoom this gesture is being measured from, fixed for its duration. */
-  const [zoomAtTouch, setZoomAtTouch] = useState(0);
-  /**
-   * The physical lenses on the camera now facing outwards, and which one is in
-   * use.
-   *
-   * Null means "whatever the system picked", which is the right default: the
-   * virtual camera switches between the real lenses as you zoom, and overriding
-   * that before anyone has asked is choosing worse than the phone would.
-   */
-  const [lenses, setLenses] = useState<readonly string[]>([]);
-  const [lens, setLens] = useState<string | null>(null);
+  const [dial, setDial] = useState<DialSpec | null>(null);
+  const [displayZoom, setDisplayZoom] = useState(1);
+  /** The zoom a wheel gesture started from, fixed for its duration. */
+  const [zoomAtTouch, setZoomAtTouch] = useState(1);
 
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
@@ -178,43 +163,35 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   /**
-   * Zoom by sliding a finger up the glass — a lens collar rather than a pair of
-   * buttons, and it follows the hand rather than stepping.
+   * The wheel: drag left to zoom in, right to zoom out, on the band above the
+   * shutter. Horizontal because the wheel is a wheel — the finger turns it —
+   * and dragging left brings the higher numbers, which sit to the right of the
+   * marker, underneath it. The same direction the built-in camera turns.
    *
-   * This revises the decision that used to stand here. Zoom was two buttons
-   * because `expo-camera` has no gesture of its own and a pinch would mean a
-   * multi-touch responder fighting the swipe between pages. Half of that is
-   * still true — there is still no pinch — but a *single* finger sliding along
-   * the glass fights nothing: Capture has no scroller, no pager and no detail
-   * page to swipe back from, so the viewfinder is the one surface in this app
-   * with no other claim on a drag.
+   * Each movement sets the zoom **on the device, by factor, natively**. The
+   * `zoom` prop is not involved: its mapping runs through a format-dependent
+   * maximum, so a factor computed against it lands near a stop rather than on
+   * it, and it cannot ramp. The finger is the smoothing while dragging;
+   * `rampZoomTo` does the smoothing when a stop is tapped.
    *
-   * The buttons stay. A gesture is not reachable by everyone, and they are what
-   * a screen reader can find.
-   *
-   * Which way is "up" comes from the phone, not the screen: turn it sideways
-   * and the same movement of the hand is a change in x. `dragUpBy` is that
-   * mapping, and it is the same fact the rails and a photograph's rotation read.
-   *
-   * `onMoveShouldSet` rather than `onStartShouldSet`, so a tap that never moves
-   * is not swallowed by a zoom that never happens.
+   * Rebuilt each render on purpose — memoising a responder means callbacks
+   * that close over the first render for ever, and both ways of patching that
+   * up are forbidden here by lint rules that are right to forbid them.
    */
-  const zoomGesture = PanResponder.create({
+  const wheelGesture = PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 6,
+    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 6,
     onPanResponderGrant: () => {
-      // Where this gesture starts from, so movement is measured against it
-      // rather than added to whatever the last one left behind.
-      setZoomAtTouch(zoom);
+      setZoomAtTouch(displayZoom);
       setTurning(true);
     },
     onPanResponderMove: (_event, gesture) => {
-      // `turning` is false only for the events that arrive before the grant's
-      // state has committed — and in exactly those, this render's `zoom` is
-      // still the value the finger landed on. Both branches read the same
-      // number; the guard is about which copy of it has arrived yet.
-      const base = turning ? zoomAtTouch : zoom;
-      setZoom(zoomFromDrag(base, dragUpBy(orientation, gesture.dx, gesture.dy)));
+      if (!dial) return;
+      const base = turning ? zoomAtTouch : displayZoom;
+      // Leftward drag is negative dx and means "more", so the sign flips.
+      const next = displayFromDrag(dial, base, -gesture.dx, WHEEL_TRAVEL);
+      setDisplayZoom(next);
+      if (dial.cameraName) void rampZoomTo(dial.cameraName, deviceFactorFor(dial, next));
     },
     onPanResponderRelease: () => setTurning(false),
     onPanResponderTerminate: () => setTurning(false),
@@ -238,18 +215,28 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   }, [visible]);
 
   /**
-   * Which lenses this camera has, asked once it exists.
+   * What the cameras on this side of the phone are, asked from AVFoundation.
    *
-   * The callback reports changes, but nothing changes on the way in — so
-   * without asking, the rail stays empty until the first flip. Asked in an
-   * effect rather than at render because it is a call to the hardware.
+   * The dial's camera is the *virtual* device — Triple on a Pro, Dual Wide on
+   * the rest — because that is the one that changes lens as the factor crosses
+   * a switch-over, which is what makes 0.5× to 6× one continuous drag. The
+   * default device is the plain wide lens, which cannot reach the ultra-wide
+   * at all; selecting the virtual one is the difference between this dial and
+   * a crop slider.
+   *
+   * Zoom starts at 1×, the main lens, whatever the device's own space calls
+   * it. Flipping the camera re-describes and lands back at 1× for the same
+   * reason it always reset: the two sides do not share a range.
    */
   useEffect(() => {
     if (!visible || !needsCamera) return;
     let live = true;
     void (async () => {
-      const found = await camera.current?.getAvailableLensesAsync?.();
-      if (live && found) setLenses(found);
+      const cameras = facing === 'back' ? await describeBackCameras() : await describeFrontCameras();
+      if (!live) return;
+      const spec = dialSpecFor(pickDialCamera(cameras));
+      setDial(spec);
+      setDisplayZoom(1);
     })();
     return () => {
       live = false;
@@ -424,7 +411,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    */
   const upright = { transform: [{ rotate: `${uprightRotationFor(orientation)}deg` }] };
   const modesEdge = topEdgeFor(orientation);
-  const zoomEdge = oppositeEdge(modesEdge);
 
   return (
     <View style={styles.screen}>
@@ -434,7 +420,9 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           ref={camera}
           style={StyleSheet.absoluteFill}
           facing={facing}
-          zoom={zoom}
+          /* No `zoom` prop, deliberately. The wheel sets the factor on the
+             device itself — exact and rampable — and the prop's own writes
+             would fight it, each one snapping the glass to a stale value. */
           mode={mode === 'video' ? 'video' : 'picture'}
           /**
            * `"off"` is continuous autofocus. Read that twice, because the
@@ -467,11 +455,22 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
            * the file is written exactly as the camera produces it, and the
            * gallery turns the picture at the moment it draws it.
            */
-          // Undefined rather than null: leaving it unset is what lets the
-          // system's virtual camera pick, which is better than any choice this
-          // app could make before being asked.
-          selectedLens={lens ?? undefined}
-          onAvailableLensesChanged={(event) => setLenses(event.lenses)}
+          /**
+           * The virtual multi-lens camera, chosen from AVFoundation's own
+           * description. The default device is the bare wide lens, which
+           * cannot reach the ultra-wide at all — selecting the virtual one is
+           * what makes the wheel's 0.5× end exist.
+           */
+          selectedLens={dial?.cameraName ?? undefined}
+          /**
+           * The session resets the device's zoom as it configures, so 1× is
+           * re-applied once the camera says it is ready — otherwise a back
+           * camera whose device space starts at the ultra-wide opens at 0.5×,
+           * which nobody asked to wake up to.
+           */
+          onCameraReady={() => {
+            if (dial?.cameraName) void rampZoomTo(dial.cameraName, deviceFactorFor(dial, displayZoom));
+          }}
           responsiveOrientationWhenOrientationLocked
           onResponsiveOrientationChanged={(event) => setOrientation(event.orientation)}
         />
@@ -488,12 +487,11 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       )}
 
-      {/* The whole viewfinder is the collar. It sits over the preview rather
-          than on it, because `CameraView` is a native view and a responder on
-          it is a responder on something that does not report touches back. */}
-      {needsCamera ? <View style={StyleSheet.absoluteFill} {...zoomGesture.panHandlers} /> : null}
-
-      {needsCamera ? <ZoomDial zoom={zoom} active={turning} /> : null}
+      {/* The wheel, and the band of glass that turns it. The band sits where
+          the wheel's rim is, so turning it is touching it — not a hidden
+          surface somewhere else on the screen. */}
+      {needsCamera && dial ? <ZoomWheel spec={dial} display={displayZoom} active={turning} /> : null}
+      {needsCamera && dial ? <View style={styles.wheelBand} {...wheelGesture.panHandlers} /> : null}
 
       {state === 'recording' && needsCamera ? (
         <View style={styles.topBar} pointerEvents="box-none">
@@ -501,47 +499,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
           </View>
-        </View>
-      ) : null}
-
-      {/* Down the left edge, mirroring the modes: the two things you adjust
-          while holding the phone, one under each thumb. Hidden for a voice
-          note, which has no picture to make larger. */}
-      {needsCamera ? (
-        <View style={[styles.zoomRail, styles[zoomEdge]]}>
-          <Pressable
-            onPress={() => setZoom((current) => Math.min(1, current + ZOOM_STEP))}
-            disabled={zoom >= 1}
-            accessibilityRole="button"
-            accessibilityLabel="Zoom in"
-            style={({ pressed }) => [
-              styles.zoomButton,
-              upright,
-              zoom >= 1 && styles.zoomDisabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons name="add" size={24} color={colors.textPrimary} />
-          </Pressable>
-
-          {/* Only once it is doing something. A camera sitting at 0% is a
-              camera, and saying so is noise over the picture. */}
-          {zoom > 0 ? <Text style={[styles.zoomText, upright]}>{Math.round(zoom * 100)}%</Text> : null}
-
-          <Pressable
-            onPress={() => setZoom((current) => Math.max(0, current - ZOOM_STEP))}
-            disabled={zoom <= 0}
-            accessibilityRole="button"
-            accessibilityLabel="Zoom out"
-            style={({ pressed }) => [
-              styles.zoomButton,
-              upright,
-              zoom <= 0 && styles.zoomDisabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons name="remove" size={24} color={colors.textPrimary} />
-          </Pressable>
         </View>
       ) : null}
 
@@ -616,41 +573,39 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           <Text style={styles.footnote}>Clips stop at {MAX_VIDEO_SECONDS} seconds.</Text>
         ) : null}
 
-        {/* The lenses, above the shutter and only where there is a choice.
-            One lens is not a choice, and the front camera has exactly one.
+        {/* Each real lens, as a stop the wheel snaps to — the built-in
+            camera's pills. Tap 0.5, 1 or 3 and the glass ramps there; the
+            wheel is the fine control between them. These replace the named
+            lens rail: with the virtual camera driving, "which lens" and
+            "how far in" are the same dial, and the phone changes lens itself
+            as the factor crosses a hand-off.
 
-            Locked while anything is recording. Changing the lens mid-clip
-            reconfigures the capture session — the documented behaviour for
-            flipping the camera is that it *stops* the recording, and this is
-            the same session being rebuilt underneath. So whatever a clip starts
-            on, it finishes on. A photograph can be taken on any of them. */}
-        {needsCamera && worthOffering(lenses) ? (
-          <View style={styles.lensRail}>
-            {orderLenses(lenses).map((option) => {
-              const chosen = option === lens;
+            Not locked while recording. The virtual device switches lenses
+            without rebuilding the session, which is precisely what it is for
+            — the built-in camera does the same mid-clip. */}
+        {needsCamera && dial && dial.stops.length > 1 ? (
+          <View style={styles.stopRow}>
+            {dial.stops.map((stop) => {
+              const chosen = Math.abs(displayZoom - stop.display) < 0.05;
               return (
                 <Pressable
-                  key={option}
+                  key={stop.deviceType}
                   onPress={() => {
-                    setLens(option);
-                    // The lenses do not share a zoom range, so carrying a
-                    // position across lands somewhere nobody chose — the same
-                    // reason flipping the camera resets it.
-                    setZoom(0);
+                    setDisplayZoom(stop.display);
+                    if (dial.cameraName) void rampZoomTo(dial.cameraName, stop.factor);
                   }}
-                  disabled={state !== 'idle'}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: chosen, disabled: state !== 'idle' }}
-                  accessibilityLabel={lensLabel(option)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Zoom to ${formatDisplayFactor(stop.display)}x, ${stop.mm} millimetres`}
                   style={({ pressed }) => [
-                    styles.lensButton,
+                    styles.stopPill,
                     upright,
-                    chosen && styles.lensButtonOn,
-                    state !== 'idle' && styles.lensLocked,
+                    chosen && styles.stopPillOn,
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={[styles.lensText, chosen && styles.lensTextOn]}>{lensLabel(option)}</Text>
+                  <Text style={[styles.stopText, chosen && styles.stopTextOn]}>
+                    {chosen ? `${formatDisplayFactor(displayZoom)}x` : formatDisplayFactor(stop.display)}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -690,16 +645,10 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           {needsCamera ? (
             <Pressable
               onPress={() => {
+                // The describe effect re-runs on the new facing and lands the
+                // dial back at 1× — the two sides do not share a range, so
+                // carrying a factor across would open somewhere nobody chose.
                 setFacing(facing === 'back' ? 'front' : 'back');
-                // The other camera has different lenses, so a choice made for
-                // this one is meaningless over there — and the same argument
-                // as the zoom below.
-                setLens(null);
-                setLenses([]);
-                // The two lenses do not have the same range, so carrying a
-                // position across means the front camera opens somewhere you
-                // did not choose.
-                setZoom(0);
               }}
               accessibilityRole="button"
               accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
@@ -768,33 +717,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,15,20,0.55)',
   },
   modeButtonOn: { backgroundColor: colors.manual },
-  zoomRail: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  zoomButton: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(11,15,20,0.55)',
-  },
-  zoomDisabled: { opacity: 0.35 },
-  zoomText: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    fontVariant: ['tabular-nums'],
-    backgroundColor: 'rgba(11,15,20,0.55)',
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    overflow: 'hidden',
-  },
   bottomBar: {
     position: 'absolute',
     left: 0,
@@ -813,17 +735,31 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   controlsReversed: { flexDirection: 'row-reverse' },
-  lensRail: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
-  lensButton: {
+  /**
+   * The glass that turns the wheel: a band over the rim's visible arc. Its own
+   * view rather than the wheel drawing, because the drawing is `pointerEvents:
+   * none` — what you touch and what you see are two layers on purpose, so the
+   * SVG can redraw without the responder being rebuilt under a moving finger.
+   */
+  wheelBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 96,
+    height: 130,
+  },
+  stopRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
+  stopPill: {
+    minWidth: 40,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderRadius: radius.pill,
+    alignItems: 'center',
     backgroundColor: 'rgba(11,15,20,0.55)',
   },
-  lensButtonOn: { backgroundColor: colors.manual },
-  lensLocked: { opacity: 0.45 },
-  lensText: { ...typography.caption, color: colors.textPrimary },
-  lensTextOn: { color: colors.onAccent },
+  stopPillOn: { backgroundColor: 'rgba(11,15,20,0.8)' },
+  stopText: { ...typography.caption, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
+  stopTextOn: { color: colors.manual, fontWeight: '700' },
   secondary: {
     width: 44,
     height: 44,

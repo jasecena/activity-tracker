@@ -351,41 +351,42 @@ at the top, the filmstrip along the bottom, the mode rail and the zoom down the
 two edges. Only the empty gallery keeps a heading, because there is nothing
 behind it to look at.
 
-**Zoom is a drag, and the number is a percentage of the range.** `CameraView`'s
-`zoom` is 0 to 1 across whatever the lens offers, not a magnification, and there
-is no way to ask what "2×" would be — so calling it 2× would be a guess printed
-as a fact. The dial says what can honestly be said.
+**The zoom is a wheel with real numbers on it, and the numbers come from a
+local native module.** `expo-camera` exposes a 0-to-1 `zoom` and lens names,
+and nothing else — no factors, no switch-over points, no fields of view. The
+built-in camera's dial (`0.5 13MM`, `2x 48MM`) is made of facts AVFoundation
+holds and Expo does not pass on, so `modules/camera-optics` reads them out:
+the first native code in this repository, one Swift file, autolinked from
+`modules/` with everything else still managed Expo.
 
-This revises the decision that used to stand here — that zoom was two buttons
-because a gesture would fight the swipe between pages. Half of that reasoning
-still holds: there is no pinch, because `expo-camera` has no gesture of its own
-and a multi-touch responder plus a hand-rolled scale is a great deal of machinery.
-But a _single_ finger sliding along the glass fights nothing. Capture has no
-scroller, no pager and no detail page to swipe back from, so the viewfinder is
-the one surface in this app with no other claim on a drag.
+Three facts make the wheel honest. The stops sit at
+`virtualDeviceSwitchOverVideoZoomFactors`, which is where the phone really
+changes lens. The millimetres are derived from each lens's measured field of
+view — f = 18/tan(fov/2) — not looked up, so they are right on models that do
+not exist yet. And the dial drives the **virtual** camera (Triple, or Dual
+Wide), because the default device is the bare wide lens and cannot reach the
+ultra-wide at all: selecting the virtual device is the difference between a
+zoom and a crop.
 
-The buttons stay, because a gesture is not reachable by everyone and they are
-what a screen reader can find.
+Two number spaces run through `core/media/optics.ts`: device factors (1.0 is
+the widest lens, what AVFoundation speaks) and display factors (1× is the main
+lens, what a person means). They differ by the wide lens's switch-over factor,
+and confusing them puts every number on the dial out by exactly 2×.
 
-**Which way is "up" comes from the phone, not the screen.** `dragUpBy` maps a
-drag onto the axis the hand means: turn the phone sideways and the same movement
-is a change in x, in one direction or the other. A zoom wired to `-dy` reverses
-itself on rotation. It reads the same fact as the rails and a capture's stored
-orientation — whichever edge is uppermost is where up is.
+The zoom is set **natively, by factor** — never through the `zoom` prop. The
+prop's mapping runs through the active format's maximum, which changes under
+the session, and it cannot ramp; `ramp(toVideoZoomFactor:)` is how the glass
+moves smoothly and the finger is the smoothing while dragging. The wheel is
+drawing only and takes no touches; the gesture lives on a band the screen
+owns, measured from the start of each gesture, log-scaled so equal drags
+multiply.
 
-**A lens is chosen by name, never by magnification, and a recording keeps the
-one it started on.** `expo-camera` reports the physical cameras as Apple's own
-device-type strings and takes one back as `selectedLens`. Those say what a lens
-_is_, not what it multiplies by — the telephoto is 2×, 3× or 5× depending on
-the model and nothing in the API says which — so `core/media/lenses.ts`
-translates and orders them and never prints a number. Unset is a real value: the
-system's virtual camera switches between the real lenses as you zoom, and
-overriding that before anyone has asked is choosing worse than the phone would.
-
-The rail is locked while anything is recording. Changing the lens rebuilds the
-capture session underneath, and the documented behaviour for the same rebuild —
-flipping the camera — is that it _stops_ the recording. So whatever a clip
-starts on it finishes on, while a photograph can be taken on any of them.
+The named lens rail this replaces lasted one release. With the virtual camera
+driving, "which lens" and "how far in" are the same dial, and the stops are the
+lens switcher — tap 0.5, 1 or 3 and the glass ramps there. It also fixes a bug
+the rail shipped with: `getAvailableLensesAsync` returns localized _names_
+("Back Ultra Wide Camera"), not the device-type ids the rail's translation
+table expected, so its labels were wrong on a real phone and right in the mock.
 
 **Correcting a journey's activity type is a long press, not a swipe.** A row on
 a vertically scrolling list has to hand a horizontal drag back to the scroller
@@ -433,7 +434,10 @@ different date depending on where the machine is.
 
 **Core Motion's activity classifier is not available.**
 `CMMotionActivityManager` — the thing that reports "walking"/"automotive" with a
-confidence — has no Expo binding and needs a custom native module. Mode is
+confidence — has no Expo binding and needs a custom native module. That barrier
+is procedural now rather than structural: `modules/camera-optics` establishes
+the local-native-module pattern, so binding it is a file in `modules/` when
+something wants it, not a change of project shape. Mode is
 inferred from speed alone, which is why a slow cycle and a fast walk are hard to
 tell apart.
 

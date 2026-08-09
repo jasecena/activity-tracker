@@ -1,15 +1,12 @@
 import {
   CAMERA_WRITES_UPRIGHT_PIXELS,
   displayRotationFor,
-  dragUpBy,
   isCaptureOrientation,
   isQuarterTurn,
   oppositeEdge,
   stageSizeFor,
   topEdgeFor,
   uprightRotationFor,
-  zoomFromDrag,
-  ZOOM_TRAVEL_POINTS,
   type CaptureOrientation,
 } from '../orientation';
 
@@ -145,81 +142,5 @@ describe('the whole set', () => {
     const all: readonly CaptureOrientation[] = ['portrait', 'portraitUpsideDown', 'landscapeLeft', 'landscapeRight'];
     const rotations = new Set(all.map(uprightRotationFor));
     expect(rotations.size).toBe(4);
-  });
-});
-
-/**
- * Zooming by sliding a finger, which has to mean the same thing however the
- * phone is held. A zoom wired to `-dy` reverses itself the moment you turn the
- * phone sideways, or stops responding at all.
- */
-describe('dragUpBy', () => {
-  it('reads a slide towards the top of an upright phone as up', () => {
-    // Screen coordinates: y grows downwards, so "up" is negative.
-    expect(dragUpBy('portrait', 0, -100)).toBe(100);
-    expect(dragUpBy('portrait', 0, 100)).toBe(-100);
-  });
-
-  it('ignores the sideways component while upright', () => {
-    // `toBeCloseTo`, because negating a zero gives `-0` and `toBe` compares
-    // with `Object.is`, which holds that the two zeroes are different numbers.
-    // Nothing downstream can tell them apart — the arithmetic that follows
-    // treats them identically — so this is about the assertion, not the value.
-    expect(dragUpBy('portrait', 250, 0)).toBeCloseTo(0);
-  });
-
-  it('reads a slide along the glass as up once the phone is turned', () => {
-    const left = dragUpBy('landscapeLeft', 100, 0);
-    const right = dragUpBy('landscapeRight', 100, 0);
-
-    // Whichever landscape is which, the same physical movement cannot mean the
-    // same thing in both — they are opposite turns.
-    expect(left).toBe(-right);
-    expect(Math.abs(left)).toBe(100);
-  });
-
-  it('turns the axis over when the phone is upside down', () => {
-    expect(dragUpBy('portraitUpsideDown', 0, 100)).toBe(100);
-  });
-
-  it('agrees with the edge the rails moved to', () => {
-    // Both read the same fact: whichever edge is uppermost is where "up" is.
-    for (const orientation of ['portrait', 'portraitUpsideDown', 'landscapeLeft', 'landscapeRight'] as const) {
-      const rightEdgeIsUp = topEdgeFor(orientation) === 'right';
-      const alongX = dragUpBy(orientation, 100, 0);
-      if (isQuarterTurn(uprightRotationFor(orientation))) {
-        expect(alongX > 0).toBe(rightEdgeIsUp);
-      }
-    }
-  });
-
-  it('treats an unknown orientation as upright', () => {
-    expect(dragUpBy(null, 0, -50)).toBe(50);
-  });
-});
-
-describe('zoomFromDrag', () => {
-  it('starts from where the gesture began rather than from zero', () => {
-    expect(zoomFromDrag(0.5, 0)).toBe(0.5);
-  });
-
-  it('crosses the whole range over the documented travel', () => {
-    expect(zoomFromDrag(0, ZOOM_TRAVEL_POINTS)).toBe(1);
-    expect(zoomFromDrag(0, ZOOM_TRAVEL_POINTS / 2)).toBeCloseTo(0.5, 9);
-  });
-
-  it('stops at both ends rather than running past them', () => {
-    expect(zoomFromDrag(0.9, ZOOM_TRAVEL_POINTS)).toBe(1);
-    expect(zoomFromDrag(0.1, -ZOOM_TRAVEL_POINTS)).toBe(0);
-  });
-
-  /**
-   * Measured from the start of the gesture, never accumulated. Adding deltas
-   * drifts, and it means letting go and repeating the same movement from the
-   * same place gives a different answer the second time.
-   */
-  it('is a pure function of where it started and how far the finger went', () => {
-    expect(zoomFromDrag(0.2, 100)).toBe(zoomFromDrag(0.2, 100));
-    expect(zoomFromDrag(0.2, 100)).not.toBe(zoomFromDrag(0.3, 100));
   });
 });

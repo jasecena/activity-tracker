@@ -138,60 +138,6 @@ export function oppositeEdge(edge: Edge): Edge {
   return edge === 'left' ? 'right' : 'left';
 }
 
-/**
- * How far a drag went *up*, in the sense the hand means rather than the screen.
- *
- * A finger sliding towards the top of the phone is sliding towards the top of
- * the picture only while the phone is upright. Turn it sideways and the same
- * physical movement is a change in x, in one direction or the other depending
- * on which way it was turned — so a zoom wired to `-dy` reverses itself when
- * you rotate, or stops responding altogether.
- *
- * The mapping falls straight out of `topEdgeFor`. Whichever edge is uppermost
- * is the direction "up" points on a screen that has not turned: the right edge
- * uppermost means up is `+dx`, the left edge means `-dx`, and upside down means
- * `+dy`, which is the same reasoning that puts the rails where they go.
- *
- * Screen coordinates, so `y` grows downwards — which is why upright is `-dy`.
- */
-export function dragUpBy(orientation: CaptureOrientation | null, dx: number, dy: number): number {
-  switch (uprightRotationFor(orientation)) {
-    case 90:
-      return dx;
-    case 180:
-      return dy;
-    case 270:
-      return -dx;
-    default:
-      return -dy;
-  }
-}
-
-/**
- * How far the finger travels to cross the whole zoom range.
- *
- * Roughly half a phone's height. Short enough to reach the far end without
- * shuffling your grip, long enough that the useful bottom of the range is not
- * three pixels wide — most of what anyone wants is in the first third, and a
- * range you cannot land on precisely is a range you fight.
- */
-export const ZOOM_TRAVEL_POINTS = 420;
-
-/**
- * Where the zoom lands, given where it started and how far the finger has gone.
- *
- * Taken from the *start* of the gesture rather than accumulated per movement:
- * adding up deltas drifts, and it means letting go and starting again from the
- * same place gives a different answer the second time. The finger's absolute
- * distance from where it went down is the whole input.
- *
- * `CameraView`'s zoom is 0 to 1 across whatever range the lens offers, not a
- * magnification — so this stays in that space and never pretends to be "2×".
- */
-export function zoomFromDrag(startedAt: number, upBy: number): number {
-  return Math.max(0, Math.min(1, startedAt + upBy / ZOOM_TRAVEL_POINTS));
-}
-
 export interface Size {
   readonly width: number;
   readonly height: number;

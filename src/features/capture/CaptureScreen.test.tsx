@@ -106,69 +106,6 @@ describe('recording a video', () => {
 });
 
 /**
- * `CameraView`'s `zoom` is 0 to 1 across whatever range the lens has, not a
- * magnification, so the buttons step it and the readout is a percentage. There
- * is no pinch: `expo-camera` has no gesture of its own, and a multi-touch
- * responder would fight the swipe between pages for the sake of a thing two
- * buttons already do.
- */
-describe('zooming', () => {
-  it('starts at the wide end, with nothing to say about it', async () => {
-    await renderCapture(async () => null);
-
-    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
-    expect(screen.queryByText('0%')).not.toBeOnTheScreen();
-  });
-
-  it('steps in and says how far', async () => {
-    await renderCapture(async () => null);
-
-    await press('Zoom in');
-    await press('Zoom in');
-
-    expect(screen.getByText('20%')).toBeOnTheScreen();
-  });
-
-  it('stops at the far end rather than running past it', async () => {
-    await renderCapture(async () => null);
-
-    for (let step = 0; step < 12; step += 1) await press('Zoom in');
-
-    expect(screen.getByText('100%')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Zoom in')).toBeDisabled();
-  });
-
-  it('comes back to the wide end', async () => {
-    await renderCapture(async () => null);
-
-    await press('Zoom in');
-    await press('Zoom out');
-
-    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
-  });
-
-  // The two lenses do not have the same range, so a position carried across
-  // means the front camera opens somewhere nobody chose.
-  it('goes back to wide when the camera is flipped', async () => {
-    await renderCapture(async () => null);
-
-    await press('Zoom in');
-    await press('Switch to front camera');
-
-    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
-  });
-
-  // Nothing to make larger, and a control that does nothing is worse than none.
-  it('offers nothing for a voice note', async () => {
-    await renderCapture(async () => null);
-
-    await press('Voice');
-
-    expect(screen.queryByLabelText('Zoom in')).not.toBeOnTheScreen();
-  });
-});
-
-/**
  * A capture stores where it was taken, on the item and in the fix stream, from
  * one reading. This is the path that was quietly broken: location permission
  * was only ever asked for by the tracking switch, so a phone that had never
@@ -291,71 +228,28 @@ describe('where a capture happened', () => {
  * wherever it had got to. A camera preview is not user activity as far as the
  * auto-lock timer is concerned.
  */
+
 /**
- * The three lenses on the back of the phone. Apple reports them as device-type
- * strings and takes one back; nothing here is a magnification, because the
- * multiplier differs by model and the API never says which.
+ * The wheel's numbers come from AVFoundation via the local native module,
+ * which does not exist under Jest — `describeCameras` returns nothing, the
+ * dial spec is null, and the screen must simply not draw a wheel. The
+ * arithmetic itself is tested in core; what is worth pinning here is the
+ * degradation, because a simulator has no cameras either and the viewfinder
+ * still has to work there.
  */
-describe('choosing a lens', () => {
-  beforeEach(() => {
-    camera.__reset();
-  });
-
-  it('offers the lenses the camera reports', async () => {
+describe('the zoom wheel without a phone', () => {
+  it('offers no stops when the hardware would not say', async () => {
     await renderCapture(async () => null);
+    await act(async () => {});
 
-    expect(await screen.findByLabelText('Ultra wide')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Wide')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Tele')).toBeOnTheScreen();
+    expect(screen.queryByLabelText(/Zoom to/)).not.toBeOnTheScreen();
   });
 
-  // One lens is not a choice, and a control that cannot change anything is
-  // furniture over the viewfinder.
-  it('offers nothing where there is nothing to choose', async () => {
-    camera.__setLenses(['builtInWideAngleCamera']);
+  it('still shows the viewfinder and the shutter', async () => {
     await renderCapture(async () => null);
-
     await act(async () => {});
-    expect(screen.queryByLabelText('Wide')).not.toBeOnTheScreen();
-  });
 
-  /**
-   * Whatever a clip starts on, it finishes on. Changing the lens rebuilds the
-   * capture session underneath — the documented behaviour for flipping the
-   * camera is that it *stops* the recording, and this is the same session.
-   */
-  it('locks the lens for the length of a recording', async () => {
-    const keep = jest.fn(() => new Promise(() => undefined)) as unknown as UseMedia['keep'];
-    await renderCapture(keep);
-
-    await act(async () => {});
-    expect(screen.getByLabelText('Tele')).not.toBeDisabled();
-
-    await press('Video');
-    await press('Start video');
-
-    expect(screen.getByLabelText('Tele')).toBeDisabled();
-  });
-
-  it('lets a photograph be taken on any of them', async () => {
-    await renderCapture(async () => null);
-
-    await act(async () => {});
-    await press('Tele');
-
-    expect(screen.getByLabelText('Tele')).not.toBeDisabled();
-  });
-
-  // The lenses do not share a zoom range, so a position carried across lands
-  // somewhere nobody chose.
-  it('goes back to the wide end when the lens changes', async () => {
-    await renderCapture(async () => null);
-
-    await act(async () => {});
-    await press('Zoom in');
-    await press('Tele');
-
-    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
+    expect(screen.getByLabelText('Take photo')).toBeOnTheScreen();
   });
 });
 

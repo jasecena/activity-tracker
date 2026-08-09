@@ -7,18 +7,25 @@ import { isCaptureOrientation, type CaptureOrientation } from './orientation';
 export {
   CAMERA_WRITES_UPRIGHT_PIXELS,
   displayRotationFor,
-  dragUpBy,
   isCaptureOrientation,
   isQuarterTurn,
   oppositeEdge,
   stageSizeFor,
   topEdgeFor,
   uprightRotationFor,
-  zoomFromDrag,
-  ZOOM_TRAVEL_POINTS,
 } from './orientation';
 export type { CaptureOrientation, Degrees, Edge, Size } from './orientation';
-export { lensLabel, orderLenses, worthOffering } from './lenses';
+export {
+  deviceFactorFor,
+  dialPositionOf,
+  dialSpecFor,
+  displayFromDrag,
+  focalLength35mm,
+  formatDisplayFactor,
+  mmAt,
+  pickDialCamera,
+} from './optics';
+export type { CameraDescription, DialSpec, DialStop, LensDescription } from './optics';
 
 /**
  * Photos, video and voice notes, as the engine sees them.
