@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 578
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 570
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -380,6 +380,13 @@ The rail is locked while anything is recording. Changing the lens rebuilds the
 capture session underneath, and the documented behaviour for the same rebuild —
 flipping the camera — is that it _stops_ the recording. So whatever a clip
 starts on it finishes on, while a photograph can be taken on any of them.
+
+**Correcting a journey's activity type is a long press, not a swipe.** A row on
+a vertically scrolling list has to hand a horizontal drag back to the scroller
+often enough that a swipe is unreliable by nature — reported from a phone as
+simply not working — and a correction that only sometimes happens is worse than
+a menu that always does. `SegmentRow` already had `onLongPress`; the gesture
+component built for this is gone.
 
 **The zoom is measured from the start of each gesture, never accumulated.**
 Adding deltas per movement drifts, and it means letting go and repeating the

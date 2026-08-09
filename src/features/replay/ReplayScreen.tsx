@@ -12,7 +12,6 @@ import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
-import { SwipeToCorrect } from '@/components/SwipeToCorrect';
 import { StatTile } from '@/components/StatTile';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
@@ -335,31 +334,24 @@ export function ReplayScreen({
               {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
             </Text>
           ) : (
-            segments.map((segment) => {
-              const row = (
-                <SegmentRow
-                  key={segment.id}
-                  segment={segment}
-                  places={places}
-                  tzOffsetMinutes={tzOffsetMinutes}
-                  onOpen={onOpenSegment}
-                />
-              );
+            segments.map((segment) => (
+              <SegmentRow
+                key={segment.id}
+                segment={segment}
+                places={places}
+                tzOffsetMinutes={tzOffsetMinutes}
+                onOpen={onOpenSegment}
+                /* Long press rather than a swipe. A row on a list that scrolls
+                   vertically has to hand a horizontal drag back to the
+                   scroller often enough that the gesture is unreliable by
+                   nature, and a correction that only sometimes happens is
+                   worse than a menu that always does.
 
-              // Only a journey. A stay has no activity type, so a stay that
-              // slid sideways would be a gesture that leads nowhere.
-              if (segment.kind !== 'move' || !onCorrectMode) return row;
-
-              return (
-                <SwipeToCorrect
-                  key={segment.id}
-                  onSwipe={() => onCorrectMode(segment)}
-                  accessibilityLabel={`Change what ${modeLabel(segment.mode)} at ${formatClockTime(segment.startedAt, tzOffsetMinutes)} really was`}
-                >
-                  {row}
-                </SwipeToCorrect>
-              );
-            })
+                   Only a journey. A stay has no activity type, so a stay that
+                   opened this would be an action leading nowhere. */
+                onLongPress={onCorrectMode && segment.kind === 'move' ? () => onCorrectMode(segment) : undefined}
+              />
+            ))
           )}
         </View>
       </ScrollView>
