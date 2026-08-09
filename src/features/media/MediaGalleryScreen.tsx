@@ -247,7 +247,7 @@ export function MediaGalleryScreen({
       {/* Over the capture, not above it. A header and a subtitle cost about a
           fifth of the screen on a phone, and what this tab is for is looking at
           the picture. */}
-      <View style={styles.topBar} pointerEvents="box-none">
+      <View style={[styles.topBar, panel !== 'none' && styles.stripHidden]} pointerEvents="box-none">
         <Text style={styles.counter}>
           {safeIndex + 1} of {ordered.length}
         </Text>
@@ -283,7 +283,10 @@ export function MediaGalleryScreen({
             <View style={[styles.page, { width }]}>
               <Stage
                 item={item}
-                live={position === safeIndex}
+                // A panel over the capture means you are not looking at the
+                // capture. A clip that carries on playing behind the grid is
+                // the same fault as one playing behind another tab.
+                live={panel === 'none' && position === safeIndex}
                 uri={position === safeIndex ? file.uri : null}
                 failed={position === safeIndex && file.failed}
                 opening={position === safeIndex && file.uri === null && !file.failed}
@@ -408,8 +411,8 @@ export function MediaGalleryScreen({
         onViewableItemsChanged={({ viewableItems }) => {
           images.load(viewableItems.map((entry) => entry.item as MediaItem));
         }}
-        style={[styles.stripBar, panel === 'info' && styles.stripHidden]}
-        pointerEvents={panel === 'info' ? 'none' : 'auto'}
+        style={[styles.stripBar, panel !== 'none' && styles.stripHidden]}
+        pointerEvents={panel === 'none' ? 'auto' : 'none'}
         contentContainerStyle={styles.strip}
         renderItem={({ item, index: position }) => {
           const uri = images.uriFor(item);
@@ -806,7 +809,7 @@ const styles = StyleSheet.create({
   stripBar: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 1, flexGrow: 0 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   turning: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 148 },
+  clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 148, zIndex: 2 },
   info: {
     position: 'absolute',
     left: 0,
