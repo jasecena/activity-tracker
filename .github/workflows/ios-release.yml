@@ -286,8 +286,12 @@ jobs:
             # tilde literally — so every failure shipped an artifact with no
             # screen hierarchy in it, and the v0.2.14 "Element not found: Back"
             # had to be diagnosed by guesswork.
-            if maestro --device "$SIM_UDID" test "$RUNNER_TEMP/smoke.yaml" \
-                 --debug-output "$RUNNER_TEMP/maestro-debug" \
+            # `--debug-output` is a *global* option, so it belongs before the
+            # subcommand. After it, Maestro ignores it silently — which is why
+            # the artifact still arrived with no hierarchy in it after the
+            # first attempt at this fix.
+            if maestro --device "$SIM_UDID" --debug-output "$RUNNER_TEMP/maestro-debug" \
+                 test "$RUNNER_TEMP/smoke.yaml" \
                  --format junit --output "$RUNNER_TEMP/maestro-report.xml"; then
               echo "::endgroup::"
               echo "Smoke passed on attempt ${attempt}."
