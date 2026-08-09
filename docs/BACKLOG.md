@@ -224,6 +224,23 @@ sit the cursor at the place through the gap rather than saying "No signal"
 as measured stillness anywhere the distinction could matter — calories already
 count movement only, so they are safe by construction.
 
+## 11. Backup and sync, to an S3 bucket
+
+The store, backed up off the phone — the item the architecture has been
+waiting for: media encryption moved to files precisely because "encryption
+belongs at the boundary where data actually leaves the phone — the sync that
+is coming — and the bytes get sealed on the way out". This is that sync.
+
+Direction so far, superseding the earlier parked note: the destination is an
+S3 bucket rather than a hosted service. Everything is sealed client-side
+before upload under keys that never leave the device's keychain family, so
+the bucket holds ciphertext and its operator holds nothing. Decisions when
+work starts: bucket credentials on device (scoped, write-mostly), what the
+restore story is on a new phone (the key is THIS_DEVICE_ONLY today — restore
+is the hard half of this feature, not upload), scheduling (manual first),
+and what the one-network-request rule becomes — this widens it far more than
+Apple Maps tiles did, and the reasoning must be rewritten with it.
+
 ---
 
 Parked separately, designs already written: photo library import (reviewed,
