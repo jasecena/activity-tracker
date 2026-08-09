@@ -131,6 +131,45 @@ not cover, and putting one into Photos is the deliberate, visible exception.
 And what lands in Photos is a copy: forgetting the capture here afterwards
 does not reach into the library, same shape as the import rule in reverse.
 
+## 9. Compact the stationary fixes
+
+An afternoon at a desk is hundreds of readings at the same spot at zero speed,
+and they say one thing between them: _here, from then until then_. Keeping the
+first and last — the arrival and the departure — says it just as well, and the
+rest is exactly the "non-necessary data" this app should not be hoarding.
+
+**The trap, recorded here so nobody builds the obvious version:** the timeline
+is re-derived from the fix buffer, and _a gap is a hole, never a straight
+line_ — no fix for `gapMs` closes whatever is open and the day simply stops.
+Delete the middle of a three-hour stay from the live buffer and the fold sees
+two lonely fixes an hour apart: the stay becomes a hole, and the cleanup has
+eaten an afternoon. Naive deletion is not a smaller buffer, it is a different
+day.
+
+So compaction has two safe shapes, by where the fixes live:
+
+- **The archive: compact fully.** A frozen day's segments are its record and
+  nothing re-folds archived fixes — the architecture guarantees it ("nothing
+  reads the archive to build a timeline"). Collapsing a zero-speed run to its
+  endpoints there is pure disk saving with no one downstream to disturb. This
+  is also where the work naturally lives: `pruneBuffer` already visits every
+  fix at freeze time, so compaction is a filter in a pass that already runs.
+- **The live buffer: keep a skeleton.** Today still gets re-folded, so a
+  stationary run must keep one fix per interval comfortably inside `gapMs` —
+  still a huge reduction (a reading every few minutes instead of hundreds),
+  and the fold's stay comes out identical. Endpoint-only is never safe here.
+
+The trigger should be the freeze, automatically — the moment the user himself
+suggested. A cleanup button is a chore the app assigns its owner, and this
+app's house style is that it coarsens and maintains itself (the battery lens,
+the merges dropped on launch, the archive trimmed on the log's own cutoff).
+Regularity comes free: freezing already happens daily.
+
+Zero-speed should be judged from consecutive positions, not the platform's
+speed estimate, for the reason already settled: Doppler speed lies for seconds
+after stopping. The cluster test is the same arithmetic `judgeFix` and the
+stay machine already trust.
+
 ---
 
 Parked separately, designs already written: photo library import (reviewed,
