@@ -212,8 +212,17 @@ function AppleMapsBackend({ bounds, tracks, marks, circles, cursor, height, labe
         annotations={[
           ...marks.map((mark) => ({
             id: mark.id,
+            // `title` and not `text`: the title is the callout you get for
+            // tapping the pin, the text is a label drawn permanently beside it.
+            // Apple Maps is already covered in its own names for the same
+            // places, and ours landed on top of them at the same size — two
+            // labels for one building, one of them redundant and both of them
+            // in the way of the map underneath.
+            //
+            // The offline canvas keeps its labels. Nothing else there draws a
+            // name at all, so removing them would leave a screen of unnamed
+            // dots rather than an uncluttered map.
             title: mark.label,
-            text: mark.label,
             coordinates: { latitude: mark.at.lat, longitude: mark.at.lon },
             backgroundColor: MARK_COLORS[mark.kind],
             textColor: colors.onAccent,
