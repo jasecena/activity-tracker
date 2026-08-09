@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { now } from './clock';
 import { eraseAllMedia } from './mediaStore';
+import { record } from './timing';
 import { destroyKey, open, seal } from './vault';
 
 /**
@@ -142,6 +144,9 @@ export async function dropRetiredKeys(): Promise<void> {
 
 /** Reads, decrypts and parses a stored value, or null if it is missing or unusable. */
 export async function readJson<T>(key: StorageKey): Promise<T | null> {
+  // Every launch read funnels through here, so timing this one function is a
+  // per-store breakdown of the slow first tab for free.
+  const began = now();
   try {
     const envelope = await AsyncStorage.getItem(key);
     if (envelope === null) return null;
@@ -151,6 +156,7 @@ export async function readJson<T>(key: StorageKey): Promise<T | null> {
     // longer speak. Identical handling, because there is nothing else to do.
     if (plaintext === null) return null;
 
+    record(`read ${key} (${Math.round(envelope.length / 1024)} kB)`, now() - began);
     return JSON.parse(plaintext) as T;
   } catch (error) {
     console.warn(`Discarding unreadable stored value for ${key}`, error);

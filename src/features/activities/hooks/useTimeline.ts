@@ -8,6 +8,7 @@ import { now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/cloc
 import { freezeFinishedDays } from '@/services/dayLog';
 import { readBuffer } from '@/services/fixBuffer';
 import type { Settings } from '@/services/settings';
+import { record, timed } from '@/services/timing';
 
 export interface Timeline {
   ready: boolean;
@@ -73,17 +74,22 @@ export function useTimeline(settings: Settings, labels: readonly JourneyLabel[],
       const at = readNow();
       const offset = readTzOffset(at);
 
-      const buffered = await readBuffer();
+      const buffered = await timed('read fix buffer', () => readBuffer());
+      // The fold is synchronous, so it is timed by hand rather than wrapped.
+      const foldBegan = readNow();
       const { segments, rejected: dropped } = segmentFixes(buffered, settings.segmentation);
+      record(`fold ${buffered.length} fixes`, readNow() - foldBegan);
 
       // Freeze first: it writes finished days to the log and shrinks the
       // buffer, and returns the log we then read the past out of.
-      const log = await freezeFinishedDays({
-        derived: segments,
-        now: at,
-        tzOffsetMinutes: offset,
-        retentionDays: settings.retentionDays,
-      });
+      const log = await timed('freeze finished days', () =>
+        freezeFinishedDays({
+          derived: segments,
+          now: at,
+          tzOffsetMinutes: offset,
+          retentionDays: settings.retentionDays,
+        }),
+      );
 
       if (!live) return;
 

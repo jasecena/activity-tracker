@@ -7,6 +7,7 @@ import type { Fix, RejectionReason } from '@/core/geo';
 import { totalBytes, type MediaItem } from '@/core/media';
 import type { Place } from '@/core/places';
 import type { Segment } from '@/core/segments';
+import { measuredSpans } from '@/services/timing';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { shareCsv } from '@/services/exportFile';
 import { allFixes, archivedCount } from '@/services/fixBuffer';
@@ -145,6 +146,22 @@ export function DataScreen({
           hours can be built from a handful of fixes. Short segments are then folded away: a stop under 3 minutes, or a
           movement under 60 m or 45 seconds, is merged into what surrounds it rather than becoming its own row.
         </Text>
+
+        {/* Where this launch's time went, slowest first. The measurements the
+            performance work on the backlog will rank by — printed here because
+            a number nobody can see is a number nobody acts on. */}
+        <Text style={styles.sectionLabel}>THIS SESSION, MEASURED</Text>
+        <View style={styles.card}>
+          {measuredSpans().length === 0 ? (
+            <Text style={styles.footnote}>Nothing measured yet this session.</Text>
+          ) : (
+            measuredSpans()
+              .slice(0, 12)
+              .map((span, position) => (
+                <Row key={`${span.name}-${position}`} label={span.name} value={`${span.ms} ms`} />
+              ))
+          )}
+        </View>
 
         <Text style={styles.sectionLabel}>EXPORT</Text>
         <View style={styles.card}>
