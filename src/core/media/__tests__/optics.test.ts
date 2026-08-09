@@ -1,10 +1,7 @@
 import {
   deviceFactorFor,
-  mmAt,
   zoomPropFor,
-  dialPositionOf,
   dialSpecFor,
-  displayFromDrag,
   focalLength35mm,
   formatDisplayFactor,
   pickDialCamera,
@@ -147,83 +144,7 @@ describe('deviceFactorFor', () => {
   });
 });
 
-describe('displayFromDrag', () => {
-  const spec = dialSpecFor(TRIPLE)!;
-  const TRAVEL = 300;
-
-  it('starts where the gesture started', () => {
-    expect(displayFromDrag(spec, 1, 0, TRAVEL)).toBeCloseTo(1, 9);
-  });
-
-  /**
-   * Logarithmic: the same length of drag multiplies rather than adds, so
-   * 1× → 2× and 2× → 4× are the same distance under the finger. This is what
-   * makes the far end of the dial usable at all.
-   */
-  it('moves multiplicatively, like every camera dial', () => {
-    // One full travel crosses the whole range, in either direction.
-    expect(displayFromDrag(spec, 0.5, TRAVEL, TRAVEL)).toBeCloseTo(6, 6);
-    expect(displayFromDrag(spec, 6, -TRAVEL, TRAVEL)).toBeCloseTo(0.5, 6);
-    // And equal drags multiply rather than add: the step that doubles 0.5
-    // doubles 1 from where it stands.
-    const half = displayFromDrag(spec, 0.5, TRAVEL * (Math.log(2) / Math.log(12)), TRAVEL);
-    const one = displayFromDrag(spec, 1, TRAVEL * (Math.log(2) / Math.log(12)), TRAVEL);
-    expect(half).toBeCloseTo(1, 6);
-    expect(one).toBeCloseTo(2, 6);
-  });
-
-  it('stops at the ends rather than running past them', () => {
-    expect(displayFromDrag(spec, 5, TRAVEL * 3, TRAVEL)).toBe(6);
-    expect(displayFromDrag(spec, 0.6, -TRAVEL * 3, TRAVEL)).toBe(0.5);
-  });
-
-  it('round-trips with dialPositionOf', () => {
-    for (const display of [0.5, 1, 2, 3, 6]) {
-      const position = dialPositionOf(spec, display);
-      expect(displayFromDrag(spec, spec.minDisplay, position * TRAVEL, TRAVEL)).toBeCloseTo(display, 6);
-    }
-  });
-});
-
-describe('mmAt', () => {
-  const spec = dialSpecFor(TRIPLE)!;
-
-  it('prints each lens own number at its stop', () => {
-    expect(mmAt(spec, 0.5)).toBe(13);
-    expect(mmAt(spec, 1)).toBe(24);
-    expect(mmAt(spec, 3)).toBe(77);
-  });
-
-  /**
-   * Between stops the phone is cropping, and a crop multiplies the focal
-   * length: 2× on the 24 mm main is 48 mm — the exact label in the built-in
-   * camera that this dial is copying.
-   */
-  it('multiplies through a crop', () => {
-    expect(mmAt(spec, 2)).toBe(48);
-    expect(mmAt(spec, 0.7)).toBe(18);
-    expect(mmAt(spec, 6)).toBe(154);
-  });
-});
-
 describe('degenerate cameras', () => {
-  /**
-   * A dial whose range is a single point — one lens, digital ceiling of 1.
-   * Every log-space function divides by the range's span, so this is the
-   * arrangement that turns into NaN if it is not named explicitly.
-   */
-  const POINT: CameraDescription = {
-    ...WIDE_ONLY,
-    videoMaxZoomFactor: 1,
-  };
-
-  it('keeps a rangeless dial at its only value rather than dividing by zero', () => {
-    const spec = dialSpecFor(POINT)!;
-
-    expect(displayFromDrag(spec, 1, 100, 300)).toBe(1);
-    expect(dialPositionOf(spec, 1)).toBe(0);
-  });
-
   it('caps the dial at the hardware ceiling when that is the lower bound', () => {
     // Ceiling of 3 in device space on a single wide lens: display max is 3,
     // beneath the 2× -of-last-stop rule's 2.
@@ -254,9 +175,8 @@ describe('degenerate cameras', () => {
       ...WIDE_ONLY,
       constituents: [{ localizedName: 'Back Camera', deviceType: 'x', fieldOfViewDeg: 0 }],
     };
-    const spec = dialSpecFor(blind)!;
 
-    expect(mmAt(spec, 2)).toBe(0);
+    expect(dialSpecFor(blind)?.stops[0]?.mm).toBe(0);
   });
 });
 

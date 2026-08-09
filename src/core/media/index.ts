@@ -17,12 +17,9 @@ export {
 export type { CaptureOrientation, Degrees, Edge, Size } from './orientation';
 export {
   deviceFactorFor,
-  dialPositionOf,
   dialSpecFor,
-  displayFromDrag,
   focalLength35mm,
   formatDisplayFactor,
-  mmAt,
   pickDialCamera,
   zoomPropFor,
 } from './optics';

@@ -153,49 +153,6 @@ export function deviceFactorFor(spec: DialSpec, display: number): number {
 }
 
 /**
- * Where a drag lands, in display space, moving logarithmically.
- *
- * Logarithmic because that is how zoom feels linear: the step from 1× to 2×
- * and the step from 2× to 4× are the same size of change to the eye, and the
- * built-in camera spaces its dial exactly this way. A linear dial spends half
- * its length between the last two stops.
- *
- * Measured from where the gesture began, like the old dial and for the same
- * reason: accumulating per-move deltas drifts, and letting go and repeating
- * the same movement should give the same answer.
- */
-export function displayFromDrag(spec: DialSpec, startedAtDisplay: number, dragBy: number, travel: number): number {
-  const span = Math.log(spec.maxDisplay / spec.minDisplay);
-  if (span <= 0) return spec.minDisplay;
-  const startLog = Math.log(startedAtDisplay / spec.minDisplay) / span;
-  const position = Math.max(0, Math.min(1, startLog + dragBy / travel));
-  return spec.minDisplay * Math.exp(position * span);
-}
-
-/** The fraction of the dial's length where a display factor sits, 0 to 1. */
-export function dialPositionOf(spec: DialSpec, display: number): number {
-  const span = Math.log(spec.maxDisplay / spec.minDisplay);
-  if (span <= 0) return 0;
-  const clamped = Math.max(spec.minDisplay, Math.min(spec.maxDisplay, display));
-  return Math.log(clamped / spec.minDisplay) / span;
-}
-
-/**
- * The focal length to print beside an arbitrary display factor.
- *
- * Between stops the phone is cropping, and a crop multiplies the equivalent
- * focal length linearly: 2× on the 24 mm main lens reads 48 mm, which is
- * exactly what the built-in camera prints there. The governing lens is the
- * last stop at or below the factor, so just past the telephoto hand-off the
- * number runs on from 77 rather than from 24.
- */
-export function mmAt(spec: DialSpec, display: number): number {
-  const governing = [...spec.stops].reverse().find((stop) => stop.display <= display) ?? spec.stops[0];
-  if (!governing || governing.mm <= 0) return 0;
-  return Math.round(governing.mm * (display / governing.display));
-}
-
-/**
  * What the big number on the dial says.
  *
  * The built-in camera's convention: below 1× one decimal ("0.5"), above it one

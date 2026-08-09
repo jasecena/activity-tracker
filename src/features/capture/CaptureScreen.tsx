@@ -2,13 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type CameraType } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/core/format';
 import {
-  deviceFactorFor,
   dialSpecFor,
-  displayFromDrag,
   formatDisplayFactor,
   pickDialCamera,
   zoomPropFor,
@@ -25,8 +23,6 @@ import { describeBackCameras, describeFrontCameras } from '@/services/optics';
 import { askPosition } from '@/services/position';
 import { holdScreenAwake, releaseScreenAwake } from '@/services/wakefulness';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
-
-import { ZoomWheel } from '@/components/ZoomWheel';
 
 import type { UseMedia } from './hooks/useMedia';
 
@@ -50,15 +46,6 @@ interface CaptureScreenProps {
  * encrypted on the way in and decrypted again to play.
  */
 const MAX_VIDEO_SECONDS = 60;
-
-/**
- * How far the finger travels along the wheel to cross the whole range.
- *
- * The wheel's rim, in points. Long enough that the stops have room between
- * them, short enough that ultra-wide to full telephoto is one comfortable
- * sweep of a thumb.
- */
-const WHEEL_TRAVEL = 320;
 
 type Mode = 'photo' | 'video' | 'voice';
 
@@ -138,8 +125,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    */
   const started = useRef<{ at: Fix | null; orientation: CaptureOrientation | null }>({ at: null, orientation: null });
 
-  /** True while a finger is on the wheel, which is when the whole wheel shows. */
-  const [turning, setTurning] = useState(false);
   /**
    * What the cameras on this side of the phone actually are, and where the
    * zoom is in *display* space — the space where the main lens is 1× and the
@@ -149,25 +134,8 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    * module missing. The viewfinder still works; there is simply no wheel.
    */
   const [dial, setDial] = useState<DialSpec | null>(null);
-  /**
-   * The zoom, and the finger's displacement it was last measured against, in
-   * **one** piece of state — updated only through the functional form.
-   *
-   * Three attempts got here. A `PanResponder` is rebuilt every render, so its
-   * callbacks close over the render that made them; a gesture that gets
-   * re-granted mid-drag runs an *older* closure, whose idea of the current
-   * zoom is whatever it was when that render happened. Reported exactly: the
-   * wheel rose a little and then snapped back to the stop it started from,
-   * before the finger even lifted — the stale base reasserting itself.
-   *
-   * Reading nothing and accumulating instead removes the whole class. Each
-   * move applies the distance since the last event to whatever the zoom
-   * *actually* is, inside the updater, where React hands over the current
-   * value. A re-grant can then do no harm: it re-baselines the displacement
-   * and leaves the zoom alone.
-   */
-  const [turn, setTurn] = useState({ zoom: 1, dx: 0 });
-  const displayZoom = turn.zoom;
+  /** Which stop the camera is on, in display space — 0.5, 1 or 3. */
+  const [displayZoom, setDisplayZoom] = useState(1);
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
 
@@ -177,60 +145,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const camera = useRef<CameraView | null>(null);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-
-  /**
-   * The wheel: drag left to zoom in, right to zoom out, on the band above the
-   * shutter. Horizontal because the wheel is a wheel — the finger turns it —
-   * and dragging left brings the higher numbers, which sit to the right of the
-   * marker, underneath it. The same direction the built-in camera turns.
-   *
-   * Each movement sets the zoom **on the device, by factor, natively**. The
-   * `zoom` prop is not involved: its mapping runs through a format-dependent
-   * maximum, so a factor computed against it lands near a stop rather than on
-   * it, and it cannot ramp. The finger is the smoothing while dragging;
-   * `rampZoomTo` does the smoothing when a stop is tapped.
-   *
-   * Rebuilt each render on purpose — memoising a responder means callbacks
-   * that close over the first render for ever, and both ways of patching that
-   * up are forbidden here by lint rules that are right to forbid them.
-   */
-  const wheelGesture = PanResponder.create({
-    // *Capture* handlers, and that is the whole fix. The shutter is a
-    // `Pressable`, so it becomes the responder the moment a finger lands on
-    // it, and a parent asking politely afterwards is never consulted — the
-    // drag died after three thousandths of a turn, which is exactly what the
-    // diagnostics showed. The capture phase runs on the ancestors *before* the
-    // target, so this takes the gesture off the button once it is clearly a
-    // sideways drag, while a tap that never moves is left alone.
-    onStartShouldSetPanResponderCapture: () => false,
-    onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-      Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_event, gesture) =>
-      Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    // Nothing may take it back mid-turn. Without this the scroll views and
-    // buttons underneath can reclaim it, which reads as the wheel sticking.
-    onPanResponderTerminationRequest: () => false,
-    // Only the baseline moves here. The zoom is deliberately untouched: a
-    // grant that adjusted it would be the stale-closure bug again.
-    onPanResponderGrant: (_event, gesture) => {
-      setTurn((current) => ({ ...current, dx: gesture.dx }));
-      setTurning(true);
-    },
-    onPanResponderMove: (_event, gesture) => {
-      if (!dial) return;
-      setTurn((current) => ({
-        dx: gesture.dx,
-        // Leftward is negative and means "more", so the sign flips. Applied to
-        // `current.zoom` — what the zoom actually is — rather than to anything
-        // this closure remembers. Setting it *is* setting the camera: the prop
-        // carries the factor, exactly inverted.
-        zoom: displayFromDrag(dial, current.zoom, -(gesture.dx - current.dx), WHEEL_TRAVEL),
-      }));
-    },
-    onPanResponderRelease: () => setTurning(false),
-    onPanResponderTerminate: () => setTurning(false),
-  });
 
   const needsCamera = mode !== 'voice';
   const needsMicrophone = mode !== 'photo';
@@ -271,9 +185,8 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
       if (!live) return;
       const spec = dialSpecFor(pickDialCamera(cameras));
       setDial(spec);
-      // Back to the main lens, and the baseline with it: a stale displacement
-      // against a fresh camera is a turn that starts by jumping.
-      setTurn({ zoom: 1, dx: 0 });
+      // Back to the main lens: the two sides do not share a range.
+      setDisplayZoom(1);
     })();
     return () => {
       live = false;
@@ -543,27 +456,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       )}
 
-      {/* Temporary, and deliberately ugly: the zoom has been theorised about
-          twice and fixed twice without either fix being provable from here,
-          because a simulator has no cameras and Jest has no AVFoundation. One
-          screenshot of this line says whether the value is wrong or the camera
-          is ignoring a correct one. It comes out the moment that is answered. */}
-      {needsCamera && dial ? (
-        <View style={styles.diagnostics} pointerEvents="none">
-          <Text style={styles.diagnosticsText}>
-            {dial.cameraName ?? 'no camera'} · max {dial.videoMaxZoomFactor.toFixed(2)} · wide{' '}
-            {dial.wideFactor.toFixed(2)}
-          </Text>
-          <Text style={styles.diagnosticsText}>
-            shown {displayZoom.toFixed(3)}× · device {deviceFactorFor(dial, displayZoom).toFixed(3)} · prop{' '}
-            {zoomPropFor(dial, displayZoom).toFixed(4)}
-          </Text>
-          <Text style={styles.diagnosticsText}>
-            stops {dial.stops.map((stop) => `${stop.display}=${stop.factor}`).join(' ')}
-          </Text>
-        </View>
-      ) : null}
-
       {state === 'recording' && needsCamera ? (
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={[styles.recordingBadge, upright]}>
@@ -637,17 +529,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       ) : null}
 
-      {/* The zoom zone: the wheel, the stops and the shutter row, in one
-          column. Dragging sideways anywhere across it turns the wheel —
-          including the grey of the wheel itself, which is where a hand
-          naturally goes — and everything in it stays tappable, because the
-          gesture is only taken once the finger is clearly moving. */}
-      <View
-        style={styles.bottomBar}
-        pointerEvents="box-none"
-        {...(needsCamera && dial ? wheelGesture.panHandlers : {})}
-      >
-        {needsCamera && dial ? <ZoomWheel spec={dial} display={displayZoom} active={turning} /> : null}
+      <View style={styles.bottomBar} pointerEvents="box-none">
         {problem ? <Text style={styles.problem}>{problem}</Text> : null}
 
         {mode === 'video' && state !== 'recording' ? (
@@ -666,21 +548,12 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             — the built-in camera does the same mid-clip. */}
         {needsCamera && dial && dial.stops.length > 1 ? (
           <View style={styles.stopRow}>
-            {dial.stops.map((stop, index) => {
-              const atStop = Math.abs(displayZoom - stop.display) < 0.05;
-              // Between stops, the nearest one *below* carries the reading —
-              // which is what the built-in camera does, and what was missing:
-              // the wheel fades when the finger lifts, and nothing else said
-              // where the zoom had got to, so a turn that worked looked like a
-              // turn that had been thrown away.
-              const next = dial.stops[index + 1];
-              const governs =
-                !atStop && displayZoom > stop.display && (next === undefined || displayZoom < next.display);
-              const chosen = atStop || governs;
+            {dial.stops.map((stop) => {
+              const chosen = Math.abs(displayZoom - stop.display) < 0.05;
               return (
                 <Pressable
                   key={stop.deviceType}
-                  onPress={() => setTurn((current) => ({ ...current, zoom: stop.display }))}
+                  onPress={() => setDisplayZoom(stop.display)}
                   accessibilityRole="button"
                   accessibilityLabel={`Zoom to ${formatDisplayFactor(stop.display)}x, ${stop.mm} millimetres`}
                   style={({ pressed }) => [
@@ -691,7 +564,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
                   ]}
                 >
                   <Text style={[styles.stopText, chosen && styles.stopTextOn]}>
-                    {chosen ? `${formatDisplayFactor(displayZoom)}x` : formatDisplayFactor(stop.display)}
+                    {formatDisplayFactor(stop.display)}x
                   </Text>
                 </Pressable>
               );
@@ -822,17 +695,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   controlsReversed: { flexDirection: 'row-reverse' },
-  diagnostics: {
-    position: 'absolute',
-    top: 52,
-    left: spacing.sm,
-    right: spacing.sm,
-    backgroundColor: 'rgba(11,15,20,0.72)',
-    borderRadius: radius.sm,
-    padding: spacing.xs,
-    gap: 2,
-  },
-  diagnosticsText: { ...typography.caption, fontSize: 10, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
   stopRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
   stopPill: {
     minWidth: 40,

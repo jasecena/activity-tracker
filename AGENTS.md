@@ -351,63 +351,39 @@ top, the filmstrip along the bottom, the mode rail down one edge and the zoom
 wheel over the shutter. Only the empty gallery keeps a heading, because there
 is nothing behind it to look at.
 
-**The zoom is a wheel with real numbers on it, and the numbers come from a
-local native module.** `expo-camera` exposes a 0-to-1 `zoom` and lens names,
-and nothing else — no factors, no switch-over points, no fields of view. The
-built-in camera's dial (`0.5 13MM`, `2x 48MM`) is made of facts AVFoundation
-holds and Expo does not pass on, so `modules/camera-optics` reads them out:
-the first native code in this repository, one Swift file, autolinked from
-`modules/` with everything else still managed Expo.
+**Zoom is three buttons — 0.5, 1 and 3 — and the numbers behind them are real.**
+A wheel you turned with a finger was built, refined over four releases and
+withdrawn: it was never reliably better than tapping a lens, and the gesture
+cost more than the control was worth. What survives is the part that was always
+sound — `modules/camera-optics`, one Swift file reading what AVFoundation knows
+and Expo does not pass on, so the stops sit exactly where the lenses take over
+(`virtualDeviceSwitchOverVideoZoomFactors`) and the millimetres are derived
+from each lens's measured field of view rather than looked up.
 
-Three facts make the wheel honest. The stops sit at
-`virtualDeviceSwitchOverVideoZoomFactors`, which is where the phone really
-changes lens. The millimetres are derived from each lens's measured field of
-view — f = 18/tan(fov/2) — not looked up, so they are right on models that do
-not exist yet. And the dial drives the **virtual** camera (Triple, or Dual
-Wide), because the default device is the bare wide lens and cannot reach the
-ultra-wide at all: selecting the virtual device is the difference between a
-zoom and a crop.
+The dial drives the **virtual** camera (Triple, or Dual Wide), and that is the
+difference between a zoom and a crop: the default device is the bare wide lens
+and cannot reach the ultra-wide at all.
 
-Two number spaces run through `core/media/optics.ts`: device factors (1.0 is
-the widest lens, what AVFoundation speaks) and display factors (1× is the main
-lens, what a person means). They differ by the wide lens's switch-over factor,
-and confusing them puts every number on the dial out by exactly 2×.
+Two number spaces run through `core/media/optics.ts`: device factors, where 1.0
+is the widest lens and AVFoundation speaks, and display factors, where 1× is the
+main lens and a person speaks. They differ by the wide lens's switch-over
+factor, and confusing them puts every number out by exactly 2×.
 
-**The zoom goes through the `zoom` prop, and the ecosystem's own advice was
-read before settling on that.** `expo-camera`'s iOS source raises the device's
-`activeFormat.videoMaxZoomFactor` to the power of the prop, so `zoomPropFor`
-inverts it exactly — note that the _published_ formula is the older linear one
-and is wrong for this version; read the Swift, not the docs. Three things
-found while chasing a zoom that would not hold, worth not re-learning:
-`CameraView` interfering with touches on iOS is an accepted expo bug
-(expo#28966), zoom not applying is an open one (expo#33279), and the wider
-advice — expo#11032, VisionCamera's own guide — is that camera zoom should not
-be driven from React state at all, which is why the value here is accumulated
-in a single functional update rather than read.
+**The value goes through `expo-camera`'s own `zoom` prop**, which its Swift
+raises the running format's `videoMaxZoomFactor` to the power of — so
+`zoomPropFor` inverts it exactly. Read the Swift, not the docs: the published
+formula is the older linear one and is wrong for this version. The description
+is re-read when the mode changes, because photo and video run different formats
+and the exponent's base changes with them.
 
-The zoom was once set natively, by factor, and that attempt is not proof the
-approach fails: it was made while the gesture was separately broken, so the
-"shaking" it produced was the drag dying rather than the write being lost. If
-the prop path ever proves unreliable, that door is still open.
-
-The zoom is set **natively, by factor** — never through the `zoom` prop. The
-prop's mapping runs through the active format's maximum, which changes under
-the session, and it cannot ramp; `ramp(toVideoZoomFactor:)` is how the glass
-moves smoothly and the finger is the smoothing while dragging. The wheel is
-drawing only and takes no touches; the gesture lives on the shutter row —
-drag across it, through the button, edge to edge — and nowhere else, because a
-viewfinder that zooms wherever a finger brushes it zooms in pockets. The
-handlers sit on the row itself so the shutter stays tappable: a press is only
-claimed once it moves sideways, and a press that moved sideways was not a
-press. Measured from the start of each gesture, log-scaled so equal drags
-multiply.
-
-The named lens rail this replaces lasted one release. With the virtual camera
-driving, "which lens" and "how far in" are the same dial, and the stops are the
-lens switcher — tap 0.5, 1 or 3 and the glass ramps there. It also fixes a bug
-the rail shipped with: `getAvailableLensesAsync` returns localized _names_
-("Back Ultra Wide Camera"), not the device-type ids the rail's translation
-table expected, so its labels were wrong on a real phone and right in the mock.
+**What the withdrawn wheel taught, kept so it is not re-learned.** `CameraView`
+interfering with touches on iOS is an accepted expo bug (expo#28966); zoom not
+applying is an open one (expo#33279); and the wider advice — expo#11032,
+VisionCamera's own guide — is that camera zoom should not be driven from React
+state at all. A `PanResponder` rebuilt each render closes over that render, so
+a gesture re-granted mid-drag runs an older closure and reverts to its base;
+the shutter being a `Pressable` means only a _capture_-phase handler can take a
+drag off it. Any future gesture over this camera meets all three.
 
 **Correcting a journey's activity type is a long press, not a swipe.** A row on
 a vertically scrolling list has to hand a horizontal drag back to the scroller
