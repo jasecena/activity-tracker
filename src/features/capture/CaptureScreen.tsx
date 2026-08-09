@@ -18,6 +18,7 @@ import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { ensureForegroundPermission } from '@/services/location';
 import { askPosition } from '@/services/position';
+import { holdScreenAwake, releaseScreenAwake } from '@/services/wakefulness';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { ZoomDial } from '@/components/ZoomDial';
@@ -246,6 +247,29 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
       await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
     })();
   }, [visible, needsMicrophone]);
+
+  /**
+   * The screen stays on while a capture is in progress.
+   *
+   * Reported from a phone: start recording, put it down, and half a minute
+   * later the display sleeps, the phone locks and the clip is cut off. Nothing
+   * about a camera preview counts as user activity, so a recording made without
+   * touching the screen looks to iOS exactly like a phone left alone.
+   *
+   * `busy` rather than the state itself, so moving from recording to sealing
+   * does not drop the lock and take it again — the pause between the two is
+   * precisely where the phone would lock. Sealing is covered for the same
+   * reason it warns you to keep the app open: suspension mid-write leaves the
+   * capture staged rather than stored.
+   */
+  const busy = state !== 'idle';
+  useEffect(() => {
+    if (!busy) return;
+    void holdScreenAwake();
+    return () => {
+      void releaseScreenAwake();
+    };
+  }, [busy]);
 
   useEffect(() => {
     if (since === null) return;

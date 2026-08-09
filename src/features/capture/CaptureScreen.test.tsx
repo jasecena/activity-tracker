@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as CameraModule from 'expo-camera';
+import * as KeepAwakeModule from 'expo-keep-awake';
 import * as LocationModule from 'expo-location';
 
 import type { UseMedia } from './hooks/useMedia';
@@ -14,6 +15,7 @@ const location = LocationModule as unknown as typeof import('../../../__mocks__/
  * would have ended itself.
  */
 const camera = CameraModule as unknown as typeof import('../../../__mocks__/expo-camera');
+const awake = KeepAwakeModule as unknown as typeof import('../../../__mocks__/expo-keep-awake');
 
 /**
  * Reported from a phone: video recording felt laggy, the Stop button worked
@@ -283,6 +285,66 @@ describe('where a capture happened', () => {
  * gesture, that the clip is a clip, and that the key frame is the moment you
  * pressed rather than wherever the extractor happened to land.
  */
+/**
+ * Reported from a phone: start recording, put it down, and twenty or thirty
+ * seconds later the display sleeps, the phone locks, and the clip is cut off
+ * wherever it had got to. A camera preview is not user activity as far as the
+ * auto-lock timer is concerned.
+ */
+describe('keeping the screen awake', () => {
+  beforeEach(() => {
+    awake.__reset();
+  });
+
+  it('does not hold the screen on merely for being open', async () => {
+    await renderCapture(async () => null);
+
+    expect(awake.activateKeepAwakeAsync).not.toHaveBeenCalled();
+  });
+
+  it('holds it from the moment recording starts', async () => {
+    const keep = jest.fn(() => new Promise(() => undefined)) as unknown as UseMedia['keep'];
+    await renderCapture(keep);
+
+    await press('Video');
+    await press('Start video');
+
+    expect(awake.activateKeepAwakeAsync).toHaveBeenCalled();
+  });
+
+  /**
+   * The other half of the same failure. Sealing a minute of video takes
+   * seconds, the overlay asks you to keep the app open, and the phone locking
+   * itself while you do is the app creating the problem it is warning about.
+   * Dropping the lock between the two states is exactly where it would lock.
+   */
+  it('keeps holding it while the capture is being sealed', async () => {
+    const keep = jest.fn(() => new Promise(() => undefined)) as unknown as UseMedia['keep'];
+    await renderCapture(keep);
+
+    await press('Video');
+    await press('Start video');
+    await press('Stop video');
+
+    expect(screen.getByLabelText('Saving')).toBeOnTheScreen();
+    expect(awake.deactivateKeepAwake).not.toHaveBeenCalled();
+  });
+
+  // A lock held for ever is a phone that never sleeps — the opposite failure,
+  // and a much quieter one.
+  it('gives it back once the capture is stored', async () => {
+    const keep = jest.fn(async () => null) as unknown as UseMedia['keep'];
+    await renderCapture(keep);
+
+    await press('Video');
+    await press('Start video');
+    await press('Stop video');
+
+    expect(await screen.findByLabelText('Start video')).toBeOnTheScreen();
+    expect(awake.deactivateKeepAwake).toHaveBeenCalled();
+  });
+});
+
 describe('a live capture', () => {
   /**
    * The camera ends it, not a button — so the test has to end it the way the

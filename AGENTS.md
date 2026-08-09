@@ -270,6 +270,15 @@ the honest answer and every caller already handles it.
 The same jump becomes believable once enough time has passed to cover it, which
 is what keeps a flight from being permanently unrepresentable.
 
+**The screen is held awake while a capture is in progress, sealing included.**
+Nothing about a camera preview counts as user activity, so a recording made
+without touching the screen looks to the auto-lock timer exactly like a phone
+left alone — reported from a phone as a clip cut off half a minute in. The lock
+covers sealing as well, and is keyed on "busy" rather than on the state itself:
+dropping it between recording and saving would release it precisely where the
+phone would lock, and the saving overlay asks you to keep the app open while
+the app is letting the phone shut itself.
+
 **A live capture is five seconds forwards, and forwards is the only direction
 available.** Apple's Live Photo keeps a moment either side of the shutter;
 `expo-camera` has no rolling buffer and no pre-shutter capture, so frames from
