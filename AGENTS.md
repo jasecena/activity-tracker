@@ -377,8 +377,12 @@ The zoom is set **natively, by factor** — never through the `zoom` prop. The
 prop's mapping runs through the active format's maximum, which changes under
 the session, and it cannot ramp; `ramp(toVideoZoomFactor:)` is how the glass
 moves smoothly and the finger is the smoothing while dragging. The wheel is
-drawing only and takes no touches; the gesture lives on a band the screen
-owns, measured from the start of each gesture, log-scaled so equal drags
+drawing only and takes no touches; the gesture lives on the shutter row —
+drag across it, through the button, edge to edge — and nowhere else, because a
+viewfinder that zooms wherever a finger brushes it zooms in pockets. The
+handlers sit on the row itself so the shutter stays tappable: a press is only
+claimed once it moves sideways, and a press that moved sideways was not a
+press. Measured from the start of each gesture, log-scaled so equal drags
 multiply.
 
 The named lens rail this replaces lasted one release. With the virtual camera

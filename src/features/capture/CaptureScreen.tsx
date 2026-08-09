@@ -487,11 +487,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       )}
 
-      {/* The wheel, and the band of glass that turns it. The band sits where
-          the wheel's rim is, so turning it is touching it — not a hidden
-          surface somewhere else on the screen. */}
       {needsCamera && dial ? <ZoomWheel spec={dial} display={displayZoom} active={turning} /> : null}
-      {needsCamera && dial ? <View style={styles.wheelBand} {...wheelGesture.panHandlers} /> : null}
 
       {state === 'recording' && needsCamera ? (
         <View style={styles.topBar} pointerEvents="box-none">
@@ -615,7 +611,17 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         {/* Reversed rather than repositioned: the shutter stays dead centre
             under the thumb either way, and the flip button crosses to the same
             side the mode rail went to. */}
-        <View style={[styles.controls, modesEdge === 'left' && styles.controlsReversed]}>
+        {/* The row is also the zoom collar: drag across it — through the
+            shutter, edge to edge — and the wheel turns. Only here, so the rest
+            of the glass stays inert; a viewfinder that zooms wherever a finger
+            brushes it zooms in pockets. The handlers sit on the row rather
+            than a layer over it, which is what keeps the shutter and the flip
+            tappable: a press is only claimed once it moves sideways, and a
+            press that moved sideways was not a press. */}
+        <View
+          style={[styles.controls, modesEdge === 'left' && styles.controlsReversed]}
+          {...(needsCamera && dial ? wheelGesture.panHandlers : {})}
+        >
           <View style={styles.secondaryPlaceholder} />
 
           <Pressable
@@ -735,19 +741,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   controlsReversed: { flexDirection: 'row-reverse' },
-  /**
-   * The glass that turns the wheel: a band over the rim's visible arc. Its own
-   * view rather than the wheel drawing, because the drawing is `pointerEvents:
-   * none` — what you touch and what you see are two layers on purpose, so the
-   * SVG can redraw without the responder being rebuilt under a moving finger.
-   */
-  wheelBand: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 96,
-    height: 130,
-  },
   stopRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
   stopPill: {
     minWidth: 40,
