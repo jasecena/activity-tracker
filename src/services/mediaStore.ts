@@ -260,6 +260,31 @@ export async function writeMedia(
 }
 
 /**
+ * A still from a video, trying more than one instant.
+ *
+ * The very first frame is the one most likely to fail: a clip can open with a
+ * frame the decoder will not hand over, and `getThumbnailAsync` then throws
+ * rather than returning something. A capture that came out of *this* app is
+ * never long, so a quarter of a second in is still the same scene — and a
+ * thumbnail from the wrong instant beats a blank square that no launch will
+ * ever retry into existence.
+ */
+async function frameFrom(sourceUri: string): Promise<string> {
+  const attempts = [0, 250, 1_000];
+  let lastError: unknown = null;
+
+  for (const time of attempts) {
+    try {
+      return (await getThumbnailAsync(sourceUri, { time, quality: 0.6 })).uri;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error('No frame could be read');
+}
+
+/**
  * Make a small image for the filmstrip and put it beside the capture.
  *
  * Must be called while the source file still exists — before `writeMedia`
@@ -276,7 +301,7 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
   try {
     // A video has no image until a frame is pulled out of it; a photo is
     // already one. Either way what gets scaled is a plain file on disk.
-    const frameUri = kind === 'video' ? (await getThumbnailAsync(sourceUri, { time: 0, quality: 0.6 })).uri : sourceUri;
+    const frameUri = kind === 'video' ? await frameFrom(sourceUri) : sourceUri;
 
     const context = ImageManipulator.manipulate(frameUri);
     context.resize({ width: THUMB_EDGE, height: null });

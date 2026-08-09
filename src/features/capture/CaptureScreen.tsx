@@ -34,6 +34,21 @@ interface CaptureScreenProps {
  */
 const MAX_VIDEO_SECONDS = 60;
 
+/**
+ * How far one press of the zoom moves it.
+ *
+ * `CameraView`'s `zoom` is 0 to 1 across whatever range the lens has, not a
+ * magnification — 0.5 is not "2×" and there is no way to ask what it would be.
+ * So the buttons step it and the readout is a percentage of the range, which is
+ * the only honest thing to call it.
+ *
+ * There is no pinch. `expo-camera` has no gesture of its own, so pinching would
+ * mean a multi-touch responder and a hand-rolled scale, and two buttons you can
+ * hit without looking are worth more on a camera than a gesture that fights the
+ * swipe between pages.
+ */
+const ZOOM_STEP = 0.1;
+
 type Mode = 'photo' | 'video' | 'voice';
 
 const MODES: readonly { readonly key: Mode; readonly label: string; readonly icon: keyof typeof Ionicons.glyphMap }[] =
@@ -57,6 +72,7 @@ const MODES: readonly { readonly key: Mode; readonly label: string; readonly ico
 export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const [mode, setMode] = useState<Mode>('photo');
   const [facing, setFacing] = useState<CameraType>('back');
+  const [zoom, setZoom] = useState(0);
 
   /**
    * Recording and saving are separate states, and conflating them was a bug.
@@ -213,6 +229,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           ref={camera}
           style={StyleSheet.absoluteFill}
           facing={facing}
+          zoom={zoom}
           mode={mode === 'video' ? 'video' : 'picture'}
           /**
            * `"off"` is continuous autofocus. Read that twice, because the
@@ -251,6 +268,37 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
           </View>
+        </View>
+      ) : null}
+
+      {/* Down the left edge, mirroring the modes: the two things you adjust
+          while holding the phone, one under each thumb. Hidden for a voice
+          note, which has no picture to make larger. */}
+      {needsCamera ? (
+        <View style={styles.zoomRail}>
+          <Pressable
+            onPress={() => setZoom((current) => Math.min(1, current + ZOOM_STEP))}
+            disabled={zoom >= 1}
+            accessibilityRole="button"
+            accessibilityLabel="Zoom in"
+            style={({ pressed }) => [styles.zoomButton, zoom >= 1 && styles.zoomDisabled, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={24} color={colors.textPrimary} />
+          </Pressable>
+
+          {/* Only once it is doing something. A camera sitting at 0% is a
+              camera, and saying so is noise over the picture. */}
+          {zoom > 0 ? <Text style={styles.zoomText}>{Math.round(zoom * 100)}%</Text> : null}
+
+          <Pressable
+            onPress={() => setZoom((current) => Math.max(0, current - ZOOM_STEP))}
+            disabled={zoom <= 0}
+            accessibilityRole="button"
+            accessibilityLabel="Zoom out"
+            style={({ pressed }) => [styles.zoomButton, zoom <= 0 && styles.zoomDisabled, pressed && styles.pressed]}
+          >
+            <Ionicons name="remove" size={24} color={colors.textPrimary} />
+          </Pressable>
         </View>
       ) : null}
 
@@ -349,7 +397,13 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
               right hand reaches for are now on the same side. */}
           {needsCamera ? (
             <Pressable
-              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+              onPress={() => {
+                setFacing(facing === 'back' ? 'front' : 'back');
+                // The two lenses do not have the same range, so carrying a
+                // position across means the front camera opens somewhere you
+                // did not choose.
+                setZoom(0);
+              }}
               accessibilityRole="button"
               accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
               style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
@@ -408,6 +462,34 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,15,20,0.55)',
   },
   modeButtonOn: { backgroundColor: colors.manual },
+  zoomRail: {
+    position: 'absolute',
+    left: spacing.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  zoomButton: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,15,20,0.55)',
+  },
+  zoomDisabled: { opacity: 0.35 },
+  zoomText: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
+    backgroundColor: 'rgba(11,15,20,0.55)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
   bottomBar: {
     position: 'absolute',
     left: 0,

@@ -273,6 +273,21 @@ running recording or a timeline that was just derived. This reasoning survives a
 fifth tab and one level of depth; it would not survive a fifth level, deep links
 or modal routes.
 
+**The gallery and the camera are both full-bleed, and neither has a header.**
+A header and a subtitle cost about a fifth of the screen on a phone, and both
+tabs exist to look at a picture. Controls float over it: the counter and the ⋯
+at the top, the filmstrip along the bottom, the mode rail and the zoom down the
+two edges. Only the empty gallery keeps a heading, because there is nothing
+behind it to look at.
+
+**Zoom is buttons, and the number is a percentage of the range.** `CameraView`'s
+`zoom` is 0 to 1 across whatever the lens offers, not a magnification, and there
+is no way to ask what "2×" would be — so calling it 2× would be a guess printed
+as a fact. There is no pinch either: `expo-camera` has no gesture of its own, so
+one would mean a multi-touch responder and a hand-rolled scale, fighting the
+swipe between pages for something two buttons already do. Flipping the camera
+resets it, because the two lenses do not share a range.
+
 **Capture is a viewfinder, not a page.** The preview fills the screen and the
 shutter sits at the bottom under a thumb; there is no header and no list. The
 recent-captures list that used to live here is gone rather than moved — Media is

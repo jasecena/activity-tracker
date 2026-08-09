@@ -126,18 +126,30 @@ export function useMedia(): UseMedia {
       // is usable — drawing what it can — while it runs. One capture at a time,
       // and never retried within a session: whatever stopped a file being read
       // will not stop being true on the second attempt.
-      for (const item of all) {
+      //
+      // **One awaited write per capture, never two in flight.** This used to
+      // emit a patch as each step finished and fire `writeJson` without waiting
+      // — two unordered writes per item, so the second could land first and the
+      // index would keep the new file name and lose the thumbnail beside it.
+      // That is exactly what "some of the old ones still have no thumbnail"
+      // looks like: not a thumbnail that failed to be made, but one that was
+      // made and then written out of existence.
+      let working = all;
+      for (const item of working) {
         if (!live) return;
-        await bringUpToDate(item, (patch) => {
-          if (!live) return;
-          // Merged into whatever the list is *now*, not into `all`: a capture
-          // taken or deleted while this was running must not be undone by it.
-          setItems((current) => {
-            const next = current.map((existing) => (existing.id === item.id ? { ...existing, ...patch } : existing));
-            void writeJson(STORAGE_KEYS.media, next);
-            return next;
-          });
-        });
+        // Somebody captured or deleted something while this was running. The
+        // snapshot is stale, and the rest is picked up on the next launch —
+        // finishing the pass over a list that has moved would undo their edit.
+        if (touched.current) return;
+
+        const patch = await bringUpToDate(item);
+        if (!patch || !live) continue;
+
+        working = working.map((existing) => (existing.id === item.id ? { ...existing, ...patch } : existing));
+        if (touched.current) return;
+
+        setItems(working);
+        await writeJson(STORAGE_KEYS.media, working);
       }
     })();
     return () => {
@@ -238,7 +250,8 @@ export function useMedia(): UseMedia {
  * Reports each step as it lands rather than at the end, so the strip fills in
  * while the rest of the library is still being worked through.
  */
-async function bringUpToDate(item: MediaItem, onProgress: (patch: Partial<MediaItem>) => void): Promise<void> {
+async function bringUpToDate(item: MediaItem): Promise<Partial<MediaItem> | null> {
+  const patch: { fileName?: string; thumbFileName?: string } = {};
   let current = item;
 
   if (isSealed(current.fileName)) {
@@ -246,10 +259,10 @@ async function bringUpToDate(item: MediaItem, onProgress: (patch: Partial<MediaI
     // Null means it would not open — a file from a restored backup, most
     // likely. Left sealed rather than deleted: it may still open on a device
     // that has its key.
-    if (!fileName) return;
+    if (!fileName) return null;
 
     current = { ...current, fileName };
-    onProgress({ fileName });
+    patch.fileName = fileName;
   }
 
   // A *sealed* thumbnail counts as missing. It is ciphertext, and an `<Image>`
@@ -258,8 +271,11 @@ async function bringUpToDate(item: MediaItem, onProgress: (patch: Partial<MediaI
   // perfectly fine. The sealed one becomes an orphan and the next sweep takes
   // it.
   const hasThumb = current.thumbFileName !== null && !isSealed(current.thumbFileName);
-  if (current.kind === 'audio' || hasThumb) return;
+  if (current.kind !== 'audio' && !hasThumb) {
+    const thumbFileName = await backfillThumbnail(current);
+    if (thumbFileName) patch.thumbFileName = thumbFileName;
+  }
 
-  const thumbFileName = await backfillThumbnail(current);
-  if (thumbFileName) onProgress({ thumbFileName });
+  // One patch for the whole capture, so the caller writes the index once.
+  return Object.keys(patch).length > 0 ? patch : null;
 }

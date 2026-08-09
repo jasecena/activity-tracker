@@ -4,7 +4,6 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { ScreenHeader } from '@/components/ScreenHeader';
 import { formatClockTime, formatDuration } from '@/core/format';
 import type { MediaItem } from '@/core/media';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -78,10 +77,13 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
   if (ordered.length === 0) {
     return (
       <View style={styles.screen}>
-        <ScreenHeader title="Media" subtitle="Nothing captured yet" />
         <View style={styles.empty}>
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            Media
+          </Text>
           <Ionicons name="images-outline" size={44} color={colors.textMuted} />
-          <Text style={styles.emptyText}>Photos, video and voice notes appear here.</Text>
+          <Text style={styles.emptyText}>Nothing captured yet</Text>
+          <Text style={styles.emptyDetail}>Photos, video and voice notes appear here.</Text>
         </View>
       </View>
     );
@@ -89,15 +91,24 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader
-        title="Media"
-        subtitle={`${safeIndex + 1} of ${ordered.length}`}
-        actions={
-          current
-            ? [{ label: 'About this capture', icon: 'ellipsis-horizontal', onPress: () => onOpenDetails(current) }]
-            : undefined
-        }
-      />
+      {/* Over the capture, not above it. A header and a subtitle cost about a
+          fifth of the screen on a phone, and what this tab is for is looking at
+          the picture. */}
+      <View style={styles.topBar} pointerEvents="box-none">
+        <Text style={styles.counter}>
+          {safeIndex + 1} of {ordered.length}
+        </Text>
+        {current ? (
+          <Pressable
+            onPress={() => onOpenDetails(current)}
+            accessibilityRole="button"
+            accessibilityLabel="About this capture"
+            style={({ pressed }) => [styles.about, pressed && styles.pressed]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color={colors.textPrimary} />
+          </Pressable>
+        ) : null}
+      </View>
 
       <FlatList
         ref={pager}
@@ -119,7 +130,7 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
           setIndex(next);
           strip.current?.scrollToIndex({ index: next, animated: true, viewPosition: 0.5 });
         }}
-        style={styles.pager}
+        style={StyleSheet.absoluteFill}
         renderItem={({ item, index: position }) => (
           <View style={[styles.page, { width }]}>
             <Stage
@@ -153,6 +164,7 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
         onViewableItemsChanged={({ viewableItems }) => {
           images.load(viewableItems.map((entry) => entry.item as MediaItem));
         }}
+        style={styles.stripBar}
         contentContainerStyle={styles.strip}
         renderItem={({ item, index: position }) => {
           const uri = images.uriFor(item);
@@ -272,9 +284,38 @@ function AudioPlaying({ uri, durationMs }: { readonly uri: string; readonly dura
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  pager: { flex: 1 },
+  // Black, like the camera: what sits behind a picture that does not fill the
+  // frame should look deliberate rather than like a missing screen.
+  screen: { flex: 1, backgroundColor: '#000' },
   page: { flex: 1 },
+  topBar: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  counter: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    backgroundColor: 'rgba(11,15,20,0.55)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    overflow: 'hidden',
+  },
+  about: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,15,20,0.55)',
+  },
+  stripBar: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 1, flexGrow: 0 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   opening: {
     alignItems: 'center',
@@ -288,7 +329,12 @@ const styles = StyleSheet.create({
   failed: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', padding: spacing.lg },
   audio: { alignItems: 'center', gap: spacing.sm },
   audioText: { ...typography.body, color: colors.textSecondary },
-  strip: { gap: STRIP_GAP, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  strip: {
+    gap: STRIP_GAP,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(11,15,20,0.55)',
+  },
   thumb: {
     width: STRIP_SIZE,
     height: STRIP_SIZE,
@@ -303,6 +349,8 @@ const styles = StyleSheet.create({
   thumbOn: { borderColor: colors.move },
   thumbImage: { width: '100%', height: '100%' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  emptyText: { ...typography.body, color: colors.textMuted },
+  emptyTitle: { ...typography.title, color: colors.textPrimary },
+  emptyText: { ...typography.body, color: colors.textSecondary },
+  emptyDetail: { ...typography.caption, color: colors.textMuted },
   pressed: { opacity: 0.6 },
 });

@@ -90,3 +90,66 @@ describe('recording a video', () => {
     expect(await screen.findByLabelText('Start video')).toBeOnTheScreen();
   });
 });
+
+/**
+ * `CameraView`'s `zoom` is 0 to 1 across whatever range the lens has, not a
+ * magnification, so the buttons step it and the readout is a percentage. There
+ * is no pinch: `expo-camera` has no gesture of its own, and a multi-touch
+ * responder would fight the swipe between pages for the sake of a thing two
+ * buttons already do.
+ */
+describe('zooming', () => {
+  it('starts at the wide end, with nothing to say about it', async () => {
+    await renderCapture(async () => null);
+
+    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
+    expect(screen.queryByText('0%')).not.toBeOnTheScreen();
+  });
+
+  it('steps in and says how far', async () => {
+    await renderCapture(async () => null);
+
+    await press('Zoom in');
+    await press('Zoom in');
+
+    expect(screen.getByText('20%')).toBeOnTheScreen();
+  });
+
+  it('stops at the far end rather than running past it', async () => {
+    await renderCapture(async () => null);
+
+    for (let step = 0; step < 12; step += 1) await press('Zoom in');
+
+    expect(screen.getByText('100%')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Zoom in')).toBeDisabled();
+  });
+
+  it('comes back to the wide end', async () => {
+    await renderCapture(async () => null);
+
+    await press('Zoom in');
+    await press('Zoom out');
+
+    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
+  });
+
+  // The two lenses do not have the same range, so a position carried across
+  // means the front camera opens somewhere nobody chose.
+  it('goes back to wide when the camera is flipped', async () => {
+    await renderCapture(async () => null);
+
+    await press('Zoom in');
+    await press('Switch to front camera');
+
+    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
+  });
+
+  // Nothing to make larger, and a control that does nothing is worse than none.
+  it('offers nothing for a voice note', async () => {
+    await renderCapture(async () => null);
+
+    await press('Voice');
+
+    expect(screen.queryByLabelText('Zoom in')).not.toBeOnTheScreen();
+  });
+});
