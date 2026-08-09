@@ -224,7 +224,21 @@ sit the cursor at the place through the gap rather than saying "No signal"
 as measured stillness anywhere the distinction could matter — calories already
 count movement only, so they are safe by construction.
 
-## 11. Backup and sync, to an S3 bucket
+## 11. Rotating a video
+
+A photograph rotates by re-encoding one JPEG — cheap, and lossless enough at
+full quality. A video cannot: decoding and re-encoding every frame costs
+minutes, real quality and a great deal of battery, for a picture that was
+already correct in every respect but one.
+
+The right mechanism is the **preferred transform** — a rotation recorded in the
+file's metadata that every player honours, touching no pixels at all. That is
+`AVMutableComposition` work, which is the same native module items 1 to 4
+already need, so it belongs with that rather than bolted on beside the photo
+button. Until then the Rotate control is offered for photographs only, which is
+why it checks the kind rather than hiding a failure.
+
+## 12. Backup and sync, to an S3 bucket
 
 The store, backed up off the phone — the item the architecture has been
 waiting for: media encryption moved to files precisely because "encryption
