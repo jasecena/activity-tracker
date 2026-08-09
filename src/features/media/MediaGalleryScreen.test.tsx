@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { MediaItem } from '@/core/media';
+import { useVideoPlayer } from 'expo-video';
+
 import { openForPlayback, openThumbnail, releasePlayback } from '@/services/mediaStore';
 
 import { MediaGalleryScreen } from './MediaGalleryScreen';
@@ -102,6 +104,33 @@ describe('MediaGalleryScreen', () => {
     const photo = await screen.findByLabelText('Photo');
     // Same parent, both absolutely filling it: stacked, not stacked *up*.
     expect(photo).toHaveStyle({ position: 'absolute' });
+  });
+
+  /**
+   * The app's own transport. AVKit's controls consumed every drag that began
+   * on them, so no gesture of this screen's could start over a playing video —
+   * owning the controls is what makes the swipe-up and the grid possible at
+   * all. What a test can see is that the native controls are off and ours are
+   * on, wired to the player.
+   */
+  it('plays a video with its own controls, not the system ones', async () => {
+    await render(<MediaGalleryScreen items={[media(1, 'video')]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+
+    const video = await screen.findByLabelText('Video');
+    expect(video.props.nativeControls).toBe(false);
+    expect(screen.getByLabelText('Play')).toBeOnTheScreen();
+    expect(screen.getByLabelText(/Playback position/)).toBeOnTheScreen();
+  });
+
+  it('starts the clip as soon as it is the page you are on', async () => {
+    await render(<MediaGalleryScreen items={[media(1, 'video')]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+
+    await screen.findByLabelText('Video');
+    const player = (useVideoPlayer as jest.Mock).mock.results[0]?.value;
+    expect(player.play).toHaveBeenCalled();
+    // And the scrubber will actually move: without an update interval the
+    // timeUpdate event never fires and the position is a still image of zero.
+    expect(player.timeUpdateEventInterval).toBeGreaterThan(0);
   });
 
   it('draws a thumbnail for the neighbours it is not opening', async () => {

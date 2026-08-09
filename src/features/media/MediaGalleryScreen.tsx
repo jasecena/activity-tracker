@@ -8,6 +8,8 @@ import { formatClockTime, formatDuration } from '@/core/format';
 import { displayRotationFor, stageSizeFor, type CaptureOrientation, type MediaItem, type Size } from '@/core/media';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
+import { ClipControls } from '@/components/ClipControls';
+
 import { useSealedFile } from './hooks/useSealedFile';
 import { useSealedImages } from './hooks/useSealedImages';
 
@@ -326,7 +328,9 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
       </Turned>
     );
   }
-  if (item.kind === 'video') return <VideoPlaying uri={uri} orientation={item.orientation} />;
+  if (item.kind === 'video') {
+    return <VideoPlaying uri={uri} orientation={item.orientation} durationMs={item.durationMs} />;
+  }
   return <AudioPlaying uri={uri} durationMs={item.durationMs} />;
 }
 
@@ -347,19 +351,40 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
  * and a video you have deliberately swiped to should not need a second tap to
  * begin. Swiping away unmounts it, which stops it.
  */
-function VideoPlaying({ uri, orientation }: { readonly uri: string; readonly orientation: CaptureOrientation | null }) {
+function VideoPlaying({
+  uri,
+  orientation,
+  durationMs,
+}: {
+  readonly uri: string;
+  readonly orientation: CaptureOrientation | null;
+  readonly durationMs: number | null;
+}) {
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
+    // Without this the timeUpdate event never fires and the scrubber is a
+    // still image of zero. Four a second reads as live.
+    instance.timeUpdateEventInterval = 0.25;
     instance.play();
   });
-  // `nativeControls` turns with the video, so a clip shot sideways gets a
-  // sideways scrubber. That is the honest cost of rotating the view rather than
-  // the file, and the fix is the app drawing its own controls in an unturned
-  // layer above — a piece of work in its own right, not a line here.
+  /**
+   * The app's own transport, in an unturned layer above the picture.
+   *
+   * `nativeControls` went for touch routing: AVKit consumes every drag that
+   * begins on its controls, so no gesture of this screen's — swipe up for
+   * details, swipe down for the grid — could start over a playing video. It
+   * also rotated with a turned clip, printing the scrubber sideways; drawing
+   * the controls outside `Turned` is what being in charge of them buys.
+   */
   return (
-    <Turned orientation={orientation}>
-      <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls contentFit="contain" />
-    </Turned>
+    <>
+      <Turned orientation={orientation}>
+        <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls={false} contentFit="contain" />
+      </Turned>
+      <View style={styles.clipControls}>
+        <ClipControls player={player} durationMs={durationMs} />
+      </View>
+    </>
   );
 }
 
@@ -419,6 +444,7 @@ const styles = StyleSheet.create({
   stripBar: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 1, flexGrow: 0 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   turning: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 96 },
   opening: {
     alignItems: 'center',
     gap: spacing.sm,

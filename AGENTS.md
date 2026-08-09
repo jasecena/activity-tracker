@@ -413,6 +413,17 @@ recording indicator lit. `MediaGalleryScreen` opens a capture only while Media i
 visible, so a video cannot play out of sight and no decrypted file sits in the
 cache for a tab nobody is looking at.
 
+**A video plays under the app's own transport, never AVKit's.** The reason is
+touch routing rather than appearance: `nativeControls` sit in a native view
+that consumes every drag beginning on them, so no gesture of the gallery's —
+the swipe up for details, the swipe down to the grid — could start over a
+playing video. The controls are `ClipControls`: play/pause, the same `Scrubber`
+the replay screen drags through a day, and the two times. AirPlay,
+picture-in-picture and system captions went with the native controls,
+knowingly — none of the three earns the touch routing back for a diary's own
+clips. `timeUpdateEventInterval` must be set on the player or `timeUpdate`
+never fires and the scrubber is a still image of zero.
+
 **The gallery holds thumbnails, and exactly one capture.** Both lists are
 windowed and only the centre page is decrypted; the pages either side draw the
 sealed thumbnail written beside the original. A gallery that decrypted what it

@@ -15,11 +15,19 @@ export const useVideoPlayer = jest.fn((_source: unknown, setup?: (player: unknow
     pause: jest.fn(),
     replace: jest.fn(),
     release: jest.fn(),
+    seekBy: jest.fn(),
     loop: false,
     muted: false,
     playing: false,
     duration: 0,
     currentTime: 0,
+    timeUpdateEventInterval: 0,
+    // Enough of an event emitter for `useEvent` to subscribe and unsubscribe.
+    // Nothing is ever emitted: a test drives the controls through presses,
+    // and what they do to the player is what the spies above record.
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
+    removeListener: jest.fn(),
+    removeAllListeners: jest.fn(),
   };
   setup?.(player);
   return player;
