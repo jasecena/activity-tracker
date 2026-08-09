@@ -295,6 +295,25 @@ jobs:
             fi
             echo "::endgroup::"
 
+            # A third case, and the one that failed v0.2.17: the driver starts,
+            # the flow runs, and the XCUITest transport then dies mid-way —
+            # `DeviceUnreachableException`, connection refused on its own local
+            # port. That is the driver, not the app, but it looks exactly like
+            # a flow failure to the test above, so it was never retried.
+            if grep -q 'DeviceUnreachableException\|XCUITestServerError' "$RUNNER_TEMP/maestro-report.xml" 2>/dev/null; then
+              if [[ $attempt -ge $max_attempts ]]; then
+                echo "::error::Driver went unreachable mid-flow on all ${max_attempts} attempts."
+                exit 1
+              fi
+              echo "Driver went unreachable mid-flow. Rebooting the simulator and retrying."
+              xcrun simctl shutdown "$SIM_UDID" || true
+              xcrun simctl boot "$SIM_UDID"
+              xcrun simctl bootstatus "$SIM_UDID" -b
+              xcrun simctl install "$SIM_UDID" "$APP_PATH"
+              attempt=$((attempt + 1))
+              continue
+            fi
+
             if [[ -n "$(find ~/.maestro/tests "$RUNNER_TEMP/maestro-debug" -name commands.json 2>/dev/null)" ]]; then
               echo "::error::Smoke flow ran and failed. This is the app or the flow, not the driver."
               exit 1
