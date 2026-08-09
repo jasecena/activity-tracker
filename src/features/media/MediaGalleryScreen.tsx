@@ -309,10 +309,16 @@ export function MediaGalleryScreen({
             accessibilityRole="button"
             accessibilityLabel="Put details away"
           />
+          {/* The positioning lives on the animated wrapper, not on the panel
+              inside it. A plain wrapper is an ordinary flex child, so an
+              absolutely-positioned panel within it resolved `bottom: 0`
+              against a zero-height box at the *top* of the screen — which put
+              the grip under the status bar and everything else off it. */}
           <Animated.View
-            style={{
-              transform: [{ translateY: infoSlide.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }) }],
-            }}
+            style={[
+              styles.infoAnchor,
+              { transform: [{ translateY: infoSlide.interpolate({ inputRange: [0, 1], outputRange: [520, 0] }) }] },
+            ]}
           >
             <InfoPanel
               item={current}
@@ -807,12 +813,8 @@ const styles = StyleSheet.create({
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   turning: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 148, zIndex: 2 },
+  infoAnchor: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '62%', zIndex: 3 },
   info: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: '58%',
     backgroundColor: colors.surfaceRaised,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,

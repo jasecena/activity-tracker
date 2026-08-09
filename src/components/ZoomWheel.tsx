@@ -22,8 +22,17 @@ import { colors } from '@/theme/tokens';
  * Drawing only: the gesture lives in the capture screen, which owns the zoom.
  */
 
-/** Angular length of the whole dial range, degrees of arc. */
+/**
+ * Angular length of the whole dial range, degrees of arc.
+ *
+ * The built-in camera's collar is a *shallow* arc — a big wheel seen almost
+ * edge-on, occupying a shallow band above the shutter rather than a dome over
+ * the picture. Two numbers make that: a large radius, and only a small span of
+ * it on screen.
+ */
 const SWEEP_DEG = 150;
+/** How far either side of the marker the rim is drawn. Shallow, like the collar it copies. */
+const VISIBLE_DEG = 44;
 /** Minor ticks across the range — dense enough to read as a machined wheel. */
 const TICKS = 72;
 
@@ -40,7 +49,7 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
 
   // The rim's radius: comfortably wider than the screen, so the visible arc is
   // shallow like a wheel seen edge-on rather than a lollipop.
-  const radius = width * 0.62;
+  const radius = width * 1.15;
   /**
    * Tall enough for the arc to dip to the screen edges, the way the built-in
    * camera's does. The first build sized this from a fraction of the radius
@@ -49,8 +58,8 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
    * the same angles the drawing uses, so the two cannot disagree again: the
    * crown sits at CROWN_Y and the ±72° endpoints define the bottom.
    */
-  const CROWN_Y = 20;
-  const height = CROWN_Y + radius * (1 - Math.cos((72 * Math.PI) / 180)) + 24;
+  const CROWN_Y = 14;
+  const height = CROWN_Y + radius * (1 - Math.cos((VISIBLE_DEG * Math.PI) / 180)) + 16;
   const hubX = width / 2;
   // The hub is below the canvas; the crown of the rim sits CROWN_Y from its top.
   const hubY = CROWN_Y + radius;
@@ -64,11 +73,11 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
   };
 
   /** Whether an angle is on the visible part of the rim. */
-  const visible = (degrees: number) => degrees > -90 - 70 && degrees < -90 + 70;
+  const visible = (degrees: number) => degrees > -90 - VISIBLE_DEG && degrees < -90 + VISIBLE_DEG;
 
   const rim = () => {
-    const from = pointAt(-90 - 72, radius);
-    const to = pointAt(-90 + 72, radius);
+    const from = pointAt(-90 - VISIBLE_DEG, radius);
+    const to = pointAt(-90 + VISIBLE_DEG, radius);
     return `M ${from.x} ${from.y} A ${radius} ${radius} 0 0 1 ${to.x} ${to.y}`;
   };
 
@@ -114,8 +123,8 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
         {stops.map((stop) => {
           const outer = pointAt(stop.angle, radius - 2);
           const inner = pointAt(stop.angle, radius - 20);
-          const label = pointAt(stop.angle, radius - 36);
-          const mm = pointAt(stop.angle, radius - 54);
+          const label = pointAt(stop.angle, radius - 30);
+          const mm = pointAt(stop.angle, radius - 46);
           const upright = stop.angle + 90;
           const near = Math.abs(stop.angle + 90) < SWEEP_DEG / (TICKS / 2);
           return (
@@ -137,7 +146,7 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
                     x={label.x}
                     y={label.y}
                     fill={colors.textPrimary}
-                    fontSize={15}
+                    fontSize={13}
                     fontWeight="600"
                     textAnchor="middle"
                     transform={`rotate(${upright} ${label.x} ${label.y})`}
@@ -169,15 +178,15 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
         {/* What you are at, in the built-in camera's own words: "2x 48MM". */}
         <SvgText
           x={hubX}
-          y={hubY - radius + 42}
+          y={hubY - radius + 34}
           fill={colors.manual}
-          fontSize={19}
+          fontSize={17}
           fontWeight="700"
           textAnchor="middle"
         >
           {`${formatDisplayFactor(display)}x`}
         </SvgText>
-        <SvgText x={hubX} y={hubY - radius + 58} fill={colors.manual} fontSize={10} textAnchor="middle">
+        <SvgText x={hubX} y={hubY - radius + 48} fill={colors.manual} fontSize={9} textAnchor="middle">
           {`${mmAt(spec, display)}MM`}
         </SvgText>
       </Svg>
