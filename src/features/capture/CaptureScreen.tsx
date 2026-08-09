@@ -150,8 +150,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    */
   const [dial, setDial] = useState<DialSpec | null>(null);
   const [displayZoom, setDisplayZoom] = useState(1);
-  /** The zoom a wheel gesture started from, fixed for its duration. */
-  const [zoomAtTouch, setZoomAtTouch] = useState(1);
+  const [turnFrom, setTurnFrom] = useState({ zoom: 1, dx: 0 });
 
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
@@ -196,18 +195,21 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     // Nothing may take it back mid-turn. Without this the scroll views and
     // buttons underneath can reclaim it, which reads as the wheel sticking.
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: () => {
-      setZoomAtTouch(displayZoom);
+    onPanResponderGrant: (_event, gesture) => {
+      setTurnFrom({ zoom: displayZoom, dx: gesture.dx });
       setTurning(true);
     },
     onPanResponderMove: (_event, gesture) => {
       if (!dial) return;
-      const base = turning ? zoomAtTouch : displayZoom;
+      // Before the grant's state has committed, this render's own values are
+      // the ones the finger landed on — both branches read the same numbers,
+      // the guard is only about which copy has arrived.
+      const from = turning ? turnFrom : { zoom: displayZoom, dx: gesture.dx };
       // Leftward drag is negative dx and means "more", so the sign flips.
       // Setting state is setting the zoom: the camera's own prop carries the
       // factor, exactly inverted — see `zoomPropFor` for why writing to the
       // device directly could never win.
-      setDisplayZoom(displayFromDrag(dial, base, -gesture.dx, WHEEL_TRAVEL));
+      setDisplayZoom(displayFromDrag(dial, from.zoom, -(gesture.dx - from.dx), WHEEL_TRAVEL));
     },
     onPanResponderRelease: () => setTurning(false),
     onPanResponderTerminate: () => setTurning(false),
@@ -257,7 +259,12 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     return () => {
       live = false;
     };
-  }, [visible, needsCamera, facing]);
+    // `mode` is in here because photo and video run different capture formats,
+    // and `activeFormat.videoMaxZoomFactor` is the base of the exponent the
+    // zoom prop is raised to. Read it under one format and apply it under
+    // another and the glass lands somewhere the label does not claim —
+    // reported as a wheel reading 3 while the picture looked like 2.8.
+  }, [visible, needsCamera, facing, mode]);
 
   useEffect(() => {
     if (!visible || !needsMicrophone) return;
