@@ -30,7 +30,6 @@ function item(capturedAt: number, overrides: Partial<MediaItem> = {}): MediaItem
     byteLength: 1_024,
     note: '',
     orientation: null,
-    keyframeMs: null,
     ...overrides,
   };
 }
@@ -128,6 +127,21 @@ describe('normalizeMedia', () => {
     expect(result?.durationMs).toBeNull();
     expect(result?.byteLength).toBe(0);
     expect(result?.note).toBe('');
+  });
+
+  /**
+   * The five-second "live" capture was built and withdrawn. On disk it was a
+   * clip and a still — which is what a video is — so it reads back as a video
+   * and keeps playing. Without this the row would be dropped as unrecognised
+   * and the file swept as an orphan on the next launch: somebody's capture
+   * deleted for a feature being taken away.
+   */
+  it('reads a capture an older build called live as the video it is', () => {
+    const [result] = normalizeMedia([{ ...item(T0), kind: 'live', durationMs: 5_000 }]);
+
+    expect(result?.kind).toBe('video');
+    expect(result?.durationMs).toBe(5_000);
+    expect(result?.fileName).toBe(item(T0).fileName);
   });
 
   it('sorts by capture time', () => {

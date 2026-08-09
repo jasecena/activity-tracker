@@ -18,7 +18,6 @@ import {
   filesOf,
   isSealed,
   listPending,
-  openForPlayback,
   stageCapture,
   sweepOrphans,
   unsealInPlace,
@@ -47,14 +46,6 @@ export interface KeepOptions {
    * rewrote its own pixels would be a capture that could be turned twice.
    */
   readonly orientation?: CaptureOrientation | null;
-  /**
-   * Which instant of a live capture is its picture, in ms from the start.
-   *
-   * Zero at the shutter, which is the moment you meant. It is passed rather
-   * than assumed because it is meant to move later: the still is re-extracted
-   * from the clip at whatever this says, and the clip is never touched.
-   */
-  readonly keyframeMs?: number | null;
 }
 
 export interface UseMedia {
@@ -69,14 +60,6 @@ export interface UseMedia {
    */
   keep: (sourceUri: string, kind: MediaKind, options?: KeepOptions) => Promise<MediaItem | null>;
   annotate: (id: string, note: string) => void;
-  /**
-   * Choose which instant of a live capture is its picture.
-   *
-   * The clip is never touched — the still beside it is written again from the
-   * frame at that time, which is the whole reason `keyframeMs` is stored rather
-   * than assumed to be zero.
-   */
-  setKeyframe: (id: string, keyframeMs: number) => Promise<void>;
   forget: (id: string) => void;
 }
 
@@ -135,7 +118,6 @@ export function useMedia(): UseMedia {
             at: null,
             note: '',
             orientation: null,
-            keyframeMs: null,
           });
         } catch (error) {
           // Given up on rather than retried on every launch for the life of
@@ -200,7 +182,7 @@ export function useMedia(): UseMedia {
   }, []);
 
   const keep = useCallback(async (sourceUri: string, kind: MediaKind, options: KeepOptions = {}) => {
-    const { durationMs = null, at = null, onProgress, orientation = null, keyframeMs = null } = options;
+    const { durationMs = null, at = null, onProgress, orientation = null } = options;
     const capturedAt = readNow();
     const id = mediaIdFor(capturedAt);
 
@@ -212,7 +194,7 @@ export function useMedia(): UseMedia {
       // Before `writeMedia`, which deletes the staged file: a thumbnail made
       // afterwards would have to decrypt the whole capture to get a picture
       // of it, which is the cost thumbnails exist to avoid.
-      const thumbFileName = await writeThumbnail(staged.uri, id, kind, keyframeMs);
+      const thumbFileName = await writeThumbnail(staged.uri, id, kind);
       const { fileName, byteLength } = await writeMedia(staged.uri, id, kind, onProgress);
       // The same reading in both places. On the item it survives the day
       // being re-derived, the fixes being pruned, and tracking having been
@@ -231,7 +213,6 @@ export function useMedia(): UseMedia {
         at: at ? { lat: at.lat, lon: at.lon } : null,
         note: '',
         orientation,
-        keyframeMs,
       };
       // Read from state at the moment of the write rather than from a
       // dependency: sealing a video takes long enough for a second capture to
@@ -256,31 +237,6 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
-  const setKeyframe = useCallback(
-    async (id: string, keyframeMs: number) => {
-      const item = items.find((candidate) => candidate.id === id);
-      if (!item || item.kind !== 'live') return;
-
-      // The stored file itself, not a copy: nothing here rewrites the clip, and
-      // pulling one frame out of it is a read.
-      const uri = await openForPlayback(item);
-      if (!uri) return;
-
-      const thumbFileName = await writeThumbnail(uri, id, item.kind, keyframeMs);
-      // A frame that could not be read leaves the old picture in place rather
-      // than blanking the capture — `writeThumbnail` already falls back to
-      // other instants, so null here means the clip itself is unreadable.
-      persist(
-        items.map((candidate) =>
-          candidate.id === id
-            ? { ...candidate, keyframeMs, thumbFileName: thumbFileName ?? candidate.thumbFileName }
-            : candidate,
-        ),
-      );
-    },
-    [items, persist],
-  );
-
   const forget = useCallback(
     (id: string) => {
       const doomed = items.find((item) => item.id === id);
@@ -290,7 +246,7 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
-  return { ready, items, keep, annotate, setKeyframe, forget };
+  return { ready, items, keep, annotate, forget };
 }
 
 /**

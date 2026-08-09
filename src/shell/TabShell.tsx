@@ -252,7 +252,6 @@ export function TabShell() {
           mapsEnabled={mapsEnabled}
           onBack={back}
           onForget={media.forget}
-          onSetKeyframe={(id, at) => void media.setKeyframe(id, at)}
         />
       );
     }

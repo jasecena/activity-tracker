@@ -32,7 +32,6 @@ function media(
     at: null,
     note: '',
     orientation,
-    keyframeMs: null,
   };
 }
 

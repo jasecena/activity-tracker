@@ -2,7 +2,7 @@ import { Directory, File, FileMode, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { getThumbnailAsync } from 'expo-video-thumbnails';
 
-import { isMoving, type MediaItem, type MediaKind } from '@/core/media';
+import type { MediaItem, MediaKind } from '@/core/media';
 
 import { openBytes } from './vault';
 
@@ -82,10 +82,6 @@ const EXTENSIONS: Readonly<Record<MediaKind, string>> = {
   photo: 'jpg',
   video: 'mov',
   audio: 'm4a',
-  // A live capture is a clip on disk, whatever it is on screen. The extension
-  // is what the player and the frame extractor read to know how to open it,
-  // so it has to say what the bytes are rather than what the feature is called.
-  live: 'mov',
 };
 
 function pendingDirectory(): Directory {
@@ -273,11 +269,8 @@ export async function writeMedia(
  * thumbnail from the wrong instant beats a blank square that no launch will
  * ever retry into existence.
  */
-async function frameFrom(sourceUri: string, preferredMs: number | null): Promise<string> {
-  // The key frame first where there is one, then the usual fallbacks: a clip
-  // can refuse a particular instant — a key frame in the codec sense is not
-  // every frame — and a still from the wrong moment beats no still at all.
-  const attempts = preferredMs !== null && preferredMs > 0 ? [preferredMs, 0, 250, 1_000] : [0, 250, 1_000];
+async function frameFrom(sourceUri: string): Promise<string> {
+  const attempts = [0, 250, 1_000];
   let lastError: unknown = null;
 
   for (const time of attempts) {
@@ -301,19 +294,14 @@ async function frameFrom(sourceUri: string, preferredMs: number | null): Promise
  * platform cannot produce a frame. A missing thumbnail is a state the UI
  * already has to handle, so failing here is never worth losing a capture over.
  */
-export async function writeThumbnail(
-  sourceUri: string,
-  id: string,
-  kind: MediaKind,
-  keyframeMs: number | null = null,
-): Promise<string | null> {
+export async function writeThumbnail(sourceUri: string, id: string, kind: MediaKind): Promise<string | null> {
   if (kind === 'audio') return null;
   ensureDirectory();
 
   try {
     // A video has no image until a frame is pulled out of it; a photo is
     // already one. Either way what gets scaled is a plain file on disk.
-    const frameUri = isMoving(kind) ? await frameFrom(sourceUri, keyframeMs) : sourceUri;
+    const frameUri = kind === 'video' ? await frameFrom(sourceUri) : sourceUri;
 
     const context = ImageManipulator.manipulate(frameUri);
     context.resize({ width: THUMB_EDGE, height: null });

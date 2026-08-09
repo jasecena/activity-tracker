@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 583
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 578
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -279,22 +279,13 @@ dropping it between recording and saving would release it precisely where the
 phone would lock, and the saving overlay asks you to keep the app open while
 the app is letting the phone shut itself.
 
-**A live capture is five seconds forwards, and forwards is the only direction
-available.** Apple's Live Photo keeps a moment either side of the shutter;
-`expo-camera` has no rolling buffer and no pre-shutter capture, so frames from
-before the press were never handed over and cannot be fetched back — that half
-needs a native module (`AVCapturePhotoOutput.livePhotoCaptureEnabled`) and is
-not built. What is built is the half that needs nothing: `maxDuration` records
-five seconds from the press and ends itself, so there is no Stop to forget.
-
-On disk it is a clip and a still, which is what a video already was, so nothing
-that walks the media directory has to learn a third file. `keyframeMs` says
-which instant of the clip is the picture — zero at the shutter, stored rather
-than assumed so it can be moved later, which the capture's own page now does:
-the still is written again from the frame at that instant and the clip is never
-re-encoded, so choosing again is reversible for ever. The position and orientation are read at the press, not
-at the end: the seconds afterwards are what the picture was surrounded by, not
-where it was taken.
+**A five-second "live" capture was built and withdrawn, and the kind is still
+readable.** It recorded forwards from the shutter because `expo-camera` has no
+rolling buffer, and it was not what a Live Photo is. `normalizeMedia` reads the
+retired kind as `video`, which is what it always was on disk — a clip and a
+still. Dropping the kind outright would have dropped the row, and `sweepOrphans`
+would have deleted the file on the next launch: somebody's capture gone for a
+feature being taken away.
 
 **A capture is two files, and everything that walks the directory must know
 it.** `sweepOrphans` deletes sealed files the index has never heard of, and

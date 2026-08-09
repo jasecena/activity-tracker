@@ -413,65 +413,6 @@ describe('keeping the screen awake', () => {
   });
 });
 
-describe('a live capture', () => {
-  /**
-   * The camera ends it, not a button — so the test has to end it the way the
-   * camera would. `stopRecording` here stands for the five-second limit being
-   * reached, which is the only thing that resolves `recordAsync`.
-   */
-  async function reachTheLimit() {
-    await act(async () => {
-      camera.stopRecording();
-    });
-  }
-
-  it('records a clip of its own accord and stores it as one', async () => {
-    const keep = jest.fn(async () => null);
-    await renderCapture(keep);
-
-    await press('Live');
-    await press('Take live photo');
-    await reachTheLimit();
-
-    expect(keep).toHaveBeenCalledWith(
-      expect.any(String),
-      'live',
-      expect.objectContaining({ durationMs: 5_000, keyframeMs: 0 }),
-    );
-  });
-
-  /**
-   * The press is the whole gesture. `maxDuration` ends it, so there is no Stop
-   * to forget — which is the difference between a live photograph and a video
-   * somebody left running.
-   */
-  it('offers no Stop, because the camera ends it', async () => {
-    const keep = jest.fn(() => new Promise(() => undefined)) as unknown as UseMedia['keep'];
-    await renderCapture(keep);
-
-    await press('Live');
-    expect(screen.getByLabelText('Take live photo')).toBeOnTheScreen();
-    expect(screen.queryByLabelText('Stop video')).not.toBeOnTheScreen();
-  });
-
-  // Read at the press, unlike a video's: the four seconds afterwards are what
-  // the picture was surrounded by, not where it was taken.
-  it('stamps it with where and how the phone was at the shutter', async () => {
-    const keep = jest.fn(async () => null);
-    await renderCapture(keep);
-
-    await press('Live');
-    await press('Take live photo');
-    await reachTheLimit();
-
-    expect(keep).toHaveBeenCalledWith(
-      expect.any(String),
-      'live',
-      expect.objectContaining({ at: expect.any(Object), orientation: 'portrait' }),
-    );
-  });
-});
-
 describe('holding the phone sideways', () => {
   /** The prop iOS calls. Without it the callback never fires and none of this happens. */
   function cameraProps(): Record<string, unknown> {
