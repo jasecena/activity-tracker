@@ -2,15 +2,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type CameraType } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/core/format';
-import { oppositeEdge, topEdgeFor, uprightRotationFor, type CaptureOrientation, type MediaKind } from '@/core/media';
+import {
+  dragUpBy,
+  oppositeEdge,
+  topEdgeFor,
+  uprightRotationFor,
+  zoomFromDrag,
+  type CaptureOrientation,
+  type MediaKind,
+} from '@/core/media';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { ensureForegroundPermission } from '@/services/location';
 import { askPosition } from '@/services/position';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
+
+import { ZoomDial } from '@/components/ZoomDial';
 
 import type { UseMedia } from './hooks/useMedia';
 
@@ -143,6 +153,20 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    */
   const started = useRef<{ at: Fix | null; orientation: CaptureOrientation | null }>({ at: null, orientation: null });
 
+  /** True while a finger is on the glass turning the zoom, which is when the dial shows. */
+  const [turning, setTurning] = useState(false);
+  /**
+   * The zoom the current gesture started from.
+   *
+   * A ref because the responder is built once and this is written at the moment
+   * a finger lands — nothing renders it, which is what the refs rule cares
+   * about. Taking each movement from the *start* rather than accumulating
+   * deltas is what stops the value drifting, and what makes letting go and
+   * starting again from the same place give the same answer twice.
+   */
+  /** The zoom this gesture is being measured from, fixed for its duration. */
+  const [zoomAtTouch, setZoomAtTouch] = useState(0);
+
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
 
@@ -152,6 +176,49 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   const camera = useRef<CameraView | null>(null);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  /**
+   * Zoom by sliding a finger up the glass — a lens collar rather than a pair of
+   * buttons, and it follows the hand rather than stepping.
+   *
+   * This revises the decision that used to stand here. Zoom was two buttons
+   * because `expo-camera` has no gesture of its own and a pinch would mean a
+   * multi-touch responder fighting the swipe between pages. Half of that is
+   * still true — there is still no pinch — but a *single* finger sliding along
+   * the glass fights nothing: Capture has no scroller, no pager and no detail
+   * page to swipe back from, so the viewfinder is the one surface in this app
+   * with no other claim on a drag.
+   *
+   * The buttons stay. A gesture is not reachable by everyone, and they are what
+   * a screen reader can find.
+   *
+   * Which way is "up" comes from the phone, not the screen: turn it sideways
+   * and the same movement of the hand is a change in x. `dragUpBy` is that
+   * mapping, and it is the same fact the rails and a photograph's rotation read.
+   *
+   * `onMoveShouldSet` rather than `onStartShouldSet`, so a tap that never moves
+   * is not swallowed by a zoom that never happens.
+   */
+  const zoomGesture = PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 6,
+    onPanResponderGrant: () => {
+      // Where this gesture starts from, so movement is measured against it
+      // rather than added to whatever the last one left behind.
+      setZoomAtTouch(zoom);
+      setTurning(true);
+    },
+    onPanResponderMove: (_event, gesture) => {
+      // `turning` is false only for the events that arrive before the grant's
+      // state has committed — and in exactly those, this render's `zoom` is
+      // still the value the finger landed on. Both branches read the same
+      // number; the guard is about which copy of it has arrived yet.
+      const base = turning ? zoomAtTouch : zoom;
+      setZoom(zoomFromDrag(base, dragUpBy(orientation, gesture.dx, gesture.dy)));
+    },
+    onPanResponderRelease: () => setTurning(false),
+    onPanResponderTerminate: () => setTurning(false),
+  });
 
   const needsCamera = mode !== 'voice';
   // A live capture is a clip, so it carries sound and needs the permission for it.
@@ -404,6 +471,13 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           </Text>
         </View>
       )}
+
+      {/* The whole viewfinder is the collar. It sits over the preview rather
+          than on it, because `CameraView` is a native view and a responder on
+          it is a responder on something that does not report touches back. */}
+      {needsCamera ? <View style={StyleSheet.absoluteFill} {...zoomGesture.panHandlers} /> : null}
+
+      {needsCamera ? <ZoomDial zoom={zoom} active={turning} /> : null}
 
       {state === 'recording' && needsCamera ? (
         <View style={styles.topBar} pointerEvents="box-none">

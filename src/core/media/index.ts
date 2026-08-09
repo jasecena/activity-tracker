@@ -7,12 +7,15 @@ import { isCaptureOrientation, type CaptureOrientation } from './orientation';
 export {
   CAMERA_WRITES_UPRIGHT_PIXELS,
   displayRotationFor,
+  dragUpBy,
   isCaptureOrientation,
   isQuarterTurn,
   oppositeEdge,
   stageSizeFor,
   topEdgeFor,
   uprightRotationFor,
+  zoomFromDrag,
+  ZOOM_TRAVEL_POINTS,
 } from './orientation';
 export type { CaptureOrientation, Degrees, Edge, Size } from './orientation';
 

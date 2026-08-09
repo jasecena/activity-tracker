@@ -344,13 +344,31 @@ at the top, the filmstrip along the bottom, the mode rail and the zoom down the
 two edges. Only the empty gallery keeps a heading, because there is nothing
 behind it to look at.
 
-**Zoom is buttons, and the number is a percentage of the range.** `CameraView`'s
+**Zoom is a drag, and the number is a percentage of the range.** `CameraView`'s
 `zoom` is 0 to 1 across whatever the lens offers, not a magnification, and there
 is no way to ask what "2×" would be — so calling it 2× would be a guess printed
-as a fact. There is no pinch either: `expo-camera` has no gesture of its own, so
-one would mean a multi-touch responder and a hand-rolled scale, fighting the
-swipe between pages for something two buttons already do. Flipping the camera
-resets it, because the two lenses do not share a range.
+as a fact. The dial says what can honestly be said.
+
+This revises the decision that used to stand here — that zoom was two buttons
+because a gesture would fight the swipe between pages. Half of that reasoning
+still holds: there is no pinch, because `expo-camera` has no gesture of its own
+and a multi-touch responder plus a hand-rolled scale is a great deal of machinery.
+But a _single_ finger sliding along the glass fights nothing. Capture has no
+scroller, no pager and no detail page to swipe back from, so the viewfinder is
+the one surface in this app with no other claim on a drag.
+
+The buttons stay, because a gesture is not reachable by everyone and they are
+what a screen reader can find.
+
+**Which way is "up" comes from the phone, not the screen.** `dragUpBy` maps a
+drag onto the axis the hand means: turn the phone sideways and the same movement
+is a change in x, in one direction or the other. A zoom wired to `-dy` reverses
+itself on rotation. It reads the same fact as the rails and a capture's stored
+orientation — whichever edge is uppermost is where up is.
+
+**The zoom is measured from the start of each gesture, never accumulated.**
+Adding deltas per movement drifts, and it means letting go and repeating the
+same movement from the same place gives a different answer the second time.
 
 **Capture is a viewfinder, not a page.** The preview fills the screen and the
 shutter sits at the bottom under a thumb; there is no header and no list. The
