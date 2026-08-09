@@ -666,8 +666,17 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             — the built-in camera does the same mid-clip. */}
         {needsCamera && dial && dial.stops.length > 1 ? (
           <View style={styles.stopRow}>
-            {dial.stops.map((stop) => {
-              const chosen = Math.abs(displayZoom - stop.display) < 0.05;
+            {dial.stops.map((stop, index) => {
+              const atStop = Math.abs(displayZoom - stop.display) < 0.05;
+              // Between stops, the nearest one *below* carries the reading —
+              // which is what the built-in camera does, and what was missing:
+              // the wheel fades when the finger lifts, and nothing else said
+              // where the zoom had got to, so a turn that worked looked like a
+              // turn that had been thrown away.
+              const next = dial.stops[index + 1];
+              const governs =
+                !atStop && displayZoom > stop.display && (next === undefined || displayZoom < next.display);
+              const chosen = atStop || governs;
               return (
                 <Pressable
                   key={stop.deviceType}

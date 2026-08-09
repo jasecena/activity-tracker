@@ -373,6 +373,23 @@ the widest lens, what AVFoundation speaks) and display factors (1× is the main
 lens, what a person means). They differ by the wide lens's switch-over factor,
 and confusing them puts every number on the dial out by exactly 2×.
 
+**The zoom goes through the `zoom` prop, and the ecosystem's own advice was
+read before settling on that.** `expo-camera`'s iOS source raises the device's
+`activeFormat.videoMaxZoomFactor` to the power of the prop, so `zoomPropFor`
+inverts it exactly — note that the _published_ formula is the older linear one
+and is wrong for this version; read the Swift, not the docs. Three things
+found while chasing a zoom that would not hold, worth not re-learning:
+`CameraView` interfering with touches on iOS is an accepted expo bug
+(expo#28966), zoom not applying is an open one (expo#33279), and the wider
+advice — expo#11032, VisionCamera's own guide — is that camera zoom should not
+be driven from React state at all, which is why the value here is accumulated
+in a single functional update rather than read.
+
+The zoom was once set natively, by factor, and that attempt is not proof the
+approach fails: it was made while the gesture was separately broken, so the
+"shaking" it produced was the drag dying rather than the write being lost. If
+the prop path ever proves unreliable, that door is still open.
+
 The zoom is set **natively, by factor** — never through the `zoom` prop. The
 prop's mapping runs through the active format's maximum, which changes under
 the session, and it cannot ramp; `ramp(toVideoZoomFactor:)` is how the glass
