@@ -342,6 +342,7 @@ export function TabShell() {
             mapsEnabled={mapsEnabled}
             positionFor={positionOf}
             onForget={media.forget}
+            onRotate={(id) => void media.rotate(id)}
             focusId={galleryFocus}
             onFocusHandled={() => setGalleryFocus(null)}
           />

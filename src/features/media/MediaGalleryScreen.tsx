@@ -44,6 +44,8 @@ interface MediaGalleryScreenProps {
   /** Where the day says a capture happened, or null — resolved by the shell, which holds the track. */
   readonly positionFor: (item: MediaItem) => Position | null;
   readonly onForget: (id: string) => void;
+  /** Turn a photograph a quarter turn clockwise, for the sideways few from before orientation was recorded. */
+  readonly onRotate: (id: string) => void;
   /**
    * A capture another screen wants looked at — the Day tab's thumbnails land
    * here. Handled once and acknowledged, so pressing the same one twice works.
@@ -93,6 +95,7 @@ export function MediaGalleryScreen({
   mapsEnabled,
   positionFor,
   onForget,
+  onRotate,
   focusId,
   onFocusHandled,
 }: MediaGalleryScreenProps) {
@@ -274,6 +277,7 @@ export function MediaGalleryScreen({
           mapsEnabled={mapsEnabled}
           thumbUri={images.uriFor(current)}
           onForget={onForget}
+          onRotate={onRotate}
           onClose={() => setPanel('none')}
         />
       ) : null}
@@ -513,6 +517,7 @@ function InfoPanel({
   mapsEnabled,
   thumbUri,
   onForget,
+  onRotate,
   onClose,
 }: {
   readonly item: MediaItem;
@@ -521,6 +526,7 @@ function InfoPanel({
   readonly mapsEnabled: boolean;
   readonly thumbUri: string | null;
   readonly onForget: (id: string) => void;
+  readonly onRotate: (id: string) => void;
   readonly onClose: () => void;
 }) {
   const confirmForget = () =>
@@ -577,6 +583,21 @@ function InfoPanel({
             The day has no fixes for this moment, so there is nowhere to put it on a map.
           </Text>
         )}
+
+        {/* Only a photograph, and one press per quarter turn: the app cannot
+            know which of the old pictures are sideways — only their owner can
+            see it — so this is a button rather than a migration. */}
+        {item.kind === 'photo' ? (
+          <Pressable
+            onPress={() => onRotate(item.id)}
+            accessibilityRole="button"
+            accessibilityLabel="Rotate this photo a quarter turn"
+            style={({ pressed }) => [styles.rotate, pressed && styles.pressed]}
+          >
+            <Ionicons name="reload-outline" size={16} color={colors.textPrimary} />
+            <Text style={styles.rotateText}>Rotate</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={confirmForget}
@@ -752,6 +773,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   forgetText: { ...typography.caption, color: colors.danger },
+  rotate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  rotateText: { ...typography.caption, color: colors.textPrimary },
   pin: {
     position: 'absolute',
     top: 0,

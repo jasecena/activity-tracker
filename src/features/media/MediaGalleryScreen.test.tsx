@@ -49,6 +49,7 @@ function gallery(items: MediaItem[], overrides: Partial<Parameters<typeof MediaG
       mapsEnabled={false}
       positionFor={() => null}
       onForget={noop}
+      onRotate={noop}
       focusId={null}
       onFocusHandled={noop}
       {...overrides}

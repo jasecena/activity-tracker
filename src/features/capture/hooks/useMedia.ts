@@ -18,6 +18,7 @@ import {
   filesOf,
   isSealed,
   listPending,
+  rotateMedia,
   stageCapture,
   sweepOrphans,
   unsealInPlace,
@@ -60,6 +61,14 @@ export interface UseMedia {
    */
   keep: (sourceUri: string, kind: MediaKind, options?: KeepOptions) => Promise<MediaItem | null>;
   annotate: (id: string, note: string) => void;
+  /**
+   * Turn a photograph a quarter turn clockwise, rewriting the stored file.
+   *
+   * For pictures from before orientation was recorded, which only their owner
+   * can recognise as sideways. Press it again to keep turning — three presses
+   * reach any orientation.
+   */
+  rotate: (id: string) => Promise<void>;
   forget: (id: string) => void;
 }
 
@@ -237,6 +246,25 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
+  const rotate = useCallback(
+    async (id: string) => {
+      const item = items.find((candidate) => candidate.id === id);
+      if (!item) return;
+      const turned = await rotateMedia(item);
+      if (!turned) return;
+      // The thumbnail was remade under its existing name; only the size can
+      // have changed, and the stored orientation is cleared because the file
+      // now *is* the orientation — a recorded value would re-describe a
+      // correction that has already been applied.
+      persist(
+        items.map((candidate) =>
+          candidate.id === id ? { ...candidate, byteLength: turned.byteLength, orientation: null } : candidate,
+        ),
+      );
+    },
+    [items, persist],
+  );
+
   const forget = useCallback(
     (id: string) => {
       const doomed = items.find((item) => item.id === id);
@@ -246,7 +274,7 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
-  return { ready, items, keep, annotate, forget };
+  return { ready, items, keep, annotate, rotate, forget };
 }
 
 /**

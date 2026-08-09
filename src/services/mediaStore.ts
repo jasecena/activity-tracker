@@ -327,6 +327,50 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
 }
 
 /**
+ * Turn a stored photograph a quarter turn clockwise, in place.
+ *
+ * For the pictures that predate orientation being recorded: the app cannot
+ * know which of them are sideways — old captures carry no orientation and
+ * sideways pixels look like any other pixels — so this is a button the owner
+ * presses on the few that need it, not a migration that guesses.
+ *
+ * The one deliberate exception to "nothing rewrites a capture". It is the
+ * owner's own explicit act on one photograph, the same standing as Forget,
+ * and the alternative is a picture that is wrong forever. Photos only: a
+ * video's frames cannot be turned without a re-encode, which is a different
+ * feature and a real quality cost.
+ *
+ * The new image is written beside the old and moved over it only once fully
+ * written — the same crash-window rule as everything else in this store. The
+ * thumbnail is remade from the turned file so the filmstrip agrees with the
+ * capture.
+ */
+export async function rotateMedia(item: MediaItem): Promise<{ readonly byteLength: number } | null> {
+  if (item.kind !== 'photo') return null;
+  const stored = new File(mediaDirectory(), item.fileName);
+  if (!stored.exists) return null;
+
+  try {
+    const context = ImageManipulator.manipulate(stored.uri);
+    context.rotate(90);
+    const rendered = await context.renderAsync();
+    // Quality 1: this may be pressed more than once to reach 180 or 270, and
+    // a lossy pass per press adds up on a photograph being corrected.
+    const turned = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 1 });
+
+    const replacement = new File(turned.uri);
+    if (stored.exists) stored.delete();
+    replacement.moveSync(stored);
+
+    await writeThumbnail(stored.uri, item.id, item.kind);
+    return { byteLength: stored.size ?? 0 };
+  } catch (error) {
+    console.warn('Could not rotate the capture', error);
+    return null;
+  }
+}
+
+/**
  * Anything written before media stopped being sealed at rest.
  *
  * True for a thumbnail as well as a capture. A sealed thumbnail is ciphertext

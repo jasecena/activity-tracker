@@ -22,6 +22,9 @@ export const ImageManipulator = {
     resize: jest.fn(function (this: unknown) {
       return this;
     }),
+    rotate: jest.fn(function (this: unknown) {
+      return this;
+    }),
     renderAsync: jest.fn(async () => ({
       saveAsync: jest.fn(async () => {
         const scaled = new File(Paths.cache, `scaled-${++count}.jpg`);
