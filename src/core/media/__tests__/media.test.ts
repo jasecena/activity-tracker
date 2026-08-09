@@ -3,6 +3,7 @@ import { buildTrack } from '../../replay';
 import type { MoveSegment, Segment, StaySegment } from '../../segments';
 import {
   attachToSegments,
+  groupMediaByDay,
   capturedAtFromMediaId,
   mediaForDay,
   mediaIdFor,
@@ -244,5 +245,32 @@ describe('totalBytes', () => {
 
   it('sums what is on disk', () => {
     expect(totalBytes([item(T0), item(T0 + 1, { byteLength: 2_048 })])).toBe(3_072);
+  });
+});
+
+describe('groupMediaByDay', () => {
+  it('gathers captures into local days, newest day first', () => {
+    const grouped = groupMediaByDay([item(T0), item(T0 + MINUTE), item(T0 + 26 * 60 * MINUTE)], 0);
+
+    expect(grouped.map((day) => day.items.length)).toEqual([1, 2]);
+    expect(grouped[0]!.newestAt).toBe(T0 + 26 * 60 * MINUTE);
+  });
+
+  it('sorts within a day newest first, which is the order a grid is read in', () => {
+    const [day] = groupMediaByDay([item(T0), item(T0 + MINUTE)], 0);
+
+    expect(day?.items.map((entry) => entry.capturedAt)).toEqual([T0 + MINUTE, T0]);
+  });
+
+  // The same instant is a different day in a different place; the offset is
+  // the parameter, the same as everywhere else in core.
+  it('respects the UTC offset when cutting days', () => {
+    const lateEvening = Date.UTC(2026, 0, 5, 23, 30, 0);
+    expect(groupMediaByDay([item(lateEvening)], 0)[0]?.key).toBe('2026-01-05');
+    expect(groupMediaByDay([item(lateEvening)], 600)[0]?.key).toBe('2026-01-06');
+  });
+
+  it('is empty for nothing', () => {
+    expect(groupMediaByDay([], 0)).toEqual([]);
   });
 });

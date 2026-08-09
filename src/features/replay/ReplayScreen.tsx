@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { summarizeDay, type DayGroup } from '@/core/day';
 import { activeCalories } from '@/core/energy';
@@ -15,6 +15,8 @@ import { SegmentRow } from '@/components/SegmentRow';
 import { StatTile } from '@/components/StatTile';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
+
+import { useSealedImages } from '@/features/media/hooks/useSealedImages';
 
 import { SPEEDS, useReplay } from './hooks/useReplay';
 
@@ -100,6 +102,13 @@ export function ReplayScreen({
     () => (day ? placeMedia(replay.track, mediaForDay(media, day.key, tzOffsetMinutes)) : []),
     [day, media, replay.track, tzOffsetMinutes],
   );
+
+  // The same windowed thumbnail store the gallery uses; a day rarely has more
+  // than a handful of captures, so loading them all is a few kilobytes.
+  const captureThumbs = useSealedImages();
+  useEffect(() => {
+    captureThumbs.load(captures.map((placed) => placed.item));
+  }, [captureThumbs, captures]);
 
   const mediaMarks = useMemo<MapMark[]>(
     () =>
@@ -306,22 +315,38 @@ export function ReplayScreen({
         {captures.length > 0 ? (
           <>
             <Text style={styles.sectionLabel}>CAPTURED</Text>
-            <View style={styles.card}>
-              {captures.map((placed) => (
-                <Pressable
-                  key={placed.item.id}
-                  onPress={() => onOpenMedia(placed.item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${placed.item.kind} at ${formatClockTime(placed.item.capturedAt, tzOffsetMinutes)}`}
-                  style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-                >
-                  <View style={[styles.swatch, { backgroundColor: colors.manual }]} />
-                  <Text style={styles.rowTitle}>{formatClockTime(placed.item.capturedAt, tzOffsetMinutes)}</Text>
-                  <Text style={styles.rowDetail}>
-                    {placed.at ? placed.item.kind : `${placed.item.kind} · no position`}
-                  </Text>
-                </Pressable>
-              ))}
+            {/* Small and tappable, and pictures rather than rows about
+                pictures: what was captured is best said by showing it. Tapping
+                one goes to the Media tab, landed on that capture — the same
+                screen a capture is always on, not a page of its own. */}
+            <View style={styles.captureStrip}>
+              {captures.map((placed) => {
+                const uri = captureThumbs.uriFor(placed.item);
+                return (
+                  <Pressable
+                    key={placed.item.id}
+                    onPress={() => onOpenMedia(placed.item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${placed.item.kind} at ${formatClockTime(placed.item.capturedAt, tzOffsetMinutes)}`}
+                    style={({ pressed }) => [styles.captureThumb, pressed && styles.pressed]}
+                  >
+                    {uri ? (
+                      <Image source={{ uri }} style={styles.captureImage} resizeMode="cover" />
+                    ) : (
+                      <Ionicons
+                        name={placed.item.kind === 'audio' ? 'mic-outline' : 'image-outline'}
+                        size={16}
+                        color={colors.textMuted}
+                      />
+                    )}
+                    {placed.item.kind === 'video' ? (
+                      <View style={styles.captureBadge}>
+                        <Ionicons name="play" size={9} color={colors.textPrimary} />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </View>
           </>
         ) : null}
@@ -387,6 +412,28 @@ function dayOverlay(
 }
 
 const styles = StyleSheet.create({
+  captureStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  captureThumb: {
+    width: 56,
+    height: 74,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceRaised,
+  },
+  captureImage: { width: '100%', height: '100%' },
+  captureBadge: {
+    position: 'absolute',
+    right: 3,
+    bottom: 3,
+    width: 14,
+    height: 14,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,15,20,0.75)',
+  },
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
   dayNav: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },

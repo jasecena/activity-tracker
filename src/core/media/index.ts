@@ -196,6 +196,38 @@ export function normalizeMedia(input: unknown): MediaItem[] {
     .sort((a, b) => a.capturedAt - b.capturedAt);
 }
 
+export interface MediaDay {
+  readonly key: string;
+  /** The instant of the newest capture in the day, for a title. */
+  readonly newestAt: number;
+  readonly items: readonly MediaItem[];
+}
+
+/**
+ * Every capture, gathered into local calendar days, newest day first.
+ *
+ * What the grid draws. Newest first in both directions — days and the items
+ * within one — because the thing you are looking for is overwhelmingly the
+ * thing you captured most recently, and a grid that opens on last March is a
+ * grid that gets scrolled past every time.
+ */
+export function groupMediaByDay(items: readonly MediaItem[], tzOffsetMinutes: TzOffsetMinutes): readonly MediaDay[] {
+  const days = new Map<string, MediaItem[]>();
+  for (const item of items) {
+    const key = dayKeyOf(item.capturedAt, tzOffsetMinutes);
+    const day = days.get(key);
+    if (day) day.push(item);
+    else days.set(key, [item]);
+  }
+
+  return [...days.entries()]
+    .map(([key, dayItems]) => {
+      const sorted = [...dayItems].sort((a, b) => b.capturedAt - a.capturedAt);
+      return { key, newestAt: sorted[0]?.capturedAt ?? 0, items: sorted };
+    })
+    .sort((a, b) => b.newestAt - a.newestAt);
+}
+
 /** Everything captured on one local calendar day, oldest first. */
 export function mediaForDay(
   items: readonly MediaItem[],

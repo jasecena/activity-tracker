@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { MediaItem } from '@/core/media';
 import { useVideoPlayer } from 'expo-video';
@@ -39,13 +39,30 @@ function media(
 
 const noop = () => {};
 
+/** The full prop set, with the newcomers defaulted so old tests read as before. */
+function gallery(items: MediaItem[], overrides: Partial<Parameters<typeof MediaGalleryScreen>[0]> = {}) {
+  return (
+    <MediaGalleryScreen
+      items={items}
+      tzOffsetMinutes={0}
+      visible
+      mapsEnabled={false}
+      positionFor={() => null}
+      onForget={noop}
+      focusId={null}
+      onFocusHandled={noop}
+      {...overrides}
+    />
+  );
+}
+
 describe('MediaGalleryScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('says so plainly when nothing has been captured', async () => {
-    await render(<MediaGalleryScreen items={[]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery([]));
 
     expect(screen.getByText(/Photos, video and voice notes appear here/)).toBeOnTheScreen();
   });
@@ -56,7 +73,7 @@ describe('MediaGalleryScreen', () => {
   it('opens only the capture you are looking at, however many there are', async () => {
     const items = [media(1), media(2), media(3), media(4), media(5)];
 
-    await render(<MediaGalleryScreen items={items} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery(items));
 
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
     // Newest first, so the top of the list is the last thing captured.
@@ -75,7 +92,7 @@ describe('MediaGalleryScreen', () => {
   it('leaves a sideways capture alone, because the camera already turned it', async () => {
     const sideways = media(1, 'photo', 'landscapeLeft');
 
-    await render(<MediaGalleryScreen items={[sideways]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery([sideways]));
 
     const photo = await screen.findByLabelText('Photo');
     expect(photo).toHaveStyle({ transform: undefined });
@@ -92,14 +109,7 @@ describe('MediaGalleryScreen', () => {
    * became a band across the top with the photograph pushed below it.
    */
   it('draws the thumbnail underneath the capture rather than above it', async () => {
-    await render(
-      <MediaGalleryScreen
-        items={[media(1, 'photo', 'landscapeLeft')]}
-        tzOffsetMinutes={0}
-        visible
-        onOpenDetails={noop}
-      />,
-    );
+    await render(gallery([media(1, 'photo', 'landscapeLeft')]));
 
     const photo = await screen.findByLabelText('Photo');
     // Same parent, both absolutely filling it: stacked, not stacked *up*.
@@ -114,7 +124,7 @@ describe('MediaGalleryScreen', () => {
    * on, wired to the player.
    */
   it('plays a video with its own controls, not the system ones', async () => {
-    await render(<MediaGalleryScreen items={[media(1, 'video')]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery([media(1, 'video')]));
 
     const video = await screen.findByLabelText('Video');
     expect(video.props.nativeControls).toBe(false);
@@ -123,7 +133,7 @@ describe('MediaGalleryScreen', () => {
   });
 
   it('starts the clip as soon as it is the page you are on', async () => {
-    await render(<MediaGalleryScreen items={[media(1, 'video')]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery([media(1, 'video')]));
 
     await screen.findByLabelText('Video');
     const player = (useVideoPlayer as jest.Mock).mock.results[0]?.value;
@@ -136,7 +146,7 @@ describe('MediaGalleryScreen', () => {
   it('draws a thumbnail for the neighbours it is not opening', async () => {
     const items = [media(1), media(2), media(3)];
 
-    await render(<MediaGalleryScreen items={items} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery(items));
 
     await waitFor(() => expect(thumbnails).toHaveBeenCalledTimes(3));
     expect(opened).toHaveBeenCalledTimes(1);
@@ -145,7 +155,7 @@ describe('MediaGalleryScreen', () => {
   // Audio has no thumbnail and never will. Asking for one on every scroll would
   // be a decrypt of nothing, repeated forever.
   it('never asks for a thumbnail a voice note does not have', async () => {
-    await render(<MediaGalleryScreen items={[media(1, 'audio')]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery([media(1, 'audio')]));
 
     await act(async () => {});
     expect(thumbnails).not.toHaveBeenCalled();
@@ -156,35 +166,44 @@ describe('MediaGalleryScreen', () => {
   it('opens nothing while another tab is showing', async () => {
     const items = [media(1), media(2)];
 
-    const view = await render(
-      <MediaGalleryScreen items={items} tzOffsetMinutes={0} visible={false} onOpenDetails={noop} />,
-    );
+    const view = await render(gallery(items, { visible: false }));
 
     await act(async () => {});
     expect(opened).not.toHaveBeenCalled();
 
-    await view.rerender(<MediaGalleryScreen items={items} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await view.rerender(gallery(items));
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
 
-    await view.rerender(<MediaGalleryScreen items={items} tzOffsetMinutes={0} visible={false} onOpenDetails={noop} />);
+    await view.rerender(gallery(items, { visible: false }));
     await waitFor(() => expect(released).toHaveBeenCalledWith(items[1]));
   });
 
-  // The metadata is deliberately not on the main view; this is the only way to
-  // it, so it is worth pinning that it goes somewhere.
-  it('offers the details of the capture on screen behind the ⋯', async () => {
-    const items = [media(1), media(2)];
-    const onOpenDetails = jest.fn();
+  /**
+   * The Day tab's thumbnails land here: a capture id arrives, the pager jumps
+   * to it, and the arrival is acknowledged so the same thumbnail works twice.
+   */
+  it('lands on a capture another screen pointed at, and says so', async () => {
+    const items = [media(1), media(2), media(3)];
+    const onFocusHandled = jest.fn();
 
-    await render(<MediaGalleryScreen items={items} tzOffsetMinutes={0} visible onOpenDetails={onOpenDetails} />);
+    await render(gallery(items, { focusId: items[0]!.id, onFocusHandled }));
 
-    await act(async () => fireEvent.press(screen.getByLabelText('About this capture')));
+    await waitFor(() => expect(onFocusHandled).toHaveBeenCalled());
+    // Oldest capture: last page of a newest-first pager.
+    expect(screen.getByText('3 of 3')).toBeOnTheScreen();
+  });
 
-    expect(onOpenDetails).toHaveBeenCalledWith(items[1]);
+  it('leaves an id it cannot find unacknowledged, for a list still catching up', async () => {
+    const onFocusHandled = jest.fn();
+
+    await render(gallery([media(1)], { focusId: 'm-nope', onFocusHandled }));
+
+    await act(async () => {});
+    expect(onFocusHandled).not.toHaveBeenCalled();
   });
 
   it('names each thumbnail by what it is and when it was taken', async () => {
-    await render(<MediaGalleryScreen items={[media(7)]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+    await render(gallery([media(7)]));
 
     expect(screen.getByLabelText('photo at 09:07')).toBeOnTheScreen();
   });

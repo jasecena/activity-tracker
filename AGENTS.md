@@ -346,10 +346,10 @@ or modal routes.
 
 **The gallery and the camera are both full-bleed, and neither has a header.**
 A header and a subtitle cost about a fifth of the screen on a phone, and both
-tabs exist to look at a picture. Controls float over it: the counter and the ⋯
-at the top, the filmstrip along the bottom, the mode rail and the zoom down the
-two edges. Only the empty gallery keeps a heading, because there is nothing
-behind it to look at.
+tabs exist to look at a picture. Controls float over it: the counter at the
+top, the filmstrip along the bottom, the mode rail down one edge and the zoom
+wheel over the shutter. Only the empty gallery keeps a heading, because there
+is nothing behind it to look at.
 
 **The zoom is a wheel with real numbers on it, and the numbers come from a
 local native module.** `expo-camera` exposes a 0-to-1 `zoom` and lens names,
@@ -423,6 +423,22 @@ picture-in-picture and system captions went with the native controls,
 knowingly — none of the three earns the touch routing back for a diary's own
 clips. `timeUpdateEventInterval` must be set on the player or `timeUpdate`
 never fires and the scrubber is a still image of zero.
+
+**A capture has one screen, and the gestures are the Photos gestures.** The
+detail page is gone — the gallery absorbed it. Swipe up and everything the app
+knows about the capture rises under it: the fields, the map with the capture
+pinned to the spot, Forget. Swipe down and every day's captures arrive as a
+grid, newest first, where tapping a thumbnail lands the pager on it. The Day
+timeline's captures are small thumbnails now, and tapping one switches to the
+Media tab focused on that capture — one screen that shows a capture rather
+than two drifting apart, which is what retiring `MediaScreen` bought. The ⋯
+went with it, at its owner's suggestion: the swipe is the affordance.
+
+The vertical gesture can be reliable where the timeline swipe could not, and
+the difference is structural rather than a better threshold: the pager
+underneath scrolls _horizontally_, so a decisively vertical drag has no other
+claimant. Its two decisions are exported from `verticalIntent.ts` and tested
+directly, per `SwipeBackPage`'s precedent.
 
 **The gallery holds thumbnails, and exactly one capture.** Both lists are
 windowed and only the centre page is decrypted; the pages either side draw the

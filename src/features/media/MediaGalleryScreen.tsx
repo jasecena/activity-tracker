@@ -2,13 +2,35 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Image,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
-import { formatClockTime, formatDuration } from '@/core/format';
-import { displayRotationFor, stageSizeFor, type CaptureOrientation, type MediaItem, type Size } from '@/core/media';
+import { formatClockTime, formatDayTitle, formatDuration } from '@/core/format';
+import {
+  displayRotationFor,
+  groupMediaByDay,
+  stageSizeFor,
+  type CaptureOrientation,
+  type MediaItem,
+  type Size,
+} from '@/core/media';
+import type { Position } from '@/core/replay';
+import { MapCanvas } from '@/components/MapCanvas';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { ClipControls } from '@/components/ClipControls';
+
+import { isVerticalDrag, releasedIntent } from './verticalIntent';
 
 import { useSealedFile } from './hooks/useSealedFile';
 import { useSealedImages } from './hooks/useSealedImages';
@@ -18,8 +40,16 @@ interface MediaGalleryScreenProps {
   readonly tzOffsetMinutes: number;
   /** False while another tab is showing, so nothing plays out of sight. */
   readonly visible: boolean;
-  /** Opens the details page — deliberately the only route to the metadata. */
-  readonly onOpenDetails: (item: MediaItem) => void;
+  readonly mapsEnabled: boolean;
+  /** Where the day says a capture happened, or null — resolved by the shell, which holds the track. */
+  readonly positionFor: (item: MediaItem) => Position | null;
+  readonly onForget: (id: string) => void;
+  /**
+   * A capture another screen wants looked at — the Day tab's thumbnails land
+   * here. Handled once and acknowledged, so pressing the same one twice works.
+   */
+  readonly focusId: string | null;
+  readonly onFocusHandled: () => void;
 }
 
 /**
@@ -56,9 +86,25 @@ const STRIP_GAP = spacing.xs;
  * thumbnails are for, and it is why a fast swipe through a hundred videos costs
  * nothing until you stop on one.
  */
-export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDetails }: MediaGalleryScreenProps) {
+export function MediaGalleryScreen({
+  items,
+  tzOffsetMinutes,
+  visible,
+  mapsEnabled,
+  positionFor,
+  onForget,
+  focusId,
+  onFocusHandled,
+}: MediaGalleryScreenProps) {
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
+  /**
+   * What is drawn over the capture: nothing, the info panel, or the grid.
+   *
+   * One state rather than two booleans, because they are exclusive by design —
+   * an info panel over a grid is two answers to "what am I looking at".
+   */
+  const [panel, setPanel] = useState<'none' | 'info' | 'grid'>('none');
   const pager = useRef<FlatList<MediaItem>>(null);
   const strip = useRef<FlatList<MediaItem>>(null);
 
@@ -91,6 +137,65 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
     [width],
   );
 
+  /**
+   * A capture the Day tab pointed at.
+   *
+   * Split the way the lint rule insists, and the rule is right: the state
+   * changes are a render-time adjustment — React re-renders before committing,
+   * so nothing flashes — and the effect touches only the outside world, the
+   * two lists' scroll positions and the parent's acknowledgement. `handled`
+   * resets when the parent clears its request, which is what lets the same
+   * thumbnail work twice.
+   */
+  const [handledFocus, setHandledFocus] = useState<string | null>(null);
+  if (!focusId && handledFocus !== null) setHandledFocus(null);
+  if (focusId && focusId !== handledFocus) {
+    const wanted = ordered.findIndex((candidate) => candidate.id === focusId);
+    // An id the list does not hold yet stays unhandled: the list may simply
+    // not have caught up, and a capture that arrives a moment later still lands.
+    if (wanted !== -1) {
+      setHandledFocus(focusId);
+      setIndex(wanted);
+      setPanel('none');
+    }
+  }
+  useEffect(() => {
+    if (handledFocus === null) return;
+    pager.current?.scrollToOffset({ offset: safeIndex * width, animated: false });
+    strip.current?.scrollToIndex({ index: safeIndex, animated: false, viewPosition: 0.5 });
+    onFocusHandled();
+  }, [handledFocus, safeIndex, width, onFocusHandled]);
+
+  /** The grid draws every day at once, so it wants every thumbnail. */
+  useEffect(() => {
+    if (panel === 'grid') images.load(ordered);
+  }, [panel, images, ordered]);
+
+  /**
+   * Up for the panel, down for the grid — the Photos gestures. A decisively
+   * vertical drag has no other claimant here: the pager underneath scrolls
+   * horizontally, which is the structural difference between this gesture and
+   * the timeline swipe that could not be made reliable.
+   *
+   * Rebuilt per render, deliberately — see the capture screen's wheel for why
+   * both ways of memoising a responder are banned here.
+   */
+  const verticalGesture = PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_event, gesture) => isVerticalDrag(gesture.dx, gesture.dy),
+    onPanResponderRelease: (_event, gesture) => {
+      const intent = releasedIntent(gesture.dy, gesture.vy);
+      if (!intent) return;
+      // Pulling down over an open panel closes it; the grid only opens from a
+      // clean stage. Every drag is one step, never a jump through two states.
+      if (panel === 'info') {
+        if (intent === 'grid') setPanel('none');
+        return;
+      }
+      setPanel(intent === 'info' ? 'info' : 'grid');
+    },
+  });
+
   if (ordered.length === 0) {
     return (
       <View style={styles.screen}>
@@ -115,52 +220,124 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
         <Text style={styles.counter}>
           {safeIndex + 1} of {ordered.length}
         </Text>
-        {current ? (
-          <Pressable
-            onPress={() => onOpenDetails(current)}
-            accessibilityRole="button"
-            accessibilityLabel="About this capture"
-            style={({ pressed }) => [styles.about, pressed && styles.pressed]}
-          >
-            <Ionicons name="ellipsis-horizontal" size={20} color={colors.textPrimary} />
-          </Pressable>
-        ) : null}
       </View>
 
-      <FlatList
-        ref={pager}
-        data={ordered}
-        keyExtractor={(item) => item.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        // Fixed-width pages, so the list never has to measure one to know where
-        // the next begins — which is what lets `scrollToIndex` work on an item
-        // that has not been rendered yet.
-        getItemLayout={(_, position) => ({ length: width, offset: width * position, index: position })}
-        initialNumToRender={1}
-        windowSize={3}
-        removeClippedSubviews
-        onMomentumScrollEnd={(event) => {
-          const next = Math.round(event.nativeEvent.contentOffset.x / width);
-          if (next === safeIndex) return;
-          setIndex(next);
-          strip.current?.scrollToIndex({ index: next, animated: true, viewPosition: 0.5 });
-        }}
-        style={StyleSheet.absoluteFill}
-        renderItem={({ item, index: position }) => (
-          <View style={[styles.page, { width }]}>
-            <Stage
-              item={item}
-              live={position === safeIndex}
-              uri={position === safeIndex ? file.uri : null}
-              failed={position === safeIndex && file.failed}
-              opening={position === safeIndex && file.uri === null && !file.failed}
-              thumbUri={images.uriFor(item)}
-            />
+      {/* The vertical gestures live on the wrapper: the pager inside claims
+          horizontal drags, this claims decisively vertical ones, and the two
+          sets do not overlap. */}
+      <View style={StyleSheet.absoluteFill} {...verticalGesture.panHandlers}>
+        <FlatList
+          ref={pager}
+          data={ordered}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          // Fixed-width pages, so the list never has to measure one to know where
+          // the next begins — which is what lets `scrollToIndex` work on an item
+          // that has not been rendered yet.
+          getItemLayout={(_, position) => ({ length: width, offset: width * position, index: position })}
+          initialNumToRender={1}
+          windowSize={3}
+          removeClippedSubviews
+          onMomentumScrollEnd={(event) => {
+            const next = Math.round(event.nativeEvent.contentOffset.x / width);
+            if (next === safeIndex) return;
+            setIndex(next);
+            strip.current?.scrollToIndex({ index: next, animated: true, viewPosition: 0.5 });
+          }}
+          style={StyleSheet.absoluteFill}
+          renderItem={({ item, index: position }) => (
+            <View style={[styles.page, { width }]}>
+              <Stage
+                item={item}
+                live={position === safeIndex}
+                uri={position === safeIndex ? file.uri : null}
+                failed={position === safeIndex && file.failed}
+                opening={position === safeIndex && file.uri === null && !file.failed}
+                thumbUri={images.uriFor(item)}
+              />
+            </View>
+          )}
+        />
+      </View>
+
+      {/* Everything the app knows about this capture, below it rather than on
+          a page of its own. This absorbed the detail screen: same fields, same
+          map, same Forget — reached by a pull upward instead of a ⋯ that took
+          you somewhere else. Swiping down, or the chevron, puts it away. */}
+      {panel === 'info' && current ? (
+        <InfoPanel
+          item={current}
+          at={positionFor(current)}
+          tzOffsetMinutes={tzOffsetMinutes}
+          mapsEnabled={mapsEnabled}
+          thumbUri={images.uriFor(current)}
+          onForget={onForget}
+          onClose={() => setPanel('none')}
+        />
+      ) : null}
+
+      {/* Every day of captures at once, pulled down over the pager. Tapping a
+          thumbnail lands the pager on it, which is also how the grid closes —
+          choosing something *is* leaving. */}
+      {panel === 'grid' ? (
+        <View style={[StyleSheet.absoluteFill, styles.grid]}>
+          <View style={styles.gridHeader}>
+            <Text style={styles.gridTitle} accessibilityRole="header">
+              All captures
+            </Text>
+            <Pressable
+              onPress={() => setPanel('none')}
+              accessibilityRole="button"
+              accessibilityLabel="Back to the capture"
+              style={({ pressed }) => [styles.gridClose, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-up" size={20} color={colors.textPrimary} />
+            </Pressable>
           </View>
-        )}
-      />
+          <ScrollView contentContainerStyle={styles.gridBody}>
+            {groupMediaByDay(ordered, tzOffsetMinutes).map((day) => (
+              <View key={day.key}>
+                <Text style={styles.gridDay}>{formatDayTitle(day.newestAt, tzOffsetMinutes)}</Text>
+                <View style={styles.gridRow}>
+                  {day.items.map((item) => {
+                    const uri = images.uriFor(item);
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => {
+                          const wanted = ordered.findIndex((candidate) => candidate.id === item.id);
+                          if (wanted !== -1) show(wanted);
+                          setPanel('none');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.kind} at ${formatClockTime(item.capturedAt, tzOffsetMinutes)}`}
+                        style={({ pressed }) => [styles.gridThumb, pressed && styles.pressed]}
+                      >
+                        {uri ? (
+                          <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
+                        ) : (
+                          <Ionicons
+                            name={item.kind === 'audio' ? 'mic-outline' : 'image-outline'}
+                            size={18}
+                            color={colors.textMuted}
+                          />
+                        )}
+                        {item.kind === 'video' ? (
+                          <View style={styles.thumbBadge}>
+                            <Ionicons name="play" size={11} color={colors.textPrimary} />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <FlatList
         ref={strip}
@@ -320,6 +497,110 @@ function Turned({ orientation, children }: { readonly orientation: CaptureOrient
   );
 }
 
+/**
+ * What was the detail page, as a panel under the capture.
+ *
+ * The photograph stays where it is, visible above; this covers the lower part
+ * of the screen with the same facts the page carried — when, what, how big,
+ * where, and the map with the capture pinned to the spot. Nothing navigates:
+ * putting it away is a pull downward, and the capture never stopped being the
+ * thing on screen.
+ */
+function InfoPanel({
+  item,
+  at,
+  tzOffsetMinutes,
+  mapsEnabled,
+  thumbUri,
+  onForget,
+  onClose,
+}: {
+  readonly item: MediaItem;
+  readonly at: Position | null;
+  readonly tzOffsetMinutes: number;
+  readonly mapsEnabled: boolean;
+  readonly thumbUri: string | null;
+  readonly onForget: (id: string) => void;
+  readonly onClose: () => void;
+}) {
+  const confirmForget = () =>
+    Alert.alert('Forget this capture?', 'The file is deleted from this phone. There is no copy anywhere else.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Forget',
+        style: 'destructive',
+        onPress: () => {
+          onClose();
+          onForget(item.id);
+        },
+      },
+    ]);
+
+  return (
+    <View style={styles.info}>
+      <Pressable
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Put details away"
+        style={({ pressed }) => [styles.infoHandle, pressed && styles.pressed]}
+      >
+        <View style={styles.infoGrip} />
+      </Pressable>
+
+      <ScrollView contentContainerStyle={styles.infoBody}>
+        <View style={styles.infoCard}>
+          <InfoRow label="Captured" value={formatClockTime(item.capturedAt, tzOffsetMinutes)} />
+          <InfoRow label="Kind" value={item.kind} />
+          <InfoRow label="Length" value={item.durationMs === null ? '—' : formatDuration(item.durationMs)} />
+          <InfoRow label="Size on disk" value={`${Math.round(item.byteLength / 1024)} kB`} />
+          <InfoRow label="Position" value={at ? `${at.lat.toFixed(5)}, ${at.lon.toFixed(5)}` : 'not known'} />
+        </View>
+
+        {at ? (
+          <View>
+            <MapCanvas
+              mapsEnabled={mapsEnabled}
+              tracks={[]}
+              marks={[{ id: item.id, at, label: '', kind: 'media' }]}
+              height={180}
+              label="Map of where this was captured"
+            />
+            {thumbUri ? (
+              <View style={styles.pin} pointerEvents="none">
+                <Image source={{ uri: thumbUri }} style={styles.pinImage} resizeMode="cover" />
+                <View style={styles.pinTail} />
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <Text style={styles.infoFootnote}>
+            The day has no fixes for this moment, so there is nowhere to put it on a map.
+          </Text>
+        )}
+
+        <Pressable
+          onPress={confirmForget}
+          accessibilityRole="button"
+          accessibilityLabel="Forget this capture"
+          style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
+        >
+          <Ionicons name="trash-outline" size={16} color={colors.danger} />
+          <Text style={styles.forgetText}>Forget this capture</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
+  );
+}
+
+function InfoRow({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
 function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string }) {
   if (item.kind === 'photo') {
     return (
@@ -445,6 +726,76 @@ const styles = StyleSheet.create({
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   turning: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 96 },
+  info: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: '58%',
+    backgroundColor: colors.surfaceRaised,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
+  infoHandle: { alignItems: 'center', paddingVertical: spacing.sm },
+  infoGrip: { width: 36, height: 4, borderRadius: radius.pill, backgroundColor: colors.border },
+  infoBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.md },
+  infoCard: { gap: spacing.xs },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  infoLabel: { ...typography.caption, color: colors.textSecondary },
+  infoValue: { ...typography.caption, color: colors.textPrimary, flexShrink: 1, textAlign: 'right' },
+  infoFootnote: { ...typography.caption, color: colors.textSecondary },
+  forget: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  forgetText: { ...typography.caption, color: colors.danger },
+  pin: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 10,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinImage: { width: 56, height: 56, borderRadius: radius.sm, borderWidth: 2, borderColor: colors.textPrimary },
+  pinTail: {
+    width: 2,
+    height: 8,
+    backgroundColor: colors.textPrimary,
+  },
+  grid: { backgroundColor: colors.background },
+  gridHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  gridTitle: { ...typography.title, color: colors.textPrimary },
+  gridClose: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceRaised,
+  },
+  gridBody: { padding: spacing.md, gap: spacing.sm },
+  gridDay: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xs },
+  gridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  gridThumb: {
+    width: 76,
+    height: 100,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceRaised,
+  },
   opening: {
     alignItems: 'center',
     gap: spacing.sm,

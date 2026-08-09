@@ -14,7 +14,6 @@ import { SegmentScreen } from '@/features/activities/SegmentScreen';
 import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
 import { useTimeline } from '@/features/activities/hooks/useTimeline';
 import { CaptureScreen } from '@/features/capture/CaptureScreen';
-import { MediaScreen } from '@/features/capture/MediaScreen';
 import { useMedia } from '@/features/capture/hooks/useMedia';
 import { DataScreen } from '@/features/data/DataScreen';
 import { HistoryScreen } from '@/features/history/HistoryScreen';
@@ -62,7 +61,6 @@ type Page =
   | { readonly kind: 'places' }
   | { readonly kind: 'place'; readonly place: Place }
   | { readonly kind: 'journeys' }
-  | { readonly kind: 'media'; readonly item: MediaItem }
   | { readonly kind: 'data' };
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -187,7 +185,18 @@ export function TabShell() {
   };
 
   const openSegment = (which: PagedTab) => (segment: Segment) => stacks[which].push({ kind: 'segment', segment });
-  const openMedia = (which: PagedTab) => (item: MediaItem) => stacks[which].push({ kind: 'media', item });
+  /**
+   * Opening a capture goes to the Media tab, focused on it — there is no
+   * detail page any more. The gallery absorbed everything the page held, so a
+   * capture tapped on the Day timeline lands in the same place a capture
+   * swiped to in Media does, and there is one screen that shows a capture
+   * rather than two drifting apart.
+   */
+  const [galleryFocus, setGalleryFocus] = useState<string | null>(null);
+  const openMedia = (item: MediaItem) => {
+    setGalleryFocus(item.id);
+    setTab('gallery');
+  };
 
   /**
    * Where a capture happened.
@@ -282,18 +291,6 @@ export function TabShell() {
         />
       );
     }
-    if (page.kind === 'media') {
-      return (
-        <MediaScreen
-          item={page.item}
-          at={positionOf(page.item)}
-          tzOffsetMinutes={timeline.tzOffsetMinutes}
-          mapsEnabled={mapsEnabled}
-          onBack={back}
-          onForget={media.forget}
-        />
-      );
-    }
     return (
       <DataScreen
         fixes={timeline.fixes}
@@ -328,7 +325,7 @@ export function TabShell() {
             selectedDayKey={replayDayKey}
             onSelectDay={setReplayDayKey}
             onOpenSegment={openSegment('replay')}
-            onOpenMedia={openMedia('replay')}
+            onOpenMedia={openMedia}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
             onCorrectMode={setCorrecting}
           />
@@ -342,7 +339,11 @@ export function TabShell() {
             items={media.items}
             tzOffsetMinutes={timeline.tzOffsetMinutes}
             visible={tab === 'gallery'}
-            onOpenDetails={openMedia('gallery')}
+            mapsEnabled={mapsEnabled}
+            positionFor={positionOf}
+            onForget={media.forget}
+            focusId={galleryFocus}
+            onFocusHandled={() => setGalleryFocus(null)}
           />
           {stacks.gallery.current ? (
             <SwipeBackPage onBack={stacks.gallery.pop}>{renderPage('gallery')}</SwipeBackPage>
