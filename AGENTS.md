@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 580
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 583
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -290,8 +290,9 @@ five seconds from the press and ends itself, so there is no Stop to forget.
 On disk it is a clip and a still, which is what a video already was, so nothing
 that walks the media directory has to learn a third file. `keyframeMs` says
 which instant of the clip is the picture — zero at the shutter, stored rather
-than assumed so it can be moved later. Moving it re-extracts the still and
-never touches the clip. The position and orientation are read at the press, not
+than assumed so it can be moved later, which the capture's own page now does:
+the still is written again from the frame at that instant and the clip is never
+re-encoded, so choosing again is reversible for ever. The position and orientation are read at the press, not
 at the end: the seconds afterwards are what the picture was surrounded by, not
 where it was taken.
 

@@ -8,6 +8,7 @@ import type { MediaItem } from '@/core/media';
 import type { Position } from '@/core/replay';
 import { MapCanvas } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { Scrubber } from '@/components/Scrubber';
 import { openForPlayback, openThumbnail, releasePlayback } from '@/services/mediaStore';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -23,6 +24,13 @@ interface MediaScreenProps {
   readonly mapsEnabled: boolean;
   readonly onBack: () => void;
   readonly onForget: (id: string) => void;
+  /**
+   * Move a live capture's key photo. Omitted where nothing can be changed.
+   *
+   * Only the still is rewritten; the clip is never touched, which is what makes
+   * this reversible as many times as you like.
+   */
+  readonly onSetKeyframe?: (id: string, keyframeMs: number) => void;
 }
 
 /**
@@ -33,7 +41,16 @@ interface MediaScreenProps {
  * media at rest and it is the right cost: the alternative is a decrypted copy
  * of everything you ever captured sitting in the container forever.
  */
-export function MediaScreen({ item, at, tzOffsetMinutes, mapsEnabled, onBack, onForget }: MediaScreenProps) {
+export function MediaScreen({
+  item,
+  at,
+  tzOffsetMinutes,
+  mapsEnabled,
+  onBack,
+  onForget,
+  onSetKeyframe,
+}: MediaScreenProps) {
+  const [keyframe, setKeyframe] = useState(item.keyframeMs ?? 0);
   const [uri, setUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -135,6 +152,42 @@ export function MediaScreen({ item, at, tzOffsetMinutes, mapsEnabled, onBack, on
             never stored a position of its own.
           </Text>
         )}
+
+        {/* Only a live capture has a choice to make here. Apple calls it the
+            key photo; it is the frame that stands in for the clip everywhere
+            the clip is not playing.
+
+            Nothing is re-encoded. The still beside the clip is written again
+            from the frame at this instant, which is why `keyframeMs` is stored
+            rather than assumed — and why picking a different one is reversible
+            as many times as you like. */}
+        {item.kind === 'live' && onSetKeyframe && item.durationMs ? (
+          <>
+            <Text style={styles.sectionLabel}>KEY PHOTO</Text>
+            <View style={styles.card}>
+              <Scrubber
+                from={0}
+                to={item.durationMs}
+                value={keyframe}
+                onChange={setKeyframe}
+                label={`Key photo at ${formatDuration(keyframe)}`}
+              />
+              <Pressable
+                onPress={() => onSetKeyframe(item.id, keyframe)}
+                disabled={keyframe === (item.keyframeMs ?? 0)}
+                accessibilityRole="button"
+                accessibilityLabel="Use this frame as the picture"
+                style={({ pressed }) => [
+                  styles.keyframeButton,
+                  keyframe === (item.keyframeMs ?? 0) && styles.keyframeDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.keyframeText}>Use this frame</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : null}
 
         <Text style={styles.sectionLabel}>WHAT IS STORED</Text>
         <View style={styles.card}>
@@ -261,5 +314,14 @@ const styles = StyleSheet.create({
   fieldLabel: { ...typography.body, color: colors.textSecondary, flexShrink: 0 },
   fieldValue: { ...typography.clock, color: colors.textPrimary, flexShrink: 1, textAlign: 'right' },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
+  keyframeButton: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    backgroundColor: colors.manual,
+  },
+  keyframeDisabled: { opacity: 0.4 },
+  keyframeText: { ...typography.body, color: colors.onAccent, fontWeight: '600' },
   pressed: { opacity: 0.6 },
 });

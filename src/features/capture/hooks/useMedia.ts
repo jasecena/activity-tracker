@@ -18,6 +18,7 @@ import {
   filesOf,
   isSealed,
   listPending,
+  openForPlayback,
   stageCapture,
   sweepOrphans,
   unsealInPlace,
@@ -68,6 +69,14 @@ export interface UseMedia {
    */
   keep: (sourceUri: string, kind: MediaKind, options?: KeepOptions) => Promise<MediaItem | null>;
   annotate: (id: string, note: string) => void;
+  /**
+   * Choose which instant of a live capture is its picture.
+   *
+   * The clip is never touched — the still beside it is written again from the
+   * frame at that time, which is the whole reason `keyframeMs` is stored rather
+   * than assumed to be zero.
+   */
+  setKeyframe: (id: string, keyframeMs: number) => Promise<void>;
   forget: (id: string) => void;
 }
 
@@ -247,6 +256,31 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
+  const setKeyframe = useCallback(
+    async (id: string, keyframeMs: number) => {
+      const item = items.find((candidate) => candidate.id === id);
+      if (!item || item.kind !== 'live') return;
+
+      // The stored file itself, not a copy: nothing here rewrites the clip, and
+      // pulling one frame out of it is a read.
+      const uri = await openForPlayback(item);
+      if (!uri) return;
+
+      const thumbFileName = await writeThumbnail(uri, id, item.kind, keyframeMs);
+      // A frame that could not be read leaves the old picture in place rather
+      // than blanking the capture — `writeThumbnail` already falls back to
+      // other instants, so null here means the clip itself is unreadable.
+      persist(
+        items.map((candidate) =>
+          candidate.id === id
+            ? { ...candidate, keyframeMs, thumbFileName: thumbFileName ?? candidate.thumbFileName }
+            : candidate,
+        ),
+      );
+    },
+    [items, persist],
+  );
+
   const forget = useCallback(
     (id: string) => {
       const doomed = items.find((item) => item.id === id);
@@ -256,7 +290,7 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
-  return { ready, items, keep, annotate, forget };
+  return { ready, items, keep, annotate, setKeyframe, forget };
 }
 
 /**
