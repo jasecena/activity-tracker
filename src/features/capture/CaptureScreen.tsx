@@ -180,8 +180,22 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    * up are forbidden here by lint rules that are right to forbid them.
    */
   const wheelGesture = PanResponder.create({
+    // *Capture* handlers, and that is the whole fix. The shutter is a
+    // `Pressable`, so it becomes the responder the moment a finger lands on
+    // it, and a parent asking politely afterwards is never consulted — the
+    // drag died after three thousandths of a turn, which is exactly what the
+    // diagnostics showed. The capture phase runs on the ancestors *before* the
+    // target, so this takes the gesture off the button once it is clearly a
+    // sideways drag, while a tap that never moves is left alone.
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+      Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 6,
+    onMoveShouldSetPanResponder: (_event, gesture) =>
+      Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    // Nothing may take it back mid-turn. Without this the scroll views and
+    // buttons underneath can reclaim it, which reads as the wheel sticking.
+    onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: () => {
       setZoomAtTouch(displayZoom);
       setTurning(true);
@@ -503,8 +517,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       )}
 
-      {needsCamera && dial ? <ZoomWheel spec={dial} display={displayZoom} active={turning} /> : null}
-
       {/* Temporary, and deliberately ugly: the zoom has been theorised about
           twice and fixed twice without either fix being provable from here,
           because a simulator has no cameras and Jest has no AVFoundation. One
@@ -599,7 +611,17 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         </View>
       ) : null}
 
-      <View style={styles.bottomBar} pointerEvents="box-none">
+      {/* The zoom zone: the wheel, the stops and the shutter row, in one
+          column. Dragging sideways anywhere across it turns the wheel —
+          including the grey of the wheel itself, which is where a hand
+          naturally goes — and everything in it stays tappable, because the
+          gesture is only taken once the finger is clearly moving. */}
+      <View
+        style={styles.bottomBar}
+        pointerEvents="box-none"
+        {...(needsCamera && dial ? wheelGesture.panHandlers : {})}
+      >
+        {needsCamera && dial ? <ZoomWheel spec={dial} display={displayZoom} active={turning} /> : null}
         {problem ? <Text style={styles.problem}>{problem}</Text> : null}
 
         {mode === 'video' && state !== 'recording' ? (
@@ -645,17 +667,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         {/* Reversed rather than repositioned: the shutter stays dead centre
             under the thumb either way, and the flip button crosses to the same
             side the mode rail went to. */}
-        {/* The row is also the zoom collar: drag across it — through the
-            shutter, edge to edge — and the wheel turns. Only here, so the rest
-            of the glass stays inert; a viewfinder that zooms wherever a finger
-            brushes it zooms in pockets. The handlers sit on the row rather
-            than a layer over it, which is what keeps the shutter and the flip
-            tappable: a press is only claimed once it moves sideways, and a
-            press that moved sideways was not a press. */}
-        <View
-          style={[styles.controls, modesEdge === 'left' && styles.controlsReversed]}
-          {...(needsCamera && dial ? wheelGesture.panHandlers : {})}
-        >
+        <View style={[styles.controls, modesEdge === 'left' && styles.controlsReversed]}>
           <View style={styles.secondaryPlaceholder} />
 
           <Pressable

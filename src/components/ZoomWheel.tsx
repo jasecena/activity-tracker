@@ -195,13 +195,10 @@ export function ZoomWheel({ spec, display, active }: ZoomWheelProps) {
 }
 
 const styles = StyleSheet.create({
-  wheel: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    // Above the shutter row, which is what the wheel wraps around.
-    bottom: 96,
-  },
+  // An ordinary block in the bottom column now, above the stops and the
+  // shutter, rather than a layer floating over them: the column is one gesture
+  // zone, and a floating layer would have been outside it.
+  wheel: { alignSelf: 'stretch', marginHorizontal: -16 },
   backdrop: { position: 'absolute', bottom: 0 },
   faded: { opacity: 0 },
 });
