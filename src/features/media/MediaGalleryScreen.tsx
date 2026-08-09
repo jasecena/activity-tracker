@@ -31,7 +31,7 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { ClipControls } from '@/components/ClipControls';
 
-import { isVerticalDrag, releasedIntent } from './verticalIntent';
+import { isCaptureLive, isVerticalDrag, releasedIntent, showsCaptureChrome } from './verticalIntent';
 
 import { useSealedFile } from './hooks/useSealedFile';
 import { useSealedImages } from './hooks/useSealedImages';
@@ -247,7 +247,7 @@ export function MediaGalleryScreen({
       {/* Over the capture, not above it. A header and a subtitle cost about a
           fifth of the screen on a phone, and what this tab is for is looking at
           the picture. */}
-      <View style={[styles.topBar, panel !== 'none' && styles.stripHidden]} pointerEvents="box-none">
+      <View style={[styles.topBar, !showsCaptureChrome(panel) && styles.stripHidden]} pointerEvents="box-none">
         <Text style={styles.counter}>
           {safeIndex + 1} of {ordered.length}
         </Text>
@@ -283,10 +283,7 @@ export function MediaGalleryScreen({
             <View style={[styles.page, { width }]}>
               <Stage
                 item={item}
-                // A panel over the capture means you are not looking at the
-                // capture. A clip that carries on playing behind the grid is
-                // the same fault as one playing behind another tab.
-                live={panel === 'none' && position === safeIndex}
+                live={isCaptureLive(panel, position, safeIndex)}
                 uri={position === safeIndex ? file.uri : null}
                 failed={position === safeIndex && file.failed}
                 opening={position === safeIndex && file.uri === null && !file.failed}
@@ -411,8 +408,8 @@ export function MediaGalleryScreen({
         onViewableItemsChanged={({ viewableItems }) => {
           images.load(viewableItems.map((entry) => entry.item as MediaItem));
         }}
-        style={[styles.stripBar, panel !== 'none' && styles.stripHidden]}
-        pointerEvents={panel === 'none' ? 'auto' : 'none'}
+        style={[styles.stripBar, !showsCaptureChrome(panel) && styles.stripHidden]}
+        pointerEvents={showsCaptureChrome(panel) ? 'auto' : 'none'}
         contentContainerStyle={styles.strip}
         renderItem={({ item, index: position }) => {
           const uri = images.uriFor(item);

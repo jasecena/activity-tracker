@@ -144,6 +144,28 @@ describe('MediaGalleryScreen', () => {
     expect(player.timeUpdateEventInterval).toBeGreaterThan(0);
   });
 
+  /**
+   * The gallery grew a panel, a grid and a player while its tests still only
+   * asked what got decrypted. These are the renderable half of what v0.2.15
+   * shipped wrong; the rules a panel imposes are decisions and live in
+   * `verticalIntent.test.ts`, because a gesture cannot be driven faithfully by
+   * synthetic events.
+   */
+  it('shows the controls over a playing clip rather than under the filmstrip', async () => {
+    await render(gallery([media(1, 'video')]));
+    await screen.findByLabelText('Video');
+
+    expect(screen.getByLabelText('Play')).toBeOnTheScreen();
+    expect(screen.getByLabelText(/Playback position/)).toBeOnTheScreen();
+  });
+
+  it('keeps one row of thumbnails, never two', async () => {
+    await render(gallery([media(1), media(2), media(3)]));
+    await act(async () => {});
+
+    expect(screen.getAllByLabelText(/photo at /)).toHaveLength(3);
+  });
+
   it('draws a thumbnail for the neighbours it is not opening', async () => {
     const items = [media(1), media(2), media(3)];
 

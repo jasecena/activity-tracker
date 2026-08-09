@@ -1,4 +1,4 @@
-import { isVerticalDrag, releasedIntent } from './verticalIntent';
+import { isCaptureLive, isVerticalDrag, releasedIntent, showsCaptureChrome } from './verticalIntent';
 
 /**
  * The decisions, not the plumbing — a `PanResponder` cannot be driven
@@ -43,5 +43,37 @@ describe('releasedIntent', () => {
   it('does nothing for a drag that was let go halfway', () => {
     expect(releasedIntent(-30, -0.1)).toBeNull();
     expect(releasedIntent(30, 0.1)).toBeNull();
+  });
+});
+
+/**
+ * The rules a panel imposes on the capture underneath it. Both were shipped
+ * wrong in v0.2.15 — a clip playing under the grid, and two rows of thumbnails
+ * arguing about which was the list — and both are decisions rather than
+ * layout, so they live here where they can be asserted.
+ */
+describe('isCaptureLive', () => {
+  it('opens the capture you are looking at', () => {
+    expect(isCaptureLive('none', 2, 2)).toBe(true);
+  });
+
+  it('leaves the neighbours closed', () => {
+    expect(isCaptureLive('none', 1, 2)).toBe(false);
+  });
+
+  it('stops the capture when anything covers it', () => {
+    expect(isCaptureLive('grid', 2, 2)).toBe(false);
+    expect(isCaptureLive('info', 2, 2)).toBe(false);
+  });
+});
+
+describe('showsCaptureChrome', () => {
+  it('shows the filmstrip and counter over a bare capture', () => {
+    expect(showsCaptureChrome('none')).toBe(true);
+  });
+
+  it('hides them under either panel, so there is never a second list', () => {
+    expect(showsCaptureChrome('grid')).toBe(false);
+    expect(showsCaptureChrome('info')).toBe(false);
   });
 });

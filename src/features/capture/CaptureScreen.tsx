@@ -6,6 +6,7 @@ import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/core/format';
 import {
+  deviceFactorFor,
   dialSpecFor,
   displayFromDrag,
   formatDisplayFactor,
@@ -504,6 +505,27 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
 
       {needsCamera && dial ? <ZoomWheel spec={dial} display={displayZoom} active={turning} /> : null}
 
+      {/* Temporary, and deliberately ugly: the zoom has been theorised about
+          twice and fixed twice without either fix being provable from here,
+          because a simulator has no cameras and Jest has no AVFoundation. One
+          screenshot of this line says whether the value is wrong or the camera
+          is ignoring a correct one. It comes out the moment that is answered. */}
+      {needsCamera && dial ? (
+        <View style={styles.diagnostics} pointerEvents="none">
+          <Text style={styles.diagnosticsText}>
+            {dial.cameraName ?? 'no camera'} · max {dial.videoMaxZoomFactor.toFixed(2)} · wide{' '}
+            {dial.wideFactor.toFixed(2)}
+          </Text>
+          <Text style={styles.diagnosticsText}>
+            shown {displayZoom.toFixed(3)}× · device {deviceFactorFor(dial, displayZoom).toFixed(3)} · prop{' '}
+            {zoomPropFor(dial, displayZoom).toFixed(4)}
+          </Text>
+          <Text style={styles.diagnosticsText}>
+            stops {dial.stops.map((stop) => `${stop.display}=${stop.factor}`).join(' ')}
+          </Text>
+        </View>
+      ) : null}
+
       {state === 'recording' && needsCamera ? (
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={[styles.recordingBadge, upright]}>
@@ -753,6 +775,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   controlsReversed: { flexDirection: 'row-reverse' },
+  diagnostics: {
+    position: 'absolute',
+    top: 52,
+    left: spacing.sm,
+    right: spacing.sm,
+    backgroundColor: 'rgba(11,15,20,0.72)',
+    borderRadius: radius.sm,
+    padding: spacing.xs,
+    gap: 2,
+  },
+  diagnosticsText: { ...typography.caption, fontSize: 10, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
   stopRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
   stopPill: {
     minWidth: 40,

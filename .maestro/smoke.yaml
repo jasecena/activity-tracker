@@ -104,12 +104,25 @@ appId: ${APP_ID}
 - tapOn: 'Capture tab'
 - assertVisible: 'Take photo'
 
+# The zoom wheel is *absent* here on purpose, and asserting that is worth more
+# than it sounds: a simulator reports no cameras, so the optics module returns
+# nothing, the dial is null and the wheel does not draw. This is the assertion
+# that the local Swift module degrades rather than crashing when the hardware
+# will not answer — the failure mode a native module has that a JS one does not.
+- assertNotVisible: 'Zoom to 1x, 24 millimetres'
+
 # Media mounts expo-video and expo-audio, and on a fresh install has nothing to
 # show. The empty state is the assertion worth having: it proves the media index
 # was read and decrypted rather than the screen hanging on the store.
 - tapOn: 'Media tab'
 - assertVisible: 'Media'
 - assertVisible: 'Nothing captured yet'
+
+# The gallery's own gestures and panels cannot be reached here: `clearState`
+# leaves nothing captured, and a simulator has no camera to capture with — so
+# the media rules are asserted in the Jest suite instead
+# (`verticalIntent.test.ts`, `MediaGalleryScreen.test.tsx`). What this proves is
+# the tab mounts expo-video and expo-audio without a native module missing.
 
 - tapOn: 'Settings tab'
 - assertVisible: 'Settings'

@@ -35,3 +35,29 @@ export function releasedIntent(dy: number, vy: number): 'info' | 'grid' | null {
   if (dy > COMMIT_Y || vy > FLICK_VELOCITY) return 'grid';
   return null;
 }
+
+/** What is covering the capture, if anything. */
+export type Panel = 'none' | 'info' | 'grid';
+
+/**
+ * Whether the capture on this page should be open and playing.
+ *
+ * A panel over the capture means you are not looking at the capture, so a clip
+ * must stop — the same rule as "nothing plays behind another tab", and the
+ * same fault when it is missed: v0.2.15 shipped a video that carried on
+ * playing under the grid.
+ */
+export function isCaptureLive(panel: Panel, position: number, current: number): boolean {
+  return panel === 'none' && position === current;
+}
+
+/**
+ * Whether the filmstrip and the counter belong on screen.
+ *
+ * Both belong to the capture rather than to anything covering it. The grid is
+ * the filmstrip's job done properly; showing both at once is two lists arguing
+ * about which one is the list, which is exactly what was reported.
+ */
+export function showsCaptureChrome(panel: Panel): boolean {
+  return panel === 'none';
+}
