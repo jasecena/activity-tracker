@@ -20,7 +20,22 @@ interface MediaGalleryScreenProps {
   readonly onOpenDetails: (item: MediaItem) => void;
 }
 
-const STRIP_SIZE = 60;
+/**
+ * The filmstrip squares are not square.
+ *
+ * Width is what the strip can afford — it decides how many captures are within
+ * reach of a thumb — and height is free, because the strip is a single row with
+ * nothing under it. A taller box shows more of a portrait photograph, which is
+ * what almost every capture is.
+ *
+ * One ratio for all of them, whatever shape the capture is. A strip whose boxes
+ * changed shape with their contents would jump as it scrolled, and the eye
+ * reads a row of identical frames far faster than it reads a mosaic. The
+ * picture fills the box and is cropped to fit — the thumbnail is for finding a
+ * capture, not for looking at one.
+ */
+const STRIP_WIDTH = 60;
+const STRIP_HEIGHT = 84;
 const STRIP_GAP = spacing.xs;
 
 /**
@@ -152,14 +167,14 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
         horizontal
         showsHorizontalScrollIndicator={false}
         getItemLayout={(_, position) => ({
-          length: STRIP_SIZE + STRIP_GAP,
-          offset: (STRIP_SIZE + STRIP_GAP) * position,
+          length: STRIP_WIDTH + STRIP_GAP,
+          offset: (STRIP_WIDTH + STRIP_GAP) * position,
           index: position,
         })}
         // Jumping to a far-off item can outrun the list's own measurements;
         // waiting a beat and asking again is the documented way through it.
         onScrollToIndexFailed={({ index: wanted }) => {
-          strip.current?.scrollToOffset({ offset: (STRIP_SIZE + STRIP_GAP) * wanted, animated: false });
+          strip.current?.scrollToOffset({ offset: (STRIP_WIDTH + STRIP_GAP) * wanted, animated: false });
         }}
         onViewableItemsChanged={({ viewableItems }) => {
           images.load(viewableItems.map((entry) => entry.item as MediaItem));
@@ -423,8 +438,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,15,20,0.55)',
   },
   thumb: {
-    width: STRIP_SIZE,
-    height: STRIP_SIZE,
+    width: STRIP_WIDTH,
+    height: STRIP_HEIGHT,
     borderRadius: radius.sm,
     overflow: 'hidden',
     backgroundColor: colors.surface,
