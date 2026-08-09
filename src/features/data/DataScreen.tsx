@@ -24,6 +24,11 @@ interface DataScreenProps {
   readonly now: number;
   readonly tzOffsetMinutes: number;
   readonly onBack: () => void;
+  /**
+   * Make every thumbnail again from its capture. A repair, offered where the
+   * other repairs live, rather than something the app does on its own.
+   */
+  readonly onRebuildThumbnails: () => Promise<number>;
 }
 
 const REJECTION_LABELS: Readonly<Record<RejectionReason, string>> = {
@@ -62,7 +67,10 @@ export function DataScreen({
   now,
   tzOffsetMinutes,
   onBack,
+  onRebuildThumbnails,
 }: DataScreenProps) {
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuilt, setRebuilt] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   // Counted a day at a time, never held: this is a year of readings at its
@@ -145,6 +153,37 @@ export function DataScreen({
           {formatDistance(TRACKING_PRESETS[preset].distanceInterval)}, which is what makes tracking cheap. A stop of two
           hours can be built from a handful of fixes. Short segments are then folded away: a stop under 3 minutes, or a
           movement under 60 m or 45 seconds, is merged into what surrounds it rather than becoming its own row.
+        </Text>
+
+        {/* A repair, not a routine: for a library whose thumbnails drifted
+            from their captures. Named for what it does rather than for the bug
+            that made it necessary, because it stays useful afterwards. */}
+        <Text style={styles.sectionLabel}>REPAIR</Text>
+        <View style={styles.card}>
+          <Pressable
+            onPress={() => {
+              setRebuilding(true);
+              void onRebuildThumbnails()
+                .then((count) => setRebuilt(count))
+                .finally(() => setRebuilding(false));
+            }}
+            disabled={rebuilding || media.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Rebuild every thumbnail"
+            style={({ pressed }) => [
+              styles.action,
+              (rebuilding || media.length === 0) && styles.actionOff,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.actionText}>
+              {rebuilding ? 'Rebuilding…' : rebuilt === null ? 'Rebuild every thumbnail' : `Rebuilt ${rebuilt}`}
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.footnote}>
+          Makes each capture&apos;s small picture again from the capture itself. Nothing is re-encoded and no capture is
+          touched — only the thumbnail beside it, which is what the filmstrip and the map pin draw.
         </Text>
 
         {/* Where this launch's time went, slowest first. The measurements the
@@ -237,6 +276,7 @@ const styles = StyleSheet.create({
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
   action: { paddingVertical: spacing.md, gap: 2 },
   actionText: { ...typography.body, color: colors.move, fontWeight: '600' },
+  actionOff: { opacity: 0.45 },
   actionDetail: { ...typography.caption, color: colors.textSecondary },
   disabled: { color: colors.textMuted },
   warning: {

@@ -367,3 +367,77 @@ describe('captures sealed by an earlier build', () => {
     expect(result.current.items[0]?.fileName).toBe('m-2.jpg');
   });
 });
+
+/**
+ * A thumbnail rewritten under its old name is invisible: the gallery caches
+ * decrypted thumbnails by item and React Native caches images by URI, so the
+ * new bytes sit behind two copies of the old picture. Reported after rotating
+ * a photograph — the capture turned and its thumbnail did not.
+ */
+describe('keeping a thumbnail in step with its capture', () => {
+  it('gives a rotated photograph a thumbnail under a new name', async () => {
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    __seed('file:///mock/cache/turn.jpg', bytes(400));
+    await act(async () => {
+      await result.current.keep('file:///mock/cache/turn.jpg', 'photo');
+    });
+    const before = result.current.items[0];
+
+    await act(async () => {
+      await result.current.rotate(before!.id);
+    });
+
+    expect(result.current.items[0]?.thumbFileName).not.toBe(before?.thumbFileName);
+    expect(result.current.items[0]?.thumbFileName).toMatch(/\.thumb\.1\.jpg$/);
+  });
+
+  it('keeps advancing the name, so turning twice is visible twice', async () => {
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    __seed('file:///mock/cache/turn2.jpg', bytes(400));
+    await act(async () => {
+      await result.current.keep('file:///mock/cache/turn2.jpg', 'photo');
+    });
+    const id = result.current.items[0]!.id;
+
+    await act(async () => {
+      await result.current.rotate(id);
+    });
+    await act(async () => {
+      await result.current.rotate(id);
+    });
+
+    expect(result.current.items[0]?.thumbFileName).toMatch(/\.thumb\.2\.jpg$/);
+  });
+
+  it('rebuilds every thumbnail on request, leaving the captures alone', async () => {
+    const { result } = await renderHook(() => useMedia());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    __seed('file:///mock/cache/one.jpg', bytes(400));
+    __seed('file:///mock/cache/two.jpg', bytes(400));
+    await act(async () => {
+      await result.current.keep('file:///mock/cache/one.jpg', 'photo');
+    });
+    await act(async () => {
+      await result.current.keep('file:///mock/cache/two.jpg', 'photo');
+    });
+    const fileNames = result.current.items.map((item) => item.fileName);
+    // However many rows those two keeps produced. Ids are derived from the
+    // instant, so two captures inside one millisecond are one capture — which
+    // is the store working as designed, and not something to assert around.
+    const stored = result.current.items.length;
+
+    let rebuilt = 0;
+    await act(async () => {
+      rebuilt = await result.current.rebuildThumbnails();
+    });
+
+    expect(rebuilt).toBe(stored);
+    expect(result.current.items.map((item) => item.fileName)).toEqual(fileNames);
+    for (const item of result.current.items) expect(item.thumbFileName).toMatch(/\.thumb\.1\.jpg$/);
+  });
+});

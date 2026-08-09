@@ -18,6 +18,7 @@ import {
   filesOf,
   isSealed,
   listPending,
+  rebuildThumbnail,
   rotateMedia,
   stageCapture,
   sweepOrphans,
@@ -69,6 +70,15 @@ export interface UseMedia {
    * reach any orientation.
    */
   rotate: (id: string) => Promise<void>;
+  /**
+   * Make every thumbnail again from its capture.
+   *
+   * A repair rather than a routine: for a library whose thumbnails drifted
+   * from their captures — photographs rotated before thumbnail names carried a
+   * generation, so the new picture was written behind two caches holding the
+   * old one. Resolves with how many were rebuilt.
+   */
+  rebuildThumbnails: () => Promise<number>;
   forget: (id: string) => void;
 }
 
@@ -258,12 +268,38 @@ export function useMedia(): UseMedia {
       // correction that has already been applied.
       persist(
         items.map((candidate) =>
-          candidate.id === id ? { ...candidate, byteLength: turned.byteLength, orientation: null } : candidate,
+          candidate.id === id
+            ? {
+                ...candidate,
+                byteLength: turned.byteLength,
+                // The new generation's name, or the old one if the thumbnail
+                // could not be remade — a capture with a stale thumbnail beats
+                // one with none.
+                thumbFileName: turned.thumbFileName ?? candidate.thumbFileName,
+                orientation: null,
+              }
+            : candidate,
         ),
       );
     },
     [items, persist],
   );
+
+  const rebuildThumbnails = useCallback(async () => {
+    let rebuilt = 0;
+    let working = items;
+    // One at a time, and the list is rebuilt as it goes rather than patched at
+    // the end: the same reason the launch backfill does it — two unordered
+    // writes over one index is how a thumbnail gets written out of existence.
+    for (const item of items) {
+      const thumbFileName = await rebuildThumbnail(item);
+      if (!thumbFileName) continue;
+      rebuilt += 1;
+      working = working.map((candidate) => (candidate.id === item.id ? { ...candidate, thumbFileName } : candidate));
+    }
+    if (rebuilt > 0) persist(working);
+    return rebuilt;
+  }, [items, persist]);
 
   const forget = useCallback(
     (id: string) => {
@@ -274,7 +310,7 @@ export function useMedia(): UseMedia {
     [items, persist],
   );
 
-  return { ready, items, keep, annotate, rotate, forget };
+  return { ready, items, keep, annotate, rotate, rebuildThumbnails, forget };
 }
 
 /**

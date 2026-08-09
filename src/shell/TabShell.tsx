@@ -302,6 +302,7 @@ export function TabShell() {
         now={timeline.now}
         tzOffsetMinutes={timeline.tzOffsetMinutes}
         onBack={back}
+        onRebuildThumbnails={media.rebuildThumbnails}
       />
     );
   }

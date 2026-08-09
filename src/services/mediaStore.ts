@@ -294,7 +294,22 @@ async function frameFrom(sourceUri: string): Promise<string> {
  * platform cannot produce a frame. A missing thumbnail is a state the UI
  * already has to handle, so failing here is never worth losing a capture over.
  */
-export async function writeThumbnail(sourceUri: string, id: string, kind: MediaKind): Promise<string | null> {
+/**
+ * `generation` bumps the thumbnail's file name, and it is not decoration.
+ *
+ * A thumbnail rewritten under its old name is invisible: the gallery caches
+ * decrypted thumbnails by item and React Native caches images by URI, so the
+ * new bytes sit on disk behind two copies of the old picture. Reported after
+ * rotating a photograph — the capture turned and its thumbnail did not.
+ * A new name changes the URI, and both caches miss rather than needing to be
+ * told anything. The old file becomes an orphan the next sweep collects.
+ */
+export async function writeThumbnail(
+  sourceUri: string,
+  id: string,
+  kind: MediaKind,
+  generation = 0,
+): Promise<string | null> {
   if (kind === 'audio') return null;
   ensureDirectory();
 
@@ -308,7 +323,7 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
     const rendered = await context.renderAsync();
     const small = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.6 });
 
-    const fileName = `${id}.thumb.jpg`;
+    const fileName = generation > 0 ? `${id}.thumb.${generation}.jpg` : `${id}.thumb.jpg`;
     const destination = new File(mediaDirectory(), fileName);
     if (destination.exists) destination.delete();
     new File(small.uri).moveSync(destination);
@@ -345,7 +360,15 @@ export async function writeThumbnail(sourceUri: string, id: string, kind: MediaK
  * thumbnail is remade from the turned file so the filmstrip agrees with the
  * capture.
  */
-export async function rotateMedia(item: MediaItem): Promise<{ readonly byteLength: number } | null> {
+/** The generation encoded in a thumbnail's name, so the next one can follow it. */
+function thumbGenerationOf(fileName: string | null): number {
+  const match = fileName?.match(/\.thumb\.(\d+)\.jpg$/);
+  return match ? Number(match[1]) : 0;
+}
+
+export async function rotateMedia(
+  item: MediaItem,
+): Promise<{ readonly byteLength: number; readonly thumbFileName: string | null } | null> {
   if (item.kind !== 'photo') return null;
   const stored = new File(mediaDirectory(), item.fileName);
   if (!stored.exists) return null;
@@ -362,10 +385,36 @@ export async function rotateMedia(item: MediaItem): Promise<{ readonly byteLengt
     if (stored.exists) stored.delete();
     replacement.moveSync(stored);
 
-    await writeThumbnail(stored.uri, item.id, item.kind);
-    return { byteLength: stored.size ?? 0 };
+    // A fresh generation, so the gallery and the image cache both miss and
+    // read the turned picture rather than the one they are holding.
+    const thumbFileName = await writeThumbnail(
+      stored.uri,
+      item.id,
+      item.kind,
+      thumbGenerationOf(item.thumbFileName) + 1,
+    );
+    return { byteLength: stored.size ?? 0, thumbFileName };
   } catch (error) {
     console.warn('Could not rotate the capture', error);
+    return null;
+  }
+}
+
+/**
+ * Make a capture's thumbnail again, from the capture as it stands now.
+ *
+ * The repair for a library whose thumbnails and captures have drifted apart —
+ * photographs rotated before the naming above existed, thumbnails written from
+ * a frame that has since moved. Reads the stored file, writes a new generation
+ * beside it, and leaves the capture untouched.
+ */
+export async function rebuildThumbnail(item: MediaItem): Promise<string | null> {
+  const stored = new File(mediaDirectory(), item.fileName);
+  if (!stored.exists) return null;
+  try {
+    return await writeThumbnail(stored.uri, item.id, item.kind, thumbGenerationOf(item.thumbFileName) + 1);
+  } catch (error) {
+    console.warn('Could not rebuild a thumbnail', error);
     return null;
   }
 }
