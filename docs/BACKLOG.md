@@ -108,13 +108,29 @@ architecture rather than from measurement (measurement is the task):
 Method: `InteractionManager` timings and the RN performance monitor on a real
 phone, worst day of data available. Fixes follow measurements, not hunches.
 
-## 7. Comprehensive performance audit
+## 7. The audits
 
-The lag hunt, widened: startup time, memory with a year of days, battery with
-tracking on all day, disk growth (the media directory and the fix archive),
-and the JS bundle. Produces numbers first, then a fix list ranked by measured
-cost — the audit's deliverable is the ranking, so the work that follows is
-spent where the phone says, not where the code looks guilty.
+A family of them, each producing numbers or findings first and a ranked fix
+list second — the deliverable is the ranking, so the work that follows is
+spent where the evidence says, not where the code looks guilty.
+
+- **Performance**: the lag hunt widened — startup time, frame drops, the JS
+  thread under load, worst day of data available.
+- **Memory**: footprint with a year of days, the gallery under a long scroll,
+  leaks across tab switches and long sessions.
+- **CPU**: what burns cycles while tracking runs all day; the background task's
+  budget; anything hot while the screen is off.
+- **Storage**: disk growth over time — the media directory, the fix archive,
+  the encrypted store — and what bounds each.
+- **Privacy**: everything the app records, where it lives, what leaves the
+  device (it should be Apple Maps tiles and nothing else), what a lost phone
+  or a backup exposes, and whether the docs' claims still match the code.
+- **Security**: the vault and its key handling, the keychain flags, file
+  protection classes, the migration paths, what a malicious file or store
+  entry could do on the way in.
+- **CI/CD and pipeline**: the workflows' permissions and pinning, secret
+  handling, what a compromised dependency or action could reach, and whether
+  the release path has quiet failure modes.
 
 ## 8. Save a capture to the iPhone photo library
 
