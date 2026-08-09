@@ -7,6 +7,15 @@ interface ScrubberProps {
   readonly from: number;
   readonly to: number;
   readonly value: number;
+  /**
+   * Fired with true at the first touch and false at the last.
+   *
+   * For hosts that scroll: a JS responder claiming a drag does not stop a
+   * native horizontal list from panning underneath it, so the host has to
+   * disable its own scrolling for the duration — and this is how it knows the
+   * duration.
+   */
+  readonly onDragging?: (dragging: boolean) => void;
   /** Stretches the app knows nothing about, drawn as breaks in the track. */
   readonly holes?: readonly { readonly from: number; readonly to: number }[];
   readonly onChange: (value: number) => void;
@@ -28,7 +37,7 @@ interface ScrubberProps {
  * will say it has nothing; hiding them would make a day look continuous when
  * it is not, which is the one thing the timeline refuses to do elsewhere.
  */
-export function Scrubber({ from, to, value, holes = [], onChange, label }: ScrubberProps) {
+export function Scrubber({ from, to, value, holes = [], onChange, onDragging, label }: ScrubberProps) {
   const [width, setWidth] = useState(0);
 
   const span = Math.max(1, to - from);
@@ -40,8 +49,11 @@ export function Scrubber({ from, to, value, holes = [], onChange, label }: Scrub
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
+          onDragging?.(true);
           if (width > 0) onChange(from + (event.nativeEvent.locationX / width) * span);
         },
+        onPanResponderRelease: () => onDragging?.(false),
+        onPanResponderTerminate: () => onDragging?.(false),
         onPanResponderMove: (event, gesture) => {
           if (width === 0) return;
           // `moveX` is in window coordinates and `locationX` is relative to the
@@ -50,7 +62,7 @@ export function Scrubber({ from, to, value, holes = [], onChange, label }: Scrub
           onChange(from + (x / width) * span);
         },
       }),
-    [from, span, width, onChange],
+    [from, span, width, onChange, onDragging],
   );
 
   return (

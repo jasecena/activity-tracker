@@ -12,6 +12,8 @@ interface ClipControlsProps {
   readonly player: VideoPlayer;
   /** Length in ms, from the item's own record — the player reports 0 until it has read the file. */
   readonly durationMs: number | null;
+  /** True while the scrubber is being dragged — the host pauses its own gestures for the duration. */
+  readonly onScrubbing?: (scrubbing: boolean) => void;
 }
 
 /**
@@ -34,7 +36,7 @@ interface ClipControlsProps {
  * `timeUpdate` arrives four times a second — enough for a scrubber to read as
  * live, well under anything that would tax the bridge.
  */
-export function ClipControls({ player, durationMs }: ClipControlsProps) {
+export function ClipControls({ player, durationMs, onScrubbing }: ClipControlsProps) {
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
   const { currentTime } = useEvent(player, 'timeUpdate', {
     currentTime: player.currentTime,
@@ -71,6 +73,7 @@ export function ClipControls({ player, durationMs }: ClipControlsProps) {
           // write on a hook's value is the shape mistakes take, and the API
           // offers both for exactly this reason.
           onChange={(next) => player.seekBy(next / 1000 - player.currentTime)}
+          onDragging={onScrubbing}
           label={`Playback position, ${formatDuration(Math.max(0, atMs))}`}
         />
       </View>

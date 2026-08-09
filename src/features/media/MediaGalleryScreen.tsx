@@ -4,6 +4,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
   PanResponder,
@@ -108,6 +109,33 @@ export function MediaGalleryScreen({
    * an info panel over a grid is two answers to "what am I looking at".
    */
   const [panel, setPanel] = useState<'none' | 'info' | 'grid'>('none');
+  /**
+   * True while the video scrubber is being dragged. A JS responder claiming
+   * the drag does not stop the native pager panning underneath it — reported
+   * from a phone as scrubbing a clip changing the page — so the pager's own
+   * scrolling is switched off for exactly the drag's duration.
+   */
+  const [scrubbing, setScrubbing] = useState(false);
+  /**
+   * The info panel's arrival, as a slide rather than an appearance.
+   *
+   * Lazy state, not a ref — the refs rule — and native-driven, so the slide
+   * stays smooth while the JS thread is busy with whatever the panel shows.
+   * Closing animates first and unmounts after, which is why every close goes
+   * through `closeInfo` rather than setting the panel state directly.
+   */
+  const [infoSlide] = useState(() => new Animated.Value(0));
+
+  const closeInfo = useCallback(() => {
+    Animated.timing(infoSlide, { toValue: 0, duration: 180, useNativeDriver: true }).start(({ finished }) => {
+      if (finished) setPanel('none');
+    });
+  }, [infoSlide]);
+
+  useEffect(() => {
+    if (panel !== 'info') return;
+    Animated.timing(infoSlide, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+  }, [panel, infoSlide]);
   const pager = useRef<FlatList<MediaItem>>(null);
   const strip = useRef<FlatList<MediaItem>>(null);
 
@@ -192,7 +220,7 @@ export function MediaGalleryScreen({
       // Pulling down over an open panel closes it; the grid only opens from a
       // clean stage. Every drag is one step, never a jump through two states.
       if (panel === 'info') {
-        if (intent === 'grid') setPanel('none');
+        if (intent === 'grid') closeInfo();
         return;
       }
       setPanel(intent === 'info' ? 'info' : 'grid');
@@ -231,6 +259,7 @@ export function MediaGalleryScreen({
       <View style={StyleSheet.absoluteFill} {...verticalGesture.panHandlers}>
         <FlatList
           ref={pager}
+          scrollEnabled={!scrubbing}
           data={ordered}
           keyExtractor={(item) => item.id}
           horizontal
@@ -259,6 +288,7 @@ export function MediaGalleryScreen({
                 failed={position === safeIndex && file.failed}
                 opening={position === safeIndex && file.uri === null && !file.failed}
                 thumbUri={images.uriFor(item)}
+                onScrubbing={setScrubbing}
               />
             </View>
           )}
@@ -270,16 +300,32 @@ export function MediaGalleryScreen({
           map, same Forget — reached by a pull upward instead of a ⋯ that took
           you somewhere else. Swiping down, or the chevron, puts it away. */}
       {panel === 'info' && current ? (
-        <InfoPanel
-          item={current}
-          at={positionFor(current)}
-          tzOffsetMinutes={tzOffsetMinutes}
-          mapsEnabled={mapsEnabled}
-          thumbUri={images.uriFor(current)}
-          onForget={onForget}
-          onRotate={onRotate}
-          onClose={() => setPanel('none')}
-        />
+        <>
+          {/* Anywhere that is not the panel puts it away — the capture is the
+              screen's subject, and touching it means "back to looking". */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeInfo}
+            accessibilityRole="button"
+            accessibilityLabel="Put details away"
+          />
+          <Animated.View
+            style={{
+              transform: [{ translateY: infoSlide.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }) }],
+            }}
+          >
+            <InfoPanel
+              item={current}
+              at={positionFor(current)}
+              tzOffsetMinutes={tzOffsetMinutes}
+              mapsEnabled={mapsEnabled}
+              thumbUri={images.uriFor(current)}
+              onForget={onForget}
+              onRotate={onRotate}
+              onClose={closeInfo}
+            />
+          </Animated.View>
+        </>
       ) : null}
 
       {/* Every day of captures at once, pulled down over the pager. Tapping a
@@ -362,7 +408,8 @@ export function MediaGalleryScreen({
         onViewableItemsChanged={({ viewableItems }) => {
           images.load(viewableItems.map((entry) => entry.item as MediaItem));
         }}
-        style={styles.stripBar}
+        style={[styles.stripBar, panel === 'info' && styles.stripHidden]}
+        pointerEvents={panel === 'info' ? 'none' : 'auto'}
         contentContainerStyle={styles.strip}
         renderItem={({ item, index: position }) => {
           const uri = images.uriFor(item);
@@ -418,6 +465,7 @@ interface StageProps {
   /** True until the file is ready — a blink now that nothing is decrypted. */
   readonly opening: boolean;
   readonly thumbUri: string | null;
+  readonly onScrubbing: (scrubbing: boolean) => void;
 }
 
 /**
@@ -428,7 +476,7 @@ interface StageProps {
  * something to look at immediately rather than a black rectangle; for the pages
  * either side of it, it is the whole story.
  */
-function Stage({ item, live, uri, failed, opening, thumbUri }: StageProps) {
+function Stage({ item, live, uri, failed, opening, thumbUri, onScrubbing }: StageProps) {
   return (
     <View style={styles.stage}>
       {thumbUri ? (
@@ -444,7 +492,7 @@ function Stage({ item, live, uri, failed, opening, thumbUri }: StageProps) {
         </Text>
       ) : null}
 
-      {live && uri ? <Playing item={item} uri={uri} /> : null}
+      {live && uri ? <Playing item={item} uri={uri} onScrubbing={onScrubbing} /> : null}
 
       {live && opening ? (
         <View style={styles.opening}>
@@ -622,7 +670,15 @@ function InfoRow({ label, value }: { readonly label: string; readonly value: str
   );
 }
 
-function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string }) {
+function Playing({
+  item,
+  uri,
+  onScrubbing,
+}: {
+  readonly item: MediaItem;
+  readonly uri: string;
+  readonly onScrubbing: (scrubbing: boolean) => void;
+}) {
   if (item.kind === 'photo') {
     return (
       <Turned orientation={item.orientation}>
@@ -631,7 +687,9 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
     );
   }
   if (item.kind === 'video') {
-    return <VideoPlaying uri={uri} orientation={item.orientation} durationMs={item.durationMs} />;
+    return (
+      <VideoPlaying uri={uri} orientation={item.orientation} durationMs={item.durationMs} onScrubbing={onScrubbing} />
+    );
   }
   return <AudioPlaying uri={uri} durationMs={item.durationMs} />;
 }
@@ -657,10 +715,12 @@ function VideoPlaying({
   uri,
   orientation,
   durationMs,
+  onScrubbing,
 }: {
   readonly uri: string;
   readonly orientation: CaptureOrientation | null;
   readonly durationMs: number | null;
+  readonly onScrubbing: (scrubbing: boolean) => void;
 }) {
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
@@ -684,7 +744,7 @@ function VideoPlaying({
         <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls={false} contentFit="contain" />
       </Turned>
       <View style={styles.clipControls}>
-        <ClipControls player={player} durationMs={durationMs} />
+        <ClipControls player={player} durationMs={durationMs} onScrubbing={onScrubbing} />
       </View>
     </>
   );
@@ -746,7 +806,7 @@ const styles = StyleSheet.create({
   stripBar: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 1, flexGrow: 0 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   turning: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 96 },
+  clipControls: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: 148 },
   info: {
     position: 'absolute',
     left: 0,
@@ -796,6 +856,7 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: colors.textPrimary,
   },
+  stripHidden: { opacity: 0 },
   grid: { backgroundColor: colors.background },
   gridHeader: {
     flexDirection: 'row',
