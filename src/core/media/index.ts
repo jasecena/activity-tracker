@@ -2,6 +2,19 @@ import { dayKeyOf, type TzOffsetMinutes } from '../day';
 import type { LatLon } from '../geo';
 import type { Segment } from '../segments';
 import { positionAt, type Position, type Track } from '../replay';
+import { isCaptureOrientation, type CaptureOrientation } from './orientation';
+
+export {
+  CAMERA_WRITES_UPRIGHT_PIXELS,
+  displayRotationFor,
+  isCaptureOrientation,
+  isQuarterTurn,
+  oppositeEdge,
+  stageSizeFor,
+  topEdgeFor,
+  uprightRotationFor,
+} from './orientation';
+export type { CaptureOrientation, Degrees, Edge, Size } from './orientation';
 
 /**
  * Photos, video and voice notes, as the engine sees them.
@@ -71,6 +84,16 @@ export interface MediaItem {
   readonly at: LatLon | null;
   /** Whatever you typed, or empty. */
   readonly note: string;
+  /**
+   * Which way the phone was held, or null if nothing said.
+   *
+   * Null on every capture taken before this was recorded, and on anything the
+   * camera could not report it for — a state to handle rather than a value to
+   * invent, the same as `thumbFileName`. It is a record of the capture, not an
+   * instruction: nothing rewrites the file, and `displayRotationFor` turns the
+   * picture only at the moment of looking at it.
+   */
+  readonly orientation: CaptureOrientation | null;
 }
 
 const ID_PREFIX = 'm-';
@@ -137,6 +160,7 @@ export function normalizeMedia(input: unknown): MediaItem[] {
       byteLength: typeof item.byteLength === 'number' && item.byteLength >= 0 ? item.byteLength : 0,
       at: isLatLon(item.at) ? { lat: item.at.lat, lon: item.at.lon } : null,
       note: typeof item.note === 'string' ? item.note : '',
+      orientation: isCaptureOrientation(item.orientation) ? item.orientation : null,
     }))
     .sort((a, b) => a.capturedAt - b.capturedAt);
 }

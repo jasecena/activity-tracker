@@ -58,6 +58,7 @@ function item(overrides: Partial<MediaItem> = {}): MediaItem {
     at: null,
     byteLength: 0,
     note: '',
+    orientation: null,
     ...overrides,
   };
 }

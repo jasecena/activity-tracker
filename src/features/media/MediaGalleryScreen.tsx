@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { formatClockTime, formatDuration } from '@/core/format';
-import type { MediaItem } from '@/core/media';
+import { displayRotationFor, stageSizeFor, type CaptureOrientation, type MediaItem } from '@/core/media';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { useSealedFile } from './hooks/useSealedFile';
@@ -181,7 +181,13 @@ export function MediaGalleryScreen({ items, tzOffsetMinutes, visible, onOpenDeta
               ]}
             >
               {uri ? (
-                <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
+                // A square, so no dimensions to swap: `cover` fills it either
+                // way and only the picture inside needs turning.
+                <Image
+                  source={{ uri }}
+                  style={[styles.thumbImage, { transform: [{ rotate: `${displayRotationFor(item.orientation)}deg` }] }]}
+                  resizeMode="cover"
+                />
               ) : (
                 <Ionicons
                   name={item.kind === 'audio' ? 'mic-outline' : 'image-outline'}
@@ -227,7 +233,11 @@ interface StageProps {
 function Stage({ item, live, uri, failed, opening, thumbUri }: StageProps) {
   return (
     <View style={styles.stage}>
-      {thumbUri ? <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="contain" /> : null}
+      {thumbUri ? (
+        <Turned orientation={item.orientation}>
+          <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+        </Turned>
+      ) : null}
 
       {live && failed ? (
         <Text style={styles.failed}>
@@ -247,11 +257,40 @@ function Stage({ item, live, uri, failed, opening, thumbUri }: StageProps) {
   );
 }
 
+/**
+ * Turns a capture the right way up, for as long as you are looking at it.
+ *
+ * The file is never touched. A photograph taken with the phone on its side was
+ * written the way the camera saw it — portrait-shaped, world lying down — and
+ * this is the rotation that undoes that, applied to the view and thrown away
+ * when the view goes.
+ *
+ * The box has to be given the screen's dimensions the other way round before it
+ * is turned. A quarter turn happens about the centre and resizes nothing, so
+ * rotating a portrait-shaped view gives a portrait-shaped view lying down: a
+ * ribbon down the middle of the screen with the picture squeezed into it.
+ *
+ * Nothing here is animated. The rotation is a fact about the capture, settled
+ * before it was ever drawn, rather than something that happens while you watch.
+ */
+function Turned({ orientation, children }: { readonly orientation: CaptureOrientation | null; children: ReactNode }) {
+  const { width, height } = useWindowDimensions();
+  const degrees = displayRotationFor(orientation);
+  if (degrees === 0) return <>{children}</>;
+
+  const box = stageSizeFor({ width, height }, degrees);
+  return <View style={[box, { transform: [{ rotate: `${degrees}deg` }] }]}>{children}</View>;
+}
+
 function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string }) {
   if (item.kind === 'photo') {
-    return <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="contain" accessibilityLabel="Photo" />;
+    return (
+      <Turned orientation={item.orientation}>
+        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="contain" accessibilityLabel="Photo" />
+      </Turned>
+    );
   }
-  if (item.kind === 'video') return <VideoPlaying uri={uri} />;
+  if (item.kind === 'video') return <VideoPlaying uri={uri} orientation={item.orientation} />;
   return <AudioPlaying uri={uri} durationMs={item.durationMs} />;
 }
 
@@ -272,12 +311,20 @@ function Playing({ item, uri }: { readonly item: MediaItem; readonly uri: string
  * and a video you have deliberately swiped to should not need a second tap to
  * begin. Swiping away unmounts it, which stops it.
  */
-function VideoPlaying({ uri }: { readonly uri: string }) {
+function VideoPlaying({ uri, orientation }: { readonly uri: string; readonly orientation: CaptureOrientation | null }) {
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
     instance.play();
   });
-  return <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls contentFit="contain" />;
+  // `nativeControls` turns with the video, so a clip shot sideways gets a
+  // sideways scrubber. That is the honest cost of rotating the view rather than
+  // the file, and the fix is the app drawing its own controls in an unturned
+  // layer above — a piece of work in its own right, not a line here.
+  return (
+    <Turned orientation={orientation}>
+      <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls contentFit="contain" />
+    </Turned>
+  );
 }
 
 function AudioPlaying({ uri, durationMs }: { readonly uri: string; readonly durationMs: number | null }) {

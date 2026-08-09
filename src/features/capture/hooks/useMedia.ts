@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { capturedAtFromMediaId, mediaIdFor, normalizeMedia, type MediaItem, type MediaKind } from '@/core/media';
+import {
+  capturedAtFromMediaId,
+  mediaIdFor,
+  normalizeMedia,
+  type CaptureOrientation,
+  type MediaItem,
+  type MediaKind,
+} from '@/core/media';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { appendFixes } from '@/services/fixBuffer';
@@ -31,6 +38,14 @@ export interface KeepOptions {
   readonly at?: Fix | null;
   /** Fraction sealed so far, 0 to 1 — a video takes long enough to be worth showing. */
   readonly onProgress?: (fraction: number) => void;
+  /**
+   * Which way the phone was held, read at the same moment as the position.
+   *
+   * Recorded, never acted on: the file is sealed exactly as the camera wrote
+   * it, and the gallery turns the picture when it draws it. A capture that
+   * rewrote its own pixels would be a capture that could be turned twice.
+   */
+  readonly orientation?: CaptureOrientation | null;
 }
 
 export interface UseMedia {
@@ -96,10 +111,13 @@ export function useMedia(): UseMedia {
             fileName,
             thumbFileName,
             byteLength,
-            // Not recoverable from a staged file's name. The capture survives;
-            // only where it was taken is lost.
+            // Neither of these is recoverable from a staged file's name. The
+            // capture survives; where it was taken and which way up it was
+            // held are what an interruption costs. Null reads as upright,
+            // which is how the overwhelming majority of them were held.
             at: null,
             note: '',
+            orientation: null,
           });
         } catch (error) {
           // Given up on rather than retried on every launch for the life of
@@ -164,7 +182,7 @@ export function useMedia(): UseMedia {
   }, []);
 
   const keep = useCallback(async (sourceUri: string, kind: MediaKind, options: KeepOptions = {}) => {
-    const { durationMs = null, at = null, onProgress } = options;
+    const { durationMs = null, at = null, onProgress, orientation = null } = options;
     const capturedAt = readNow();
     const id = mediaIdFor(capturedAt);
 
@@ -194,6 +212,7 @@ export function useMedia(): UseMedia {
         byteLength,
         at: at ? { lat: at.lat, lon: at.lon } : null,
         note: '',
+        orientation,
       };
       // Read from state at the moment of the write rather than from a
       // dependency: sealing a video takes long enough for a second capture to

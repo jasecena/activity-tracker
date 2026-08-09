@@ -29,6 +29,7 @@ function item(capturedAt: number, overrides: Partial<MediaItem> = {}): MediaItem
     at: null,
     byteLength: 1_024,
     note: '',
+    orientation: null,
     ...overrides,
   };
 }

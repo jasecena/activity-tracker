@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 372
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 526
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -206,6 +206,40 @@ produces no fixes, so a photo taken sitting still had nowhere to be placed.
 The reading is taken at the moment that _matters_, which the caller decides:
 the shutter for a photo, the **start** for a video or a voice note. By the time
 either finishes you may be somewhere else.
+
+**What a recording started with lives in a ref, not in state, and this is why.**
+`recordAsync` resolves only when recording _stops_, so the call that hands the
+clip to the store is running inside the closure that started it — created
+before the position ever arrived. As state, the reading was `null` when the
+closure captured it and `null` for ever after, so every video was stored with
+no position at all: asked for, received, and dropped one render away. Nothing
+errored; a pin simply never appeared. Nothing renders these values, which is
+what the refs rule actually cares about.
+
+**A capture records which way the phone was held, and nothing is ever rotated
+on disk.** `responsiveOrientationWhenOrientationLocked` on `CameraView` reports
+the device's orientation while the interface stays locked to portrait — the
+signal iOS already computes for the status bar, needing no permission and no
+`expo-sensors`, which was removed and is not worth bringing back for one value.
+The orientation goes on the `MediaItem`; `core/media/orientation.ts` turns it
+into an angle, and the gallery applies that angle to the _view_ at the moment
+it draws. A rotation is a property of looking, the same way the timeline is
+derived rather than stored: a file rewritten on the way in is a file that can
+be turned twice, and there is no way back from it.
+
+The same angle turns the capture controls, and the same fact moves them: the
+mode rail takes whichever edge is uppermost and zoom takes the other, because
+turning the glyphs alone leaves the rail along the bottom half the time.
+
+**Which landscape is which is a coin toss until a phone settles it.** iOS has
+meant opposite things by "landscape left" — `UIDeviceOrientation` names it for
+where the home button went, `AVCaptureVideoOrientation` for where the top of
+the frame points — and the prop's documentation names neither. `UPRIGHT` in
+`core/media/orientation.ts` is one table and swapping its two landscape rows
+fixes the photographs and the rails together. The tests assert only what holds
+either way: that the two are opposite quarter turns. `CAMERA_WRITES_UPRIGHT_PIXELS`
+is the other half of the same unknown — if the camera turns the pixels itself,
+that constant stops the display turning them again.
 
 **Ask for a position through `services/position.ts`, never `currentFix`
 directly.** A capture draws a pin straight off `item.at`, so this is the one

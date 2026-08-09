@@ -15,7 +15,11 @@ const opened = openForPlayback as jest.MockedFunction<typeof openForPlayback>;
 const thumbnails = openThumbnail as jest.MockedFunction<typeof openThumbnail>;
 const released = releasePlayback as jest.MockedFunction<typeof releasePlayback>;
 
-function media(index: number, kind: MediaItem['kind'] = 'photo'): MediaItem {
+function media(
+  index: number,
+  kind: MediaItem['kind'] = 'photo',
+  orientation: MediaItem['orientation'] = null,
+): MediaItem {
   const capturedAt = Date.UTC(2026, 7, 8, 9, index, 0);
   return {
     id: `m-${capturedAt}`,
@@ -27,6 +31,7 @@ function media(index: number, kind: MediaItem['kind'] = 'photo'): MediaItem {
     byteLength: 1_024,
     at: null,
     note: '',
+    orientation,
   };
 }
 
@@ -54,6 +59,35 @@ describe('MediaGalleryScreen', () => {
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
     // Newest first, so the top of the list is the last thing captured.
     expect(opened).toHaveBeenCalledWith(items[4]);
+  });
+
+  /**
+   * The rotation is a property of looking, so it has to be visible on the view
+   * and absent from everything else. Asserting the transform is the only way to
+   * tell "turned for display" from "turned on the way in", which is the whole
+   * distinction the feature rests on.
+   */
+  it('turns a capture taken sideways, without touching the capture', async () => {
+    const sideways = media(1, 'photo', 'landscapeLeft');
+
+    await render(<MediaGalleryScreen items={[sideways]} tzOffsetMinutes={0} visible onOpenDetails={noop} />);
+
+    const photo = await screen.findByLabelText('Photo');
+    // The picture itself is drawn plainly; the box around it carries the turn.
+    const turned = photo.parent;
+    expect(turned).toHaveStyle({ transform: [{ rotate: '90deg' }] });
+    // Nothing asked the store to rewrite anything.
+    expect(openForPlayback).toHaveBeenCalledWith(sideways);
+    expect(sideways.orientation).toBe('landscapeLeft');
+  });
+
+  it('leaves an upright capture, and one that never said, exactly as it was', async () => {
+    await render(
+      <MediaGalleryScreen items={[media(1, 'photo', null)]} tzOffsetMinutes={0} visible onOpenDetails={noop} />,
+    );
+
+    const photo = await screen.findByLabelText('Photo');
+    expect(photo.parent).not.toHaveStyle({ transform: [{ rotate: '90deg' }] });
   });
 
   it('draws a thumbnail for the neighbours it is not opening', async () => {

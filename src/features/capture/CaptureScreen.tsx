@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDuration } from '@/core/format';
-import type { MediaKind } from '@/core/media';
+import { oppositeEdge, topEdgeFor, uprightRotationFor, type CaptureOrientation, type MediaKind } from '@/core/media';
 import type { Fix } from '@/core/geo';
 import { now as readNow } from '@/services/clock';
 import { ensureForegroundPermission } from '@/services/location';
@@ -102,8 +102,32 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    * voice note walked home would otherwise be stamped with wherever you
    * finished, which is the one place it definitely was not taken.
    */
-  const [startedAtPlace, setStartedAtPlace] = useState<Fix | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /**
+   * Which way the phone is being held, while the interface stays portrait.
+   *
+   * State rather than a ref because the controls turn with it, and a value the
+   * render depends on lives in state by rule. It costs a re-render per quarter
+   * turn of the phone, which is not a rate anything needs protecting from.
+   */
+  const [orientation, setOrientation] = useState<CaptureOrientation>('portrait');
+
+  /**
+   * Where the current recording started, and how the phone was held for it.
+   *
+   * A ref, and this is the second attempt: both of these were `useState`, and
+   * as state they could not work. `recordAsync` resolves only when recording
+   * stops, so the call that hands the clip over is running inside the closure
+   * that *started* it — a closure created before the position ever arrived. It
+   * read `null` every time, and every video was stored with no position at all
+   * while the reading sat in state one render away. The failure was silent:
+   * nothing errors, a pin simply never appears.
+   *
+   * Nothing renders either value, which is what the refs rule cares about —
+   * same as the camera handle above. Read at the end of a recording, written at
+   * the start of one, and never during a render.
+   */
+  const started = useRef<{ at: Fix | null; orientation: CaptureOrientation | null }>({ at: null, orientation: null });
 
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
@@ -164,7 +188,13 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    * because a write threw is worse than one that says it failed.
    */
   const store = useCallback(
-    async (uri: string | null | undefined, kind: MediaKind, durationMs: number | null, at: Fix | null) => {
+    async (
+      uri: string | null | undefined,
+      kind: MediaKind,
+      durationMs: number | null,
+      at: Fix | null,
+      heldAs: CaptureOrientation | null,
+    ) => {
       setState('saving');
       setProgress(0);
       try {
@@ -172,13 +202,18 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           setProblem('Nothing was captured.');
           return;
         }
-        const stored = await media.keep(uri, kind, { durationMs, at, onProgress: setProgress });
+        const stored = await media.keep(uri, kind, {
+          durationMs,
+          at,
+          orientation: heldAs,
+          onProgress: setProgress,
+        });
         setProblem(stored ? null : 'That capture could not be stored, so it was not kept.');
       } finally {
         setState('idle');
         setSince(null);
         setProgress(0);
-        setStartedAtPlace(null);
+        started.current = { at: null, orientation: null };
       }
     },
     [media],
@@ -192,8 +227,10 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
       camera.current?.takePictureAsync({ quality: 0.8, exif: false }),
       askPosition(),
     ]);
-    await store(picture?.uri, 'photo', null, at);
-  }, [store]);
+    // Read now rather than after the await: the shutter is the moment, and a
+    // phone put down while the picture is written was not how it was taken.
+    await store(picture?.uri, 'photo', null, at, orientation);
+  }, [orientation, store]);
 
   const toggleVideo = useCallback(async () => {
     if (state === 'recording') {
@@ -207,20 +244,28 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     setState('recording');
     setSince(readNow());
     setElapsedMs(0);
+    // Known at once; the reading has to be waited for.
+    started.current = { at: null, orientation };
     // Not awaited: the recording starts now, and the reading lands a moment
-    // later without holding up the shutter.
-    void askPosition().then(setStartedAtPlace);
+    // later without holding up the shutter. It lands in the ref rather than in
+    // state because this closure is still running when the clip finishes, and
+    // a closure cannot see a state update made after it started.
+    void askPosition().then((at) => {
+      started.current = { ...started.current, at };
+    });
 
     const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
-    await store(clip?.uri, 'video', null, startedAtPlace);
-  }, [startedAtPlace, state, store]);
+    await store(clip?.uri, 'video', null, started.current.at, started.current.orientation);
+  }, [orientation, state, store]);
 
   const toggleVoice = useCallback(async () => {
     if (state === 'recording') {
       const startedAt = since ?? readNow();
       setState('saving');
       await recorder.stop();
-      await store(recorder.uri, 'audio', readNow() - startedAt, startedAtPlace);
+      // Null, not the phone's orientation: a voice note has no picture, and an
+      // orientation on it would be a fact about nothing.
+      await store(recorder.uri, 'audio', readNow() - startedAt, started.current.at, null);
       return;
     }
 
@@ -229,12 +274,34 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     setElapsedMs(0);
     setSince(readNow());
     setState('recording');
-    void askPosition().then(setStartedAtPlace);
-  }, [recorder, since, startedAtPlace, state, store]);
+    // A voice note has no picture, so only the place is worth keeping.
+    started.current = { at: null, orientation: null };
+    void askPosition().then((at) => {
+      started.current = { ...started.current, at };
+    });
+  }, [recorder, since, state, store]);
 
   const missingPermission =
     (needsCamera && cameraPermission?.granted === false) ||
     (needsMicrophone && microphonePermission?.granted === false);
+
+  /**
+   * The controls turn *and* cross over, so they read the right way up and sit
+   * along the top of what you are looking at.
+   *
+   * Turning alone is what the iOS camera settles for, and it leaves the mode
+   * rail along the bottom edge half the time — the half where the phone was
+   * turned the other way. The rails move instead: the modes take whichever edge
+   * is uppermost, zoom takes the other, and the flip button swaps ends of the
+   * shutter row so it stays on the same side as the modes.
+   *
+   * Both the angle and the edge come from one function each, over the same
+   * fact. "Undo the phone being turned" is a single idea and the glyphs, the
+   * rails and a stored photograph are three readings of it.
+   */
+  const upright = { transform: [{ rotate: `${uprightRotationFor(orientation)}deg` }] };
+  const modesEdge = topEdgeFor(orientation);
+  const zoomEdge = oppositeEdge(modesEdge);
 
   return (
     <View style={styles.screen}>
@@ -263,6 +330,22 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
            * asking for anyway.
            */
           autofocus="off"
+          /**
+           * The device's own orientation, while the interface stays locked to
+           * portrait.
+           *
+           * This is the signal iOS already computes for the status bar, not a
+           * sensor this app reads: it needs no permission and no
+           * `expo-sensors`, which was deliberately removed and is not worth
+           * bringing back for one value.
+           *
+           * What it is used for is deliberately narrow. The capture is stamped
+           * with how the phone was held and the controls turn to stay upright;
+           * the file is written exactly as the camera produces it, and the
+           * gallery turns the picture at the moment it draws it.
+           */
+          responsiveOrientationWhenOrientationLocked
+          onResponsiveOrientationChanged={(event) => setOrientation(event.orientation)}
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.voiceStage]}>
@@ -279,7 +362,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
 
       {state === 'recording' && needsCamera ? (
         <View style={styles.topBar} pointerEvents="box-none">
-          <View style={styles.recordingBadge}>
+          <View style={[styles.recordingBadge, upright]}>
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
           </View>
@@ -290,27 +373,37 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           while holding the phone, one under each thumb. Hidden for a voice
           note, which has no picture to make larger. */}
       {needsCamera ? (
-        <View style={styles.zoomRail}>
+        <View style={[styles.zoomRail, styles[zoomEdge]]}>
           <Pressable
             onPress={() => setZoom((current) => Math.min(1, current + ZOOM_STEP))}
             disabled={zoom >= 1}
             accessibilityRole="button"
             accessibilityLabel="Zoom in"
-            style={({ pressed }) => [styles.zoomButton, zoom >= 1 && styles.zoomDisabled, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              upright,
+              zoom >= 1 && styles.zoomDisabled,
+              pressed && styles.pressed,
+            ]}
           >
             <Ionicons name="add" size={24} color={colors.textPrimary} />
           </Pressable>
 
           {/* Only once it is doing something. A camera sitting at 0% is a
               camera, and saying so is noise over the picture. */}
-          {zoom > 0 ? <Text style={styles.zoomText}>{Math.round(zoom * 100)}%</Text> : null}
+          {zoom > 0 ? <Text style={[styles.zoomText, upright]}>{Math.round(zoom * 100)}%</Text> : null}
 
           <Pressable
             onPress={() => setZoom((current) => Math.max(0, current - ZOOM_STEP))}
             disabled={zoom <= 0}
             accessibilityRole="button"
             accessibilityLabel="Zoom out"
-            style={({ pressed }) => [styles.zoomButton, zoom <= 0 && styles.zoomDisabled, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              upright,
+              zoom <= 0 && styles.zoomDisabled,
+              pressed && styles.pressed,
+            ]}
           >
             <Ionicons name="remove" size={24} color={colors.textPrimary} />
           </Pressable>
@@ -321,7 +414,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           Icons only: the name is what a screen reader says, not what the glass
           shows — the same trade the tab bar makes, and here it buys the
           viewfinder the width back. */}
-      <View style={styles.rail}>
+      <View style={[styles.rail, styles[modesEdge]]}>
         {MODES.map((option) => {
           const selected = option.key === mode;
           return (
@@ -334,7 +427,12 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
               accessibilityRole="radio"
               accessibilityState={{ selected, disabled: state !== 'idle' }}
               accessibilityLabel={option.label}
-              style={({ pressed }) => [styles.modeButton, selected && styles.modeButtonOn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.modeButton,
+                upright,
+                selected && styles.modeButtonOn,
+                pressed && styles.pressed,
+              ]}
             >
               <Ionicons name={option.icon} size={26} color={selected ? colors.onAccent : colors.textPrimary} />
             </Pressable>
@@ -383,7 +481,10 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           <Text style={styles.footnote}>Clips stop at {MAX_VIDEO_SECONDS} seconds.</Text>
         ) : null}
 
-        <View style={styles.controls}>
+        {/* Reversed rather than repositioned: the shutter stays dead centre
+            under the thumb either way, and the flip button crosses to the same
+            side the mode rail went to. */}
+        <View style={[styles.controls, modesEdge === 'left' && styles.controlsReversed]}>
           <View style={styles.secondaryPlaceholder} />
 
           <Pressable
@@ -421,7 +522,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
               }}
               accessibilityRole="button"
               accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
-              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.secondary, upright, pressed && styles.pressed]}
             >
               <Ionicons name="camera-reverse-outline" size={22} color={colors.textPrimary} />
             </Pressable>
@@ -460,12 +561,21 @@ const styles = StyleSheet.create({
    */
   rail: {
     position: 'absolute',
-    right: spacing.md,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
     gap: spacing.md,
   },
+  /**
+   * Which side each rail is pinned to, chosen at render from the orientation.
+   *
+   * Both offsets are set on every rail, one of them to `auto`: leaving the
+   * other side merely unset keeps the value from the previous render in place,
+   * so a rail that crossed over once ends up pinned to both edges and stretched
+   * across the viewfinder.
+   */
+  left: { left: spacing.md, right: 'auto' },
+  right: { right: spacing.md, left: 'auto' },
   modeButton: {
     width: 56,
     height: 56,
@@ -479,7 +589,6 @@ const styles = StyleSheet.create({
   modeButtonOn: { backgroundColor: colors.manual },
   zoomRail: {
     position: 'absolute',
-    left: spacing.md,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
@@ -522,6 +631,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
   },
+  controlsReversed: { flexDirection: 'row-reverse' },
   secondary: {
     width: 44,
     height: 44,

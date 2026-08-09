@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { CameraView } from 'expo-camera';
 import * as LocationModule from 'expo-location';
 
 import type { UseMedia } from './hooks/useMedia';
@@ -231,5 +232,117 @@ describe('where a capture happened', () => {
     await press('Take photo');
 
     expect(keep).toHaveBeenCalledWith(expect.any(String), 'photo', expect.objectContaining({ at: expect.any(Object) }));
+  });
+
+  /**
+   * Found by the orientation tests and fixed with them, because it is the same
+   * mistake: `recordAsync` resolves only when recording stops, so the call that
+   * hands the clip to the store is running inside the closure that started it.
+   * A closure created before the reading arrived, holding a position that was
+   * `null` when it was captured and stayed `null` for ever after.
+   *
+   * Every video was stored with no position at all — asked for, received,
+   * dropped one render away — and nothing anywhere errored. The pin simply
+   * never appeared.
+   */
+  it('keeps the reading a video started with, rather than the null it began as', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await press('Video');
+    await press('Start video');
+    await press('Stop video');
+
+    expect(keep).toHaveBeenCalledWith(expect.any(String), 'video', expect.objectContaining({ at: expect.any(Object) }));
+  });
+});
+
+/**
+ * Which way the phone was held.
+ *
+ * The interface is locked to portrait and stays that way, so none of this is
+ * visible as a layout change in a test — what it is, is a value recorded with
+ * the capture and an angle applied to the controls. Both are asserted directly,
+ * because the alternative is a feature that appears to work on a desk and
+ * records nothing on a phone.
+ */
+describe('holding the phone sideways', () => {
+  /** The prop iOS calls. Without it the callback never fires and none of this happens. */
+  function cameraProps(): Record<string, unknown> {
+    const calls = (CameraView as unknown as jest.Mock).mock.calls;
+    return calls[calls.length - 1][0] as Record<string, unknown>;
+  }
+
+  async function turnTo(orientation: string) {
+    const handler = cameraProps().onResponsiveOrientationChanged as (event: { orientation: string }) => void;
+    await act(async () => {
+      handler({ orientation });
+    });
+  }
+
+  it('asks the camera to report orientation even though the interface is locked', async () => {
+    await renderCapture(async () => null);
+
+    expect(cameraProps().responsiveOrientationWhenOrientationLocked).toBe(true);
+    expect(typeof cameraProps().onResponsiveOrientationChanged).toBe('function');
+  });
+
+  it('records how the phone was held with the photograph', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await turnTo('landscapeLeft');
+    await press('Take photo');
+
+    expect(keep).toHaveBeenCalledWith(
+      expect.any(String),
+      'photo',
+      expect.objectContaining({ orientation: 'landscapeLeft' }),
+    );
+  });
+
+  /**
+   * The same rule as the position: a clip is stamped with where and how it
+   * *began*. A video started in landscape and stopped once the phone came
+   * upright was shot in landscape, and taking the reading at the end describes
+   * a moment nobody filmed.
+   */
+  it('stamps a video with how it was held when recording started', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await press('Video');
+    await turnTo('landscapeRight');
+    await press('Start video');
+    await turnTo('portrait');
+    await press('Stop video');
+
+    expect(keep).toHaveBeenCalledWith(
+      expect.any(String),
+      'video',
+      expect.objectContaining({ orientation: 'landscapeRight' }),
+    );
+  });
+
+  it('leaves a voice note without one, because it has no picture to turn', async () => {
+    const keep = jest.fn(async () => null);
+    await renderCapture(keep);
+
+    await press('Voice');
+    await press('Start voice note');
+    await press('Stop voice note');
+
+    expect(keep).toHaveBeenCalledWith(expect.any(String), 'audio', expect.objectContaining({ orientation: null }));
+  });
+
+  it('turns the controls to stay upright, and moves the rail to the edge that is now the top', async () => {
+    await renderCapture(async () => null);
+
+    const upright = screen.getByLabelText('Photo');
+    expect(upright).toHaveStyle({ transform: [{ rotate: '0deg' }] });
+
+    await turnTo('landscapeLeft');
+
+    expect(screen.getByLabelText('Photo')).toHaveStyle({ transform: [{ rotate: '90deg' }] });
   });
 });
