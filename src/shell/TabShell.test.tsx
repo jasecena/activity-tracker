@@ -157,6 +157,43 @@ describe('the shell', () => {
     expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
   });
 
+  /**
+   * Pressing a tab twice goes home — every detail page closed, and on Day the
+   * day itself back to today, because the day is a parameter of one screen
+   * rather than a page of its own.
+   *
+   * The clock is frozen in this file, so two presses are zero milliseconds
+   * apart and always count as one gesture. That is exactly the case worth
+   * pinning: what a second press does, not how fast a finger has to be.
+   */
+  it('goes back to the root of a tab when it is pressed twice', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Places');
+    expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
+
+    await press('Settings tab');
+    await press('Settings tab');
+
+    expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
+    expect(screen.queryByRole('header', { name: 'Places' })).not.toBeOnTheScreen();
+  });
+
+  // Moving between tabs is not asking to go home. Two presses on two different
+  // tabs is somebody looking around.
+  it('leaves a page open when the two presses are on different tabs', async () => {
+    await render(<TabShell />);
+
+    await press('Settings tab');
+    await press('Places');
+
+    await press('Day tab');
+    await press('Settings tab');
+
+    expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
+  });
+
   // The camera holds hardware, so it is the one screen that does not stay
   // mounted behind the others.
   it('mounts the camera only while Capture is showing', async () => {

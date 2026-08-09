@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 570
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 572
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -322,6 +322,12 @@ open to _look_ at something rather than read it.
 moved — three renderers of one thing, a Today that could not show yesterday and
 a History that could not show today. The day is a parameter now; arrows walk
 backwards and the full list is a page under it.
+
+**Pressing a tab twice goes home.** Every detail page above it closes, and on
+Day the day itself returns to today — the day is a parameter of one screen
+rather than a page of its own, so "the root of the Day tab" and "today" are the
+same place. Only a second press on the _same_ tab counts; two quick presses on
+two different tabs is somebody looking around, not asking to go home.
 
 **Back is a swipe as well as a button.** `shell/SwipeBackPage.tsx` is a
 `PanResponder` and one `Animated.Value`, edge-initiated so it can never fight

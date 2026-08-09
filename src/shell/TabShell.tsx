@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -30,12 +30,22 @@ import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
+import { now as readNow } from '@/services/clock';
 import { colors, spacing } from '@/theme/tokens';
 
 import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
 
 type Tab = 'replay' | 'capture' | 'gallery' | 'settings';
+
+/**
+ * How close together two presses have to be to count as one gesture.
+ *
+ * iOS uses about this for a double tap. Longer and a slow, deliberate second
+ * visit to a tab starts throwing away the page you were reading; shorter and
+ * the gesture is one nobody can perform reliably.
+ */
+const DOUBLE_PRESS_MS = 300;
 
 /**
  * The tabs that can have a detail page over them.
@@ -146,6 +156,35 @@ export function TabShell() {
     () => groupByDay(allSegments, timeline.tzOffsetMinutes),
     [allSegments, timeline.tzOffsetMinutes],
   );
+
+  /**
+   * A second press on a tab, soon enough after the first, goes home.
+   *
+   * "Home" is the tab's root with every detail page closed — and on Day it is
+   * also *today*, because the day is a parameter of one screen rather than a
+   * page of its own. Being four days back and pressing Day twice should land
+   * where opening the app lands.
+   *
+   * A ref, and never read during a render: two presses are two events, and the
+   * only thing between them is a timestamp nothing draws.
+   */
+  const lastTabPress = useRef<{ tab: Tab; at: number } | null>(null);
+
+  const pressTab = (key: Tab) => {
+    const at = readNow();
+    const previous = lastTabPress.current;
+    lastTabPress.current = { tab: key, at };
+    setTab(key);
+
+    // Only a second press on the *same* tab counts. Two quick presses on two
+    // different tabs is somebody moving about, not asking to go home.
+    if (!previous || previous.tab !== key || at - previous.at > DOUBLE_PRESS_MS) return;
+
+    if (key !== 'capture') stacks[key].reset();
+    if (key === 'replay') setReplayDayKey(null);
+    // So a third press is not read as a second one.
+    lastTabPress.current = null;
+  };
 
   const openSegment = (which: PagedTab) => (segment: Segment) => stacks[which].push({ kind: 'segment', segment });
   const openMedia = (which: PagedTab) => (item: MediaItem) => stacks[which].push({ kind: 'media', item });
@@ -330,7 +369,7 @@ export function TabShell() {
           return (
             <Pressable
               key={key}
-              onPress={() => setTab(key)}
+              onPress={() => pressTab(key)}
               accessibilityRole="tab"
               // "History tab", not "History": each screen has a heading of its
               // own, and an ambiguous label is a coin toss for both a screen
