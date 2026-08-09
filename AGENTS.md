@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 561
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 580
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -374,6 +374,20 @@ drag onto the axis the hand means: turn the phone sideways and the same movement
 is a change in x, in one direction or the other. A zoom wired to `-dy` reverses
 itself on rotation. It reads the same fact as the rails and a capture's stored
 orientation — whichever edge is uppermost is where up is.
+
+**A lens is chosen by name, never by magnification, and a recording keeps the
+one it started on.** `expo-camera` reports the physical cameras as Apple's own
+device-type strings and takes one back as `selectedLens`. Those say what a lens
+_is_, not what it multiplies by — the telephoto is 2×, 3× or 5× depending on
+the model and nothing in the API says which — so `core/media/lenses.ts`
+translates and orders them and never prints a number. Unset is a real value: the
+system's virtual camera switches between the real lenses as you zoom, and
+overriding that before anyone has asked is choosing worse than the phone would.
+
+The rail is locked while anything is recording. Changing the lens rebuilds the
+capture session underneath, and the documented behaviour for the same rebuild —
+flipping the camera — is that it _stops_ the recording. So whatever a clip
+starts on it finishes on, while a photograph can be taken on any of them.
 
 **The zoom is measured from the start of each gesture, never accumulated.**
 Adding deltas per movement drifts, and it means letting go and repeating the

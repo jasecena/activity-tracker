@@ -18,6 +18,7 @@ export {
   ZOOM_TRAVEL_POINTS,
 } from './orientation';
 export type { CaptureOrientation, Degrees, Edge, Size } from './orientation';
+export { lensLabel, orderLenses, worthOffering } from './lenses';
 
 /**
  * Photos, video and voice notes, as the engine sees them.

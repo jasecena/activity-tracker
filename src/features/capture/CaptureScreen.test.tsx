@@ -291,6 +291,74 @@ describe('where a capture happened', () => {
  * wherever it had got to. A camera preview is not user activity as far as the
  * auto-lock timer is concerned.
  */
+/**
+ * The three lenses on the back of the phone. Apple reports them as device-type
+ * strings and takes one back; nothing here is a magnification, because the
+ * multiplier differs by model and the API never says which.
+ */
+describe('choosing a lens', () => {
+  beforeEach(() => {
+    camera.__reset();
+  });
+
+  it('offers the lenses the camera reports', async () => {
+    await renderCapture(async () => null);
+
+    expect(await screen.findByLabelText('Ultra wide')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Wide')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Tele')).toBeOnTheScreen();
+  });
+
+  // One lens is not a choice, and a control that cannot change anything is
+  // furniture over the viewfinder.
+  it('offers nothing where there is nothing to choose', async () => {
+    camera.__setLenses(['builtInWideAngleCamera']);
+    await renderCapture(async () => null);
+
+    await act(async () => {});
+    expect(screen.queryByLabelText('Wide')).not.toBeOnTheScreen();
+  });
+
+  /**
+   * Whatever a clip starts on, it finishes on. Changing the lens rebuilds the
+   * capture session underneath — the documented behaviour for flipping the
+   * camera is that it *stops* the recording, and this is the same session.
+   */
+  it('locks the lens for the length of a recording', async () => {
+    const keep = jest.fn(() => new Promise(() => undefined)) as unknown as UseMedia['keep'];
+    await renderCapture(keep);
+
+    await act(async () => {});
+    expect(screen.getByLabelText('Tele')).not.toBeDisabled();
+
+    await press('Video');
+    await press('Start video');
+
+    expect(screen.getByLabelText('Tele')).toBeDisabled();
+  });
+
+  it('lets a photograph be taken on any of them', async () => {
+    await renderCapture(async () => null);
+
+    await act(async () => {});
+    await press('Tele');
+
+    expect(screen.getByLabelText('Tele')).not.toBeDisabled();
+  });
+
+  // The lenses do not share a zoom range, so a position carried across lands
+  // somewhere nobody chose.
+  it('goes back to the wide end when the lens changes', async () => {
+    await renderCapture(async () => null);
+
+    await act(async () => {});
+    await press('Zoom in');
+    await press('Tele');
+
+    expect(screen.getByLabelText('Zoom out')).toBeDisabled();
+  });
+});
+
 describe('keeping the screen awake', () => {
   beforeEach(() => {
     awake.__reset();

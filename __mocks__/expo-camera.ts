@@ -13,6 +13,22 @@ export interface MockCameraView {
   takePictureAsync: (options?: unknown) => Promise<{ uri: string; width: number; height: number }>;
   recordAsync: (options?: unknown) => Promise<{ uri: string }>;
   stopRecording: () => void;
+  getAvailableLensesAsync: () => Promise<string[]>;
+}
+
+/**
+ * Three back lenses, like a recent phone.
+ *
+ * Settable, because "one lens" is the case where the rail should not be drawn
+ * at all — the front camera on every phone — and a mock that could only be a
+ * Pro model would never exercise it.
+ */
+let lenses: string[] = ['builtInWideAngleCamera', 'builtInUltraWideCamera', 'builtInTelephotoCamera'];
+
+export const getAvailableLensesAsync = jest.fn(async () => lenses);
+
+export function __setLenses(next: string[]): void {
+  lenses = next;
 }
 
 let captureCount = 0;
@@ -48,9 +64,14 @@ export const stopRecording = jest.fn(() => {
 
 export const CameraView = jest.fn((props: Record<string, unknown> & { ref?: Ref<MockCameraView> }) => {
   const { ref, ...rest } = props;
-  if (typeof ref === 'function') ref({ takePictureAsync, recordAsync, stopRecording });
+  if (typeof ref === 'function') ref({ takePictureAsync, recordAsync, stopRecording, getAvailableLensesAsync });
   else if (ref && typeof ref === 'object') {
-    (ref as { current: MockCameraView | null }).current = { takePictureAsync, recordAsync, stopRecording };
+    (ref as { current: MockCameraView | null }).current = {
+      takePictureAsync,
+      recordAsync,
+      stopRecording,
+      getAvailableLensesAsync,
+    };
   }
   return createElement(View, { accessibilityLabel: 'Camera preview', ...rest }, null);
 });
@@ -71,4 +92,5 @@ export const useMicrophonePermissions = jest.fn(() => [
 export function __reset(): void {
   captureCount = 0;
   finishRecording = null;
+  lenses = ['builtInWideAngleCamera', 'builtInUltraWideCamera', 'builtInTelephotoCamera'];
 }

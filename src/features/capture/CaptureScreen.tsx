@@ -7,6 +7,9 @@ import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatDuration } from '@/core/format';
 import {
   dragUpBy,
+  lensLabel,
+  orderLenses,
+  worthOffering,
   oppositeEdge,
   topEdgeFor,
   uprightRotationFor,
@@ -167,6 +170,16 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
    */
   /** The zoom this gesture is being measured from, fixed for its duration. */
   const [zoomAtTouch, setZoomAtTouch] = useState(0);
+  /**
+   * The physical lenses on the camera now facing outwards, and which one is in
+   * use.
+   *
+   * Null means "whatever the system picked", which is the right default: the
+   * virtual camera switches between the real lenses as you zoom, and overriding
+   * that before anyone has asked is choosing worse than the phone would.
+   */
+  const [lenses, setLenses] = useState<readonly string[]>([]);
+  const [lens, setLens] = useState<string | null>(null);
 
   const [cameraPermission, requestCamera] = useCameraPermissions();
   const [microphonePermission, requestMicrophone] = useMicrophonePermissions();
@@ -238,6 +251,25 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     if (!visible) return;
     void ensureForegroundPermission();
   }, [visible]);
+
+  /**
+   * Which lenses this camera has, asked once it exists.
+   *
+   * The callback reports changes, but nothing changes on the way in — so
+   * without asking, the rail stays empty until the first flip. Asked in an
+   * effect rather than at render because it is a call to the hardware.
+   */
+  useEffect(() => {
+    if (!visible || !needsCamera) return;
+    let live = true;
+    void (async () => {
+      const found = await camera.current?.getAvailableLensesAsync?.();
+      if (live && found) setLenses(found);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [visible, needsCamera, facing]);
 
   useEffect(() => {
     if (!visible || !needsMicrophone) return;
@@ -480,6 +512,11 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
            * the file is written exactly as the camera produces it, and the
            * gallery turns the picture at the moment it draws it.
            */
+          // Undefined rather than null: leaving it unset is what lets the
+          // system's virtual camera pick, which is better than any choice this
+          // app could make before being asked.
+          selectedLens={lens ?? undefined}
+          onAvailableLensesChanged={(event) => setLenses(event.lenses)}
           responsiveOrientationWhenOrientationLocked
           onResponsiveOrientationChanged={(event) => setOrientation(event.orientation)}
         />
@@ -624,6 +661,47 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           <Text style={styles.footnote}>Clips stop at {MAX_VIDEO_SECONDS} seconds.</Text>
         ) : null}
 
+        {/* The lenses, above the shutter and only where there is a choice.
+            One lens is not a choice, and the front camera has exactly one.
+
+            Locked while anything is recording. Changing the lens mid-clip
+            reconfigures the capture session — the documented behaviour for
+            flipping the camera is that it *stops* the recording, and this is
+            the same session being rebuilt underneath. So whatever a clip starts
+            on, it finishes on. A photograph can be taken on any of them. */}
+        {needsCamera && worthOffering(lenses) ? (
+          <View style={styles.lensRail}>
+            {orderLenses(lenses).map((option) => {
+              const chosen = option === lens;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    setLens(option);
+                    // The lenses do not share a zoom range, so carrying a
+                    // position across lands somewhere nobody chose — the same
+                    // reason flipping the camera resets it.
+                    setZoom(0);
+                  }}
+                  disabled={state !== 'idle'}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: chosen, disabled: state !== 'idle' }}
+                  accessibilityLabel={lensLabel(option)}
+                  style={({ pressed }) => [
+                    styles.lensButton,
+                    upright,
+                    chosen && styles.lensButtonOn,
+                    state !== 'idle' && styles.lensLocked,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={[styles.lensText, chosen && styles.lensTextOn]}>{lensLabel(option)}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         {/* Reversed rather than repositioned: the shutter stays dead centre
             under the thumb either way, and the flip button crosses to the same
             side the mode rail went to. */}
@@ -659,6 +737,11 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             <Pressable
               onPress={() => {
                 setFacing(facing === 'back' ? 'front' : 'back');
+                // The other camera has different lenses, so a choice made for
+                // this one is meaningless over there — and the same argument
+                // as the zoom below.
+                setLens(null);
+                setLenses([]);
                 // The two lenses do not have the same range, so carrying a
                 // position across means the front camera opens somewhere you
                 // did not choose.
@@ -778,6 +861,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   controlsReversed: { flexDirection: 'row-reverse' },
+  lensRail: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
+  lensButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(11,15,20,0.55)',
+  },
+  lensButtonOn: { backgroundColor: colors.manual },
+  lensLocked: { opacity: 0.45 },
+  lensText: { ...typography.caption, color: colors.textPrimary },
+  lensTextOn: { color: colors.onAccent },
   secondary: {
     width: 44,
     height: 44,
