@@ -278,9 +278,16 @@ jobs:
           max_attempts=5
 
           while true; do
-            rm -rf ~/.maestro/tests
+            rm -rf ~/.maestro/tests "$RUNNER_TEMP/maestro-debug"
             echo "::group::Smoke attempt ${attempt} of ${max_attempts}"
+            # --debug-output pins the hierarchy dumps and screenshots to a
+            # known path. Maestro's default (~/.maestro/tests) worked, but the
+            # upload step below cannot expand `~` — upload-artifact takes the
+            # tilde literally — so every failure shipped an artifact with no
+            # screen hierarchy in it, and the v0.2.14 "Element not found: Back"
+            # had to be diagnosed by guesswork.
             if maestro --device "$SIM_UDID" test "$RUNNER_TEMP/smoke.yaml" \
+                 --debug-output "$RUNNER_TEMP/maestro-debug" \
                  --format junit --output "$RUNNER_TEMP/maestro-report.xml"; then
               echo "::endgroup::"
               echo "Smoke passed on attempt ${attempt}."
@@ -288,7 +295,7 @@ jobs:
             fi
             echo "::endgroup::"
 
-            if [[ -n "$(find ~/.maestro/tests -name commands.json 2>/dev/null)" ]]; then
+            if [[ -n "$(find ~/.maestro/tests "$RUNNER_TEMP/maestro-debug" -name commands.json 2>/dev/null)" ]]; then
               echo "::error::Smoke flow ran and failed. This is the app or the flow, not the driver."
               exit 1
             fi
@@ -314,7 +321,7 @@ jobs:
           path: |
             ${{ runner.temp }}/maestro-report.xml
             ${{ runner.temp }}/simulator-build.log
-            ~/.maestro/tests/**
+            ${{ runner.temp }}/maestro-debug/**
           if-no-files-found: warn
           retention-days: 7
 
