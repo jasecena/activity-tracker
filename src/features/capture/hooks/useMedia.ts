@@ -9,7 +9,7 @@ import {
   type MediaKind,
 } from '@/core/media';
 import type { Fix } from '@/core/geo';
-import { now as readNow } from '@/services/clock';
+import { monotonicNow, now as readNow } from '@/services/clock';
 import { appendFixes } from '@/services/fixBuffer';
 import {
   backfillThumbnail,
@@ -27,6 +27,7 @@ import {
   writeThumbnail,
 } from '@/services/mediaStore';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
+import { record } from '@/services/timing';
 
 export interface KeepOptions {
   readonly durationMs?: number | null;
@@ -103,7 +104,14 @@ export function useMedia(): UseMedia {
   useEffect(() => {
     let live = true;
     void (async () => {
+      // The launch path, which the lag hunt lists first: normalise the index,
+      // finish anything interrupted, sweep orphans, then backfill thumbnails.
+      // All of it runs before the gallery can draw, all of it scales with the
+      // library, and none of it was measured — so a slow first Media tab had
+      // four candidates and no way to tell them apart.
+      const normaliseBegan = monotonicNow();
       const stored = normalizeMedia(await readJson<unknown>(STORAGE_KEYS.media));
+      record('normalise media index', monotonicNow() - normaliseBegan, stored.length, 'items');
 
       // Anything still staged was interrupted between the camera handing it
       // over and the seal finishing — iOS suspending the app mid-write, most
@@ -152,7 +160,14 @@ export function useMedia(): UseMedia {
       // Only once the index is settled, or this would delete what was just
       // recovered. Every file an item owns, thumbnails included — handing it
       // only the captures deleted every thumbnail on the following launch.
+      //
+      // Measured because the lag hunt names it: this walks the whole media
+      // directory and stats every file, so it grows with the library while the
+      // gallery is still unusable. The count is what makes the number mean
+      // something — 40 ms is fine for 900 files and a problem for 12.
+      const sweepBegan = monotonicNow();
       sweepOrphans(filesOf(all));
+      record('sweep orphans', monotonicNow() - sweepBegan, all.length, 'items');
       if (recovered.length > 0) void writeJson(STORAGE_KEYS.media, all);
 
       if (!live) return;
@@ -171,6 +186,13 @@ export function useMedia(): UseMedia {
       // That is exactly what "some of the old ones still have no thumbnail"
       // looks like: not a thumbnail that failed to be made, but one that was
       // made and then written out of existence.
+      // Measured as one pass rather than per capture: most items need nothing,
+      // so a span each would be a hundred rows saying zero and would reach the
+      // cap before anything slow happened. What matters is how long the tail of
+      // the launch runs for, and over how many.
+      const backfillBegan = monotonicNow();
+      let backfilled = 0;
+
       let working = all;
       for (const item of working) {
         if (!live) return;
@@ -182,12 +204,18 @@ export function useMedia(): UseMedia {
         const patch = await bringUpToDate(item);
         if (!patch || !live) continue;
 
+        backfilled += 1;
         working = working.map((existing) => (existing.id === item.id ? { ...existing, ...patch } : existing));
         if (touched.current) return;
 
         setItems(working);
         await writeJson(STORAGE_KEYS.media, working);
       }
+
+      // Only when it did something. A pass that patched nothing is the normal
+      // case on every launch after the first, and recording it would push the
+      // launches that *did* work off a list capped at 120.
+      if (backfilled > 0) record('backfill thumbnails', monotonicNow() - backfillBegan, backfilled, 'items');
     })();
     return () => {
       live = false;

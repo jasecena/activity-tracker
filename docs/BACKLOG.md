@@ -140,14 +140,31 @@ Investigation, not a feature: find where the app actually stutters on the
 phone, with the JS thread as prime suspect. Known candidates, from the
 architecture rather than from measurement (measurement is the task):
 
-- The launch path: index normalisation, orphan sweep, thumbnail backfill.
-- Opening a day: the fold runs on the JS thread while the page animates —
-  exactly the case `SwipeBackPage` runs its animation natively for.
-- The thumbnail decrypt queue behind a fast scroll.
-- The offline map canvas re-projecting on every scrub tick.
+- **The launch path: index normalisation, orphan sweep, thumbnail backfill.**
+  All three now record a span with the count they ran over, so the Data screen
+  answers this one without a cable. `sweepOrphans` is the one to watch: it
+  walks the whole media directory and stats every file, and it runs before the
+  gallery can draw anything.
+- **Opening a day: the fold** runs on the JS thread while the page animates —
+  exactly the case `SwipeBackPage` runs its animation natively for. Recorded as
+  `fold`, with the number of fixes.
+- ~~The thumbnail decrypt queue behind a fast scroll.~~ **Gone, not deferred.**
+  This described the sealed container, and the container was withdrawn:
+  `openThumbnail` is now an existence check and a URI. There is no decryption
+  anywhere on the read path, so there is no queue to be behind. Left visible
+  rather than deleted, because "we should look at the decrypt queue" is exactly
+  the kind of thing that gets repeated from a stale list.
+- **The offline map canvas re-projecting on every scrub tick.** Still real, and
+  deliberately **not** instrumented in-app: a span per frame would add work to
+  the frame path being measured and fill a 120-entry cap in about two seconds.
+  This one belongs to the RN performance monitor, which counts dropped frames
+  from outside.
 
-Method: `InteractionManager` timings and the RN performance monitor on a real
-phone, worst day of data available. Fixes follow measurements, not hunches.
+Method: the Data screen's spans for anything with a count attached, and the RN
+performance monitor or Instruments for anything per-frame. Fixes follow
+measurements, not hunches — and the split above is the rule from
+`services/timing.ts` applied: an instrument must cost less than what it
+measures, so per-frame work is measured from outside the frame.
 
 ## 7. The audits
 
