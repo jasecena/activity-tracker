@@ -1,0 +1,981 @@
+### iOS Release — archive, sign and ship to TestFlight from a GitHub-hosted macOS runner.
+#
+# Designed for a developer with no Mac. Everything Xcode-related happens on the
+# runner; nothing here needs an interactive Xcode UI, a local keychain, or a
+# checked-in credential.
+#
+# Signing uses an App Store Connect API key with `-allowProvisioningUpdates`, so
+# Xcode fetches (or creates) the distribution certificate and provisioning
+# profile itself — "cloud managed" signing. Importing a .p12 by hand is
+# supported as a fallback but is not required; see IOS_DIST_CERT_P12_BASE64.
+#
+# Project-kind agnostic: detects native Xcode, React Native / Expo, and Flutter
+# repos and runs the right pre-build step. See `detect` job.
+#
+# Required secrets, repository setup, Apple portal setup and troubleshooting are
+# all documented in docs/DEPLOYMENT.md.
+
+name: iOS Release
+
+on:
+  # Explicit, human-initiated release.
+  workflow_dispatch:
+    inputs:
+      submit_to_testflight:
+        description: 'Upload the IPA to TestFlight (uncheck for a signed build with no upload)'
+        type: boolean
+        default: true
+      scheme:
+        description: 'Xcode scheme to build (leave blank to auto-detect)'
+        type: string
+        required: false
+      xcode_version:
+        description: 'Xcode major version, e.g. 16 (leave blank for newest stable on the runner)'
+        type: string
+        required: false
+      skip_verify:
+        description: 'Skip lint/typecheck/tests (emergency use only)'
+        type: boolean
+        default: false
+      run_smoke_test:
+        description: 'Run the simulator smoke test before uploading (adds ~10 min of macOS runner time)'
+        type: boolean
+        default: false
+  # Release tags only. Ordinary commits never trigger a build.
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+# Least privilege: this workflow only ever reads the repository. It publishes to
+# Apple, not to GitHub, so it needs no write scope at all.
+permissions:
+  contents: read
+
+# Never run two releases against the same ref at once, and never cancel one
+# midway — a half-finished upload to App Store Connect is worse than a slow one.
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Both macOS jobs read their runner label from `vars.MACOS_RUNNER_LABEL`,
+# defaulting to `macos-latest`. Set that repository variable to an explicit
+# image (`macos-15`) when you need builds pinned to one runner generation;
+# `macos-latest` follows GitHub's current default and moves without warning.
+#
+# It cannot live in `env:` — the `env` context is not available to `runs-on`,
+# so a label defined there is silently ignored and every job falls back to
+# whatever is hardcoded.
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate on Linux first. macOS runner minutes bill at ~10x Linux, so every check
+  # that can fail cheaply should fail before a macOS runner is ever allocated.
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Verify (lint, types, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ !inputs.skip_verify }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect project kind
+        id: kind
+        run: .github/scripts/detect-project-kind.sh >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.kind.outputs.uses_node == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # `npm ci` not `npm install`: installs exactly the lockfile, and fails if
+      # package.json and the lockfile have drifted apart.
+      - name: Install dependencies
+        if: steps.kind.outputs.uses_node == 'true'
+        run: npm ci
+
+      - name: Verify
+        if: steps.kind.outputs.uses_node == 'true'
+        run: npm run verify
+
+  # ---------------------------------------------------------------------------
+  # Simulator smoke test — OFF BY DEFAULT.
+  #
+  # Builds the app for the iOS Simulator and drives the real binary with Maestro.
+  # This is the only check that can tell you the app crashes on launch; Jest
+  # never runs the actual bundle. It costs ~10 minutes of macOS runner time,
+  # which is why it is opt-in rather than automatic.
+  #
+  # Enable per-run with the `run_smoke_test` input, or repo-wide by setting the
+  # repository variable ENABLE_SMOKE_TEST to 'true' (which also covers tag
+  # pushes, where workflow inputs do not exist).
+  #
+  # Note this job has no `environment:` and therefore no access to the Apple
+  # credentials — it builds unsigned for the simulator and needs none.
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: Simulator smoke test
+    needs: [verify]
+    if: >-
+      ${{ always()
+          && (needs.verify.result == 'success' || needs.verify.result == 'skipped')
+          && (inputs.run_smoke_test || vars.ENABLE_SMOKE_TEST == 'true') }}
+    runs-on: ${{ vars.MACOS_RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 45
+    env:
+      IOS_BUNDLE_IDENTIFIER: ${{ vars.IOS_BUNDLE_IDENTIFIER }}
+      # Pinned, with the checksum published alongside this exact release.
+      # `curl | bash` of a floating "latest" URL would put unreviewed code in
+      # the pipeline on someone else's release schedule.
+      MAESTRO_VERSION: '2.8.0'
+      MAESTRO_SHA256: 'b3e561161904fb391875ca5834d5b22cf0b01c052dd1b408ad83e30d8f8951b3'
+      # Modest headroom over Maestro's 120s default, not a lot.
+      #
+      # Raising this was the first theory for the driver never connecting and it
+      # was wrong: at 300s the failure was identical, just slower — 491 failed
+      # connections across exactly five minutes instead of 199 across exactly
+      # two. Where the driver does come up it does so in about 25 seconds, so
+      # the extra budget only ever buys a slow-but-alive driver, which is worth
+      # a little and not much.
+      #
+      # It is kept *short* on purpose now that the step retries: every second
+      # over the real startup time is a second the loop spends waiting instead
+      # of getting to its next attempt, which is the thing that actually works.
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '150000'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          app="$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+          sudo xcode-select -switch "$app/Contents/Developer"
+          xcodebuild -version
+
+      - name: Detect project kind
+        id: kind
+        run: .github/scripts/detect-project-kind.sh >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.kind.outputs.uses_node == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install JS dependencies
+        if: steps.kind.outputs.uses_node == 'true'
+        run: npm ci
+
+      - name: Generate native iOS project
+        if: steps.kind.outputs.needs_prebuild == 'true'
+        env:
+          APP_VARIANT: production
+        run: |
+          set -euo pipefail
+          case "${{ steps.kind.outputs.kind }}" in
+            expo)    npx expo prebuild --platform ios --clean ;;
+            flutter) flutter pub get ;;
+            *)       echo "Nothing to generate." ;;
+          esac
+
+      - name: Install CocoaPods dependencies
+        if: steps.kind.outputs.uses_cocoapods == 'true'
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Resolve workspace and scheme
+        id: xcode
+        run: .github/scripts/resolve-xcode-target.sh >> "$GITHUB_OUTPUT"
+
+      - name: Build for simulator
+        run: |
+          set -euo pipefail
+          args=(
+            -scheme "${{ steps.xcode.outputs.scheme }}"
+            # Release, not Debug: a Debug React Native build expects a running
+            # Metro server, whereas Release embeds the JS bundle — which is also
+            # what actually ships, so this tests the right thing.
+            -configuration Release
+            -sdk iphonesimulator
+            -derivedDataPath "$RUNNER_TEMP/dd"
+            -destination 'generic/platform=iOS Simulator'
+          )
+          if [[ -n "${{ steps.xcode.outputs.workspace }}" ]]; then
+            args+=(-workspace "${{ steps.xcode.outputs.workspace }}")
+          else
+            args+=(-project "${{ steps.xcode.outputs.project }}")
+          fi
+
+          set -o pipefail
+          # Simulator builds need no signing identity at all.
+          xcodebuild "${args[@]}" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/simulator-build.log"
+
+          app="$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 2 -name '*.app' | head -1)"
+          [[ -n "$app" ]] || { echo "::error::Simulator build produced no .app"; exit 1; }
+          echo "APP_PATH=$app" >> "$GITHUB_ENV"
+
+      - name: Boot simulator and install app
+        run: |
+          set -euo pipefail
+          # Resolved at run time rather than hard-coding a device name, which
+          # breaks every time GitHub updates the runner image.
+          udid="$(xcrun simctl list devices available --json \
+                  | jq -r 'first(.devices[][] | select(.name | test("^iPhone")) | .udid)')"
+          [[ -n "$udid" && "$udid" != "null" ]] || { echo "::error::No iPhone simulator available."; exit 1; }
+
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$APP_PATH"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+
+      - name: Install Maestro (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://github.com/mobile-dev-inc/Maestro/releases/download/cli-${MAESTRO_VERSION}/maestro.zip"
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" "$url"
+          echo "${MAESTRO_SHA256}  ${RUNNER_TEMP}/maestro.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run smoke test
+        run: |
+          set -uo pipefail
+          # Substituted rather than passed as a Maestro parameter, so the flow
+          # file itself stays free of environment-specific values.
+          sed "s|\${APP_ID}|${IOS_BUNDLE_IDENTIFIER}|g" .maestro/smoke.yaml > "$RUNNER_TEMP/smoke.yaml"
+
+          # Maestro's XCUITest driver fails to launch on roughly half of cold
+          # runs: `xcodebuild test-without-building` prints its destination
+          # warning and the runner app then never starts, so Maestro spends its
+          # whole startup budget failing to connect and the job dies having
+          # executed *zero* steps. A run where the driver does come up logs
+          # thousands of lines from the runner; a failed one logs six. It is not
+          # a timeout — raising the budget to five minutes changed nothing — and
+          # not a version mismatch, since the same Maestro and Xcode pass on
+          # other runs.
+          #
+          # So: retry, but only that. Retrying a *flow* failure would hide the
+          # thing this job exists to catch, so an attempt that got as far as
+          # executing a single command used to be final, pass or fail. Maestro
+          # writes commands.json per flow only once it starts running one, which
+          # is exactly the signal needed to tell the two apart.
+          #
+          # That last rule is now **one** retry rather than none, and the
+          # reasoning above is what shapes the exception rather than what it
+          # overrides. v0.4.0 failed on `assertVisible: Settings` after a tap
+          # that XCUITest dispatched at the dead centre of the tab's bounds:
+          # the app was alive and rendering the previous tab perfectly, nothing
+          # in the release touched the tab bar or the press path, and the
+          # identical commit passed on a re-run. A dropped tap is a driver
+          # failure that presents as a flow failure, which is the same class of
+          # mistake `DeviceUnreachableException` above already corrects for.
+          #
+          # One, not five. A bug that reproduces every time still fails twice
+          # and still blocks the release, which is the guarantee worth keeping;
+          # five would turn an intermittent crash into a coin toss nobody sees.
+          # And a flow failure that passes on retry emits a **warning on the
+          # green run** — swallowing it silently is how a real intermittent bug
+          # would hide here, so the retry buys tolerance and not silence.
+          # NOTE: GitHub runs this as `bash -e {0}`, so `-e` is already on and a
+          # `set -uo pipefail` here does not clear it. A bare `maestro ...` that
+          # exits non-zero would kill the step before any of the retry logic
+          # below — which is exactly what happened on the first attempt at this.
+          # Inside an `if` condition, a non-zero exit is data rather than death.
+          # Five, not three. The run that first went green needed all three of
+          # three — the driver failed twice and worked on the last try — so
+          # three attempts is not headroom, it is the exact number that
+          # happened to be enough once. A failed attempt now costs about two and
+          # a half minutes, so the extra two are cheap next to a false red on a
+          # release.
+          attempt=1
+          max_attempts=5
+
+          # Counted separately from `attempt`, which covers driver failures too:
+          # a run that reboots the simulator three times and then fails the flow
+          # once has not established anything about the app.
+          flow_failures=0
+          max_flow_failures=2
+
+          while true; do
+            rm -rf ~/.maestro/tests "$RUNNER_TEMP/maestro-debug"
+            echo "::group::Smoke attempt ${attempt} of ${max_attempts}"
+            # --debug-output pins the hierarchy dumps and screenshots to a
+            # known path. Maestro's default (~/.maestro/tests) worked, but the
+            # upload step below cannot expand `~` — upload-artifact takes the
+            # tilde literally — so every failure shipped an artifact with no
+            # screen hierarchy in it, and the v0.2.14 "Element not found: Back"
+            # had to be diagnosed by guesswork.
+            # No `--debug-output`: Maestro 2.8.0 has no such option, and
+            # passing it made every attempt exit with "Unknown options" — five
+            # rebooted simulators, no step ever run, on a release whose only
+            # change was a deletion. Twice now this has cost a release: first
+            # placed after the subcommand where it was ignored, then before it
+            # where it was fatal. The dumps Maestro writes go under
+            # ~/.maestro/tests, and `upload-artifact` cannot expand `~`, so
+            # they are copied into the temp directory after the run instead.
+            if maestro --device "$SIM_UDID" test "$RUNNER_TEMP/smoke.yaml" \
+                 --format junit --output "$RUNNER_TEMP/maestro-report.xml"; then
+              echo "::endgroup::"
+              echo "Smoke passed on attempt ${attempt}."
+              # Loud on a green run, deliberately. A flow that fails and then
+              # passes is either a flaky driver or an intermittent app bug, and
+              # this job cannot tell which — so it ships the build and says so,
+              # rather than deciding on the release's behalf.
+              if [[ $flow_failures -gt 0 ]]; then
+                echo "::warning::The smoke flow failed ${flow_failures} time(s) before passing. Check the uploaded diagnostics: if the app is at fault this is an intermittent bug that just shipped."
+              fi
+              break
+            fi
+            echo "::endgroup::"
+
+            # A third case, and the one that failed v0.2.17: the driver starts,
+            # the flow runs, and the XCUITest transport then dies mid-way —
+            # `DeviceUnreachableException`, connection refused on its own local
+            # port. That is the driver, not the app, but it looks exactly like
+            # a flow failure to the test above, so it was never retried.
+            if grep -q 'DeviceUnreachableException\|XCUITestServerError' "$RUNNER_TEMP/maestro-report.xml" 2>/dev/null; then
+              if [[ $attempt -ge $max_attempts ]]; then
+                echo "::error::Driver went unreachable mid-flow on all ${max_attempts} attempts."
+                exit 1
+              fi
+              echo "Driver went unreachable mid-flow. Rebooting the simulator and retrying."
+              xcrun simctl shutdown "$SIM_UDID" || true
+              xcrun simctl boot "$SIM_UDID"
+              xcrun simctl bootstatus "$SIM_UDID" -b
+              xcrun simctl install "$SIM_UDID" "$APP_PATH"
+              attempt=$((attempt + 1))
+              continue
+            fi
+
+            # Copied where the artifact upload can see it: `~` is taken
+            # literally by upload-artifact, so anything left in the home
+            # directory never reaches a download.
+            mkdir -p "$RUNNER_TEMP/maestro-debug"
+            cp -R ~/.maestro/tests/. "$RUNNER_TEMP/maestro-debug/" 2>/dev/null || true
+
+            if [[ -n "$(find ~/.maestro/tests "$RUNNER_TEMP/maestro-debug" -name commands.json 2>/dev/null)" ]]; then
+              flow_failures=$((flow_failures + 1))
+
+              if [[ $flow_failures -ge $max_flow_failures || $attempt -ge $max_attempts ]]; then
+                echo "::error::Smoke flow ran and failed ${flow_failures} time(s). This is the app or the flow, not the driver."
+                exit 1
+              fi
+
+              # Kept from the run that failed, because the next attempt wipes
+              # ~/.maestro/tests and a first failure that turns out to matter is
+              # only diagnosable from its own hierarchy dump.
+              mkdir -p "$RUNNER_TEMP/maestro-debug-failed-${flow_failures}"
+              cp -R "$RUNNER_TEMP/maestro-debug/." "$RUNNER_TEMP/maestro-debug-failed-${flow_failures}/" 2>/dev/null || true
+
+              echo "Smoke flow failed. Rebooting the simulator and retrying once — see the note above on why exactly once."
+              xcrun simctl shutdown "$SIM_UDID" || true
+              xcrun simctl boot "$SIM_UDID"
+              xcrun simctl bootstatus "$SIM_UDID" -b
+              xcrun simctl install "$SIM_UDID" "$APP_PATH"
+              attempt=$((attempt + 1))
+              continue
+            fi
+
+            if [[ $attempt -ge $max_attempts ]]; then
+              echo "::error::XCUITest driver failed to start on all ${max_attempts} attempts; no step ever ran."
+              exit 1
+            fi
+
+            echo "Driver never started. Rebooting the simulator and retrying."
+            xcrun simctl shutdown "$SIM_UDID" || true
+            xcrun simctl boot "$SIM_UDID"
+            xcrun simctl bootstatus "$SIM_UDID" -b
+            xcrun simctl install "$SIM_UDID" "$APP_PATH"
+            attempt=$((attempt + 1))
+          done
+
+      - name: Upload smoke test diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-test-${{ github.run_number }}
+          # `maestro-debug-failed-*` is a flow failure that then passed on
+          # retry: the green run's warning points there, and without it the only
+          # evidence would be wiped by the attempt that succeeded. Note these
+          # are paths and not comments — `path: |` is a literal block scalar, so
+          # a `#` line inside it is a glob, not a note.
+          path: |
+            ${{ runner.temp }}/maestro-report.xml
+            ${{ runner.temp }}/simulator-build.log
+            ${{ runner.temp }}/maestro-debug/**
+            ${{ runner.temp }}/maestro-debug-failed-*/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Build, sign, and ship.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Build & upload to TestFlight
+    needs: [verify, smoke]
+    # `always()` so deliberately skipped gates do not block the release, while a
+    # *failed* one still does. A smoke test that ran and failed stops the upload;
+    # a smoke test that was never enabled is simply skipped.
+    if: >-
+      ${{ always()
+          && (needs.verify.result == 'success' || needs.verify.result == 'skipped')
+          && (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
+    runs-on: ${{ vars.MACOS_RUNNER_LABEL || 'macos-latest' }}
+    timeout-minutes: 90
+
+    # Bind the Apple credentials to a protected environment so they cannot be
+    # read by a workflow run from a fork or a feature branch, and so you can
+    # require a manual approval before anything reaches Apple.
+    environment:
+      name: ios-release
+
+    env:
+      # Non-secret configuration. Set these as repository *variables*
+      # (Settings > Secrets and variables > Actions > Variables).
+      IOS_BUNDLE_IDENTIFIER: ${{ vars.IOS_BUNDLE_IDENTIFIER }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fail fast on missing configuration
+        # Secrets are passed through `env` and tested by name. Interpolating
+        # `${{ secrets.* }}` straight into a shell command would paste the value
+        # into the script text, where a quote or backtick in the secret could
+        # break parsing or, worse, be evaluated.
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${IOS_BUNDLE_IDENTIFIER:-}" ]] || missing+=("vars.IOS_BUNDLE_IDENTIFIER")
+          [[ -n "${APPLE_TEAM_ID:-}" ]] || missing+=("vars.APPLE_TEAM_ID")
+          [[ -n "${ASC_KEY_ID:-}" ]] || missing+=("secrets.APP_STORE_CONNECT_KEY_ID")
+          [[ -n "${ASC_ISSUER_ID:-}" ]] || missing+=("secrets.APP_STORE_CONNECT_ISSUER_ID")
+          [[ -n "${ASC_PRIVATE_KEY:-}" ]] || missing+=("secrets.APP_STORE_CONNECT_PRIVATE_KEY")
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required configuration: ${missing[*]}"
+            echo "See docs/DEPLOYMENT.md for how to create each one."
+            exit 1
+          fi
+
+          # Present but not real. A non-empty test alone passes a placeholder
+          # straight through to signing, where the failure is far less obvious.
+          placeholder=()
+          for pair in \
+            "vars.IOS_BUNDLE_IDENTIFIER:${IOS_BUNDLE_IDENTIFIER}" \
+            "vars.APPLE_TEAM_ID:${APPLE_TEAM_ID}" \
+            "secrets.APP_STORE_CONNECT_KEY_ID:${ASC_KEY_ID}" \
+            "secrets.APP_STORE_CONNECT_ISSUER_ID:${ASC_ISSUER_ID}" \
+            "secrets.APP_STORE_CONNECT_PRIVATE_KEY:${ASC_PRIVATE_KEY}"; do
+            name="${pair%%:*}"; value="${pair#*:}"
+            shopt -s nocasematch
+            if [[ "$value" =~ ^(replace_me|changeme|change_me|todo|tbd|xxx+)$ ]]; then
+              placeholder+=("$name")
+            fi
+            shopt -u nocasematch
+          done
+          if (( ${#placeholder[@]} )); then
+            echo "::error::Placeholder values still set: ${placeholder[*]}"
+            exit 1
+          fi
+
+          # Shape checks. These are cheap here and expensive later: a swapped
+          # Issuer ID and Key ID is the most common cause of a first-run 401,
+          # and it only surfaces after the archive step has already run.
+          # Values are matched, never echoed.
+          malformed=()
+          [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] \
+            || malformed+=("vars.APPLE_TEAM_ID (expected 10 alphanumerics)")
+          [[ "$IOS_BUNDLE_IDENTIFIER" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] \
+            || malformed+=("vars.IOS_BUNDLE_IDENTIFIER (expected reverse-DNS)")
+          [[ "$ASC_KEY_ID" =~ ^[A-Z0-9]{10}$ ]] \
+            || malformed+=("secrets.APP_STORE_CONNECT_KEY_ID (expected 10 alphanumerics — did you paste the Issuer ID?)")
+          [[ "$ASC_ISSUER_ID" =~ ^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$ ]] \
+            || malformed+=("secrets.APP_STORE_CONNECT_ISSUER_ID (expected a UUID — did you paste the Key ID?)")
+          if (( ${#malformed[@]} )); then
+            echo "::error::Malformed configuration:"
+            printf '  %s\n' "${malformed[@]}"
+            exit 1
+          fi
+
+          echo "All required configuration is present and well-formed."
+
+      - name: Select Xcode
+        # Via `env:`, not `${{ }}` inside the script. An input expanded into the
+        # shell source is substituted before bash ever parses it, so a value
+        # containing shell metacharacters executes. Only someone with write
+        # access can dispatch this workflow, but the whole file passes untrusted
+        # values this way and this was the one exception.
+        env:
+          REQUESTED_XCODE: ${{ inputs.xcode_version }}
+        run: |
+          set -euo pipefail
+          requested="${REQUESTED_XCODE:-}"
+          if [[ -n "$requested" ]]; then
+            app="/Applications/Xcode_${requested}.app"
+            [[ -d "$app" ]] || { echo "::error::Xcode ${requested} is not installed on this runner."; ls -d /Applications/Xcode*.app; exit 1; }
+          else
+            # Newest non-beta Xcode present on the image. Resolving this at run
+            # time rather than pinning a version keeps the workflow working
+            # across GitHub's runner image updates.
+            app="$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+          fi
+          echo "Using $app"
+          sudo xcode-select -switch "$app/Contents/Developer"
+          xcodebuild -version
+
+      - name: Detect project kind
+        id: kind
+        run: .github/scripts/detect-project-kind.sh >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.kind.outputs.uses_node == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install JS dependencies
+        if: steps.kind.outputs.uses_node == 'true'
+        run: npm ci
+
+      - name: Resolve version and build number
+        id: version
+        run: |
+          set -euo pipefail
+          # A tag push sets the marketing version; a manual run reuses whatever
+          # the project already declares.
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            marketing="${GITHUB_REF_NAME#v}"
+          else
+            marketing=""
+          fi
+          # CFBundleVersion must be unique and strictly increasing for every
+          # upload against a given marketing version. run_number is monotonic
+          # per workflow, which is exactly that guarantee.
+          echo "marketing=${marketing}" >> "$GITHUB_OUTPUT"
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "Marketing version: ${marketing:-<from project>} / build ${GITHUB_RUN_NUMBER}"
+
+      # Expo and Flutter projects have no ios/ directory in source control; it
+      # is generated. Native projects skip this entirely.
+      - name: Generate native iOS project
+        if: steps.kind.outputs.needs_prebuild == 'true'
+        env:
+          APP_VARIANT: production
+          APP_VERSION: ${{ steps.version.outputs.marketing }}
+          IOS_BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          case "${{ steps.kind.outputs.kind }}" in
+            expo)    npx expo prebuild --platform ios --clean ;;
+            flutter) flutter pub get && flutter build ios --release --no-codesign ;;
+            react-native) echo "Native ios/ directory is committed; nothing to generate." ;;
+          esac
+
+      # ---------------------------------------------------------------------
+      # Unpin the development signing identity.
+      #
+      # `expo prebuild` writes this into every build configuration:
+      #
+      #   "CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+      #
+      # The pin applies to `archive` as well, so automatic signing asks Apple
+      # for an "iOS App Development" profile. Those embed a device list, and
+      # Apple will not issue one to a team with no registered devices — which a
+      # runner never has. The archive then fails with "Your team has no devices
+      # from which to generate a provisioning profile".
+      #
+      # It cannot be overridden from the command line. xcodebuild splits
+      # setting arguments on the first `=`, so passing
+      # `CODE_SIGN_IDENTITY[sdk=iphoneos*]=Apple Distribution` is parsed as the
+      # setting `CODE_SIGN_IDENTITY[sdk` with the value
+      # `iphoneos*]=Apple Distribution`, and Xcode rejects the result as a
+      # conflicting manual identity.
+      #
+      # Removing the pin leaves automatic signing free to choose, and for an
+      # archive it chooses a distribution identity — which is what the
+      # app-store-connect export below requires.
+      # ---------------------------------------------------------------------
+      - name: Unpin the development signing identity
+        if: steps.kind.outputs.needs_prebuild == 'true'
+        run: |
+          set -euo pipefail
+          pbx="$(find ios -maxdepth 2 -name project.pbxproj -not -path '*Pods*' | head -1)"
+          [[ -n "$pbx" ]] || { echo "::error::No project.pbxproj found under ios/."; exit 1; }
+          before="$(grep -c 'CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]' "$pbx" || true)"
+          perl -ni -e 'print unless /CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]/' "$pbx"
+          after="$(grep -c 'CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]' "$pbx" || true)"
+          echo "Removed ${before} pinned identity line(s) from ${pbx}; ${after} remain."
+          if [[ "$after" != "0" ]]; then
+            echo "::error::Failed to remove the pinned development signing identity."
+            exit 1
+          fi
+
+      - name: Cache CocoaPods
+        if: steps.kind.outputs.uses_cocoapods == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          # An exact key or nothing. `restore-keys: pods-${{ runner.os }}-`
+          # used to sit here, and a prefix hit restores Pods built from a
+          # *different* Podfile.lock into a binary that then gets signed and
+          # shipped. Nobody can poison this from outside — GitHub scopes caches
+          # so a pull request cannot write one that main will read — but a
+          # release build should be a function of the tag it was cut from, and
+          # a fallback makes it a function of whatever ran here last.
+          #
+          # The cost is one slow build after a dependency bump, paid once.
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+
+      - name: Install CocoaPods dependencies
+        if: steps.kind.outputs.uses_cocoapods == 'true'
+        working-directory: ios
+        run: pod install --repo-update
+
+      # -----------------------------------------------------------------------
+      # Credentials. Everything below writes secrets to disk with restrictive
+      # permissions, never to the log, and is torn down in the final step.
+      # -----------------------------------------------------------------------
+      - name: Install App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          # `set +x` defensively: this step must never echo the key material.
+          set +x
+          umask 077
+          # This directory is one of the locations both xcodebuild and altool
+          # search by convention, so a single copy serves the whole pipeline.
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          key_path="${key_dir}/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          # Reject a malformed paste early with a clear message, rather than
+          # letting xcodebuild fail 20 minutes later with something cryptic.
+          if ! grep -q 'BEGIN PRIVATE KEY' "$key_path"; then
+            echo "::error::APP_STORE_CONNECT_PRIVATE_KEY does not look like a .p8 key."
+            echo "Paste the whole file including the BEGIN/END PRIVATE KEY lines."
+            exit 1
+          fi
+          echo "ASC_KEY_PATH=${key_path}" >> "$GITHUB_ENV"
+          echo "API key installed."
+
+      - name: Create ephemeral signing keychain
+        run: |
+          set -euo pipefail
+          set +x
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          # Mask before the value can reach a log through any later command.
+          echo "::add-mask::$password"
+
+          security create-keychain -p "$password" "$keychain"
+          # Auto-lock after an hour; no timeout means a keychain that stays
+          # unlocked if a later step hangs.
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          # Prepend to the search list rather than replacing it, so system roots
+          # stay reachable for certificate chain validation.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain"
+
+          echo "KEYCHAIN_PATH=$keychain" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$password" >> "$GITHUB_ENV"
+
+      # Optional. Cloud-managed signing normally makes this unnecessary; supply
+      # these secrets only if your team distributes a specific certificate.
+      - name: Import distribution certificate (optional)
+        # The presence check happens inside the script rather than in an `if:`
+        # expression, because the `secrets` context is not available to
+        # step-level conditionals.
+        env:
+          CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [[ -z "${CERT_P12_BASE64:-}" ]]; then
+            echo "No IOS_DIST_CERT_P12_BASE64 set — relying on cloud-managed signing."
+            exit 0
+          fi
+          umask 077
+          p12="$RUNNER_TEMP/dist.p12"
+          printf '%s' "$CERT_P12_BASE64" | base64 --decode > "$p12"
+          security import "$p12" -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security -f pkcs12
+          # Without this, codesign triggers an interactive keychain prompt that
+          # nothing on a headless runner can answer, and the build hangs.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          rm -f "$p12"
+          echo "Distribution certificate imported."
+
+      # -----------------------------------------------------------------------
+      # Snapshot the account's certificates before anything can create one.
+      #
+      # Archive and export each ask Apple for a certificate — development for
+      # the first, distribution for the second — and both private keys are
+      # destroyed with the keychain at the end of the job. Without a cleanup the
+      # account fills with certificates nobody holds a key for, and Apple
+      # eventually refuses to issue the next one; that is exactly how v0.2.9
+      # died. The cleanup step near the end of this job revokes whatever appears
+      # between this snapshot and then.
+      #
+      # Written via a temp file and moved on success, so a half-written list can
+      # never be read as "the account was empty" — the cleanup skips entirely
+      # when the snapshot is missing.
+      # -----------------------------------------------------------------------
+      - name: Snapshot existing certificates
+        id: certs_before
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/asc-certificates.mjs list --ids > "$RUNNER_TEMP/certs-before.tmp"
+          mv "$RUNNER_TEMP/certs-before.tmp" "$RUNNER_TEMP/certs-before.txt"
+          echo "Snapshot: $(wc -l < "$RUNNER_TEMP/certs-before.txt" | tr -d ' ') certificate(s) already on the account."
+
+      - name: Resolve workspace and scheme
+        id: xcode
+        run: .github/scripts/resolve-xcode-target.sh >> "$GITHUB_OUTPUT"
+        env:
+          SCHEME_OVERRIDE: ${{ inputs.scheme }}
+
+      # -----------------------------------------------------------------------
+      # Archive.
+      # -----------------------------------------------------------------------
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/build/App.xcarchive"
+          mkdir -p "$RUNNER_TEMP/build"
+
+          args=(
+            -scheme "${{ steps.xcode.outputs.scheme }}"
+            -configuration Release
+            -destination 'generic/platform=iOS'
+            -archivePath "$archive"
+            -authenticationKeyPath "$ASC_KEY_PATH"
+            -authenticationKeyID "$ASC_KEY_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            # Lets Xcode create/download the certificate and profile via the API
+            # key instead of requiring them to be pre-installed.
+            -allowProvisioningUpdates
+            -disableAutomaticPackageResolution
+          )
+          if [[ -n "${{ steps.xcode.outputs.workspace }}" ]]; then
+            args+=(-workspace "${{ steps.xcode.outputs.workspace }}")
+          else
+            args+=(-project "${{ steps.xcode.outputs.project }}")
+          fi
+
+          # Version overrides are passed as build settings rather than by
+          # rewriting Info.plist, so the working tree is never mutated.
+          settings=(
+            CODE_SIGN_STYLE=Automatic
+            # Deliberately no CODE_SIGN_IDENTITY.
+            #
+            # Xcode treats automatic signing as "for development" regardless of
+            # the archive action, so naming a distribution identity alongside it
+            # is always rejected as conflicting provisioning settings — this was
+            # confirmed both with and without the `[sdk=iphoneos*]` pin present.
+            # Automatic signing cannot be steered to distribution from here.
+            #
+            # So the archive is signed for development, which requires the team
+            # to have at least one registered device, and the export step turns
+            # it into a distribution build: its ExportOptions.plist sets method
+            # app-store-connect, and -allowProvisioningUpdates lets Xcode create
+            # the distribution certificate and App Store profile at that point.
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_IDENTIFIER"
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+          )
+          [[ -n "$MARKETING_VERSION" ]] && settings+=(MARKETING_VERSION="$MARKETING_VERSION")
+
+          set -o pipefail
+          xcodebuild "${args[@]}" "${settings[@]}" archive | tee "$RUNNER_TEMP/archive.log"
+          echo "ARCHIVE_PATH=$archive" >> "$GITHUB_ENV"
+
+      - name: Validate archive
+        run: |
+          set -euo pipefail
+          # `find` on a missing directory exits non-zero, which under `set -e`
+          # kills the step before the error below can explain what happened —
+          # so swallow that and let the emptiness check do the reporting.
+          app="$(find "$ARCHIVE_PATH/Products/Applications" -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
+          if [[ -z "$app" ]]; then
+            echo "::error::Archive contains no .app bundle. The archived scheme was '${{ steps.xcode.outputs.scheme }}' — if that is a pod or a library rather than the application, xcodebuild reports ARCHIVE SUCCEEDED while producing nothing installable."
+            exit 1
+          fi
+
+          plist="$ARCHIVE_PATH/Info.plist"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$plist")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$plist")"
+          identifier="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIdentifier' "$plist")"
+
+          echo "Archived ${identifier} ${version} (${build})"
+
+          # A mismatch here means the build signed against a different App ID
+          # than intended, which App Store Connect would reject far less clearly.
+          if [[ "$identifier" != "$IOS_BUNDLE_IDENTIFIER" ]]; then
+            echo "::error::Archive bundle id '${identifier}' does not match configured '${IOS_BUNDLE_IDENTIFIER}'."
+            exit 1
+          fi
+
+          # Confirm the binary actually carries a distribution signature.
+          codesign --verify --deep --strict --verbose=2 "$app"
+          echo "APP_VERSION_NAME=${version}" >> "$GITHUB_ENV"
+          echo "APP_BUILD_NUMBER=${build}" >> "$GITHUB_ENV"
+
+      - name: Export signed IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          export_dir="$RUNNER_TEMP/export"
+          options="$RUNNER_TEMP/ExportOptions.plist"
+
+          # Generated at run time so the team id comes from configuration rather
+          # than from a file committed to the repository.
+          cat > "$options" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>destination</key><string>export</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$options" \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            -allowProvisioningUpdates | tee "$RUNNER_TEMP/export.log"
+
+          ipa="$(find "$export_dir" -maxdepth 1 -name '*.ipa' | head -1)"
+          [[ -n "$ipa" ]] || { echo "::error::Export produced no .ipa"; exit 1; }
+          echo "IPA_PATH=$ipa" >> "$GITHUB_ENV"
+          ls -lh "$ipa"
+
+      - name: Validate IPA against App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # Server-side validation before upload. Catches entitlement, icon and
+          # Info.plist problems in ~1 minute instead of via a rejection email
+          # after processing.
+          xcrun altool --validate-app \
+            --file "$IPA_PATH" \
+            --type ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Upload to TestFlight
+        if: ${{ github.event_name == 'push' || inputs.submit_to_testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcrun altool --upload-app \
+            --file "$IPA_PATH" \
+            --type ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+          echo "### Uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: \`${APP_VERSION_NAME} (${APP_BUILD_NUMBER})\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Bundle id: \`${IOS_BUNDLE_IDENTIFIER}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Apple processes the build for 5–30 minutes before it appears in TestFlight." >> "$GITHUB_STEP_SUMMARY"
+
+      # -----------------------------------------------------------------------
+      # Revoke the certificates this run created.
+      #
+      # Symmetric with destroying the keychain below: the private keys are about
+      # to be deleted, so leaving the certificates on the account leaves nothing
+      # but occupied slots. Revoking one is safe by the time we get here — a
+      # build already on TestFlight is re-signed by Apple and is unaffected, and
+      # anything still installed from here is a runner's own archive.
+      #
+      # `always()` because a failed archive can create a certificate too, and a
+      # release that dies halfway is precisely when the slot must not leak.
+      # Nothing that existed before this run is ever touched, so a certificate
+      # on a Mac is none of this step's business.
+      # -----------------------------------------------------------------------
+      - name: Revoke certificates created by this run
+        if: ${{ always() && steps.certs_before.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/asc-certificates.mjs revoke --not-in "$RUNNER_TEMP/certs-before.txt" --yes
+
+      - name: Upload build artifacts
+        # Keep artifacts even when a later step failed — the logs are the whole
+        # point when a signing step goes wrong.
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-build-${{ github.run_number }}
+          # The signed .ipa is deliberately NOT uploaded.
+          #
+          # On a public repository, workflow artifacts are downloadable by
+          # anyone — so publishing the shipping binary here would hand out a
+          # signed build of the app to the world. The logs and dSYMs are what
+          # you actually need to debug a failed run, and neither is sensitive.
+          #
+          # If this repository ever goes private and you want the binary,
+          # add:  ${{ runner.temp }}/export/*.ipa
+          path: |
+            ${{ runner.temp }}/*.log
+            ${{ runner.temp }}/build/App.xcarchive/dSYMs
+          if-no-files-found: warn
+          retention-days: 14
+
+      # -----------------------------------------------------------------------
+      # Teardown. Runs even on failure or cancellation. GitHub-hosted runners are
+      # ephemeral, but a self-hosted runner is not — this workflow must be safe
+      # on both.
+      # -----------------------------------------------------------------------
+      - name: Remove credentials from runner
+        if: ${{ always() }}
+        run: |
+          set +e
+          security delete-keychain "${KEYCHAIN_PATH:-}" 2>/dev/null
+          rm -rf "$HOME/.appstoreconnect/private_keys"
+          rm -f "$RUNNER_TEMP"/*.p12
+          echo "Credential material removed."

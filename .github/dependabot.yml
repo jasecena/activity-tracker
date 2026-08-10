@@ -1,0 +1,65 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Expo pins React Native, React and its own packages to versions that must
+    # move together; bumping one in isolation produces an app that will not
+    # build. `npx expo install --fix` is the correct way to move the SDK.
+    ignore:
+      - dependency-name: 'expo'
+      - dependency-name: 'expo-*'
+      - dependency-name: 'react'
+      - dependency-name: 'react-native'
+      - dependency-name: 'react-native-*'
+      # The dev toolchain is pinned by the SDK just as tightly as the runtime
+      # above, only less obviously. Each of these majors was tested against
+      # `npm run verify` and breaks the build on SDK 57:
+      #
+      #   jest 30      jest-expo needs jest-environment-jsdom@^29; a v30 runtime
+      #                on a v29 environment fails every suite with
+      #                "clearMocksOnScope is not a function"
+      #   eslint 10    eslint-config-expo bundles an eslint-plugin-react for v9
+      #   typescript 7 eslint-config-expo bundles an @typescript-eslint for TS 6
+      #   @babel/* 8   needs peer @babel/core@^8; babel-preset-expo pins 7.x,
+      #                so npm install fails with ERESOLVE
+      #
+      # Minor and patch updates still flow. Drop these entries as part of the
+      # SDK 58 upgrade and let the majors land together with it.
+      - dependency-name: 'jest'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/jest'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@babel/*'
+        update-types: ['version-update:semver-major']
+      # async-storage is a *native* module, so its version has to match what the
+      # SDK's autolinking and the prebuilt Expo Go binary expect — a mismatch
+      # fails at runtime rather than at build time. SDK 57 wants exactly 2.2.0,
+      # which is why package.json pins it without a range.
+      #
+      # Checked, not assumed: PR #26 bumped it to 3.1.1 and failed CI twice over
+      # — expo-doctor's "packages match versions required by installed Expo SDK",
+      # and every component suite failing to load because v3 moved
+      # `jest/async-storage-mock`, which jest.setup.ts requires.
+      - dependency-name: '@react-native-async-storage/async-storage'
+        update-types: ['version-update:semver-major']
+    groups:
+      dev-tooling:
+        patterns: ['eslint*', 'prettier*', 'jest*', '@testing-library/*', '@types/*', 'typescript']
+        update-types: ['minor', 'patch']
+
+  # Keeps the SHA pins in .github/workflows current. Without this, pinning
+  # actions to a SHA means never receiving their security fixes.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

@@ -1,0 +1,216 @@
+# Smoke test — does the built app actually launch and run?
+#
+# This is the only test that exercises the real binary on a real iOS runtime.
+# Jest can prove the segmentation logic is right; it cannot tell you the app
+# crashes on launch because of a native module, a missing Info.plist key or a
+# keychain call that throws. That is what this catches, and it runs before the
+# TestFlight upload.
+#
+# Deliberately shallow. Deep UI assertions belong in the Jest component suite,
+# which is faster, runs on Linux and does not flake.
+#
+# What it cannot cover: anything involving actual movement. A simulator has no
+# GPS, and background location does not survive backgrounding there. Every claim
+# about segmentation is asserted in `npx jest --selectProjects core` instead —
+# which is the reason the engine is pure TypeScript.
+#
+# ---------------------------------------------------------------------------
+# EVERY STRING BELOW IS AN ACCESSIBILITY LABEL, NOT THE TEXT ON SCREEN.
+#
+# Maestro reads the accessibility tree, and iOS *collapses* an element that has
+# an `accessibilityLabel` — its children stop existing as far as XCUITest is
+# concerned. So the notice that reads "Tracking is off" over two lines of body
+# text is one element labelled `Start tracking`, and the tile showing "0 m"
+# under the word DISTANCE is one element labelled `Distance: 0 m`. Asserting on
+# what you can see in a screenshot is how the v0.1.0 release failed: the app was
+# rendering perfectly and the flow was looking for text nothing exposes.
+#
+# Matches are also whole-string, not fragments. To find the real label for
+# something, run the flow, then read
+# `.maestro/tests/*/smoke/screen-hierarchy/*.json` from the uploaded artifact —
+# `accessibilityText` is the field that matters.
+# ---------------------------------------------------------------------------
+#
+# ${APP_ID} is substituted by the CI job from vars.IOS_BUNDLE_IDENTIFIER.
+
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+
+# --- Launched, and rendering a fresh install ------------------------------
+#
+# The header is a bare Text with `accessibilityRole="header"`, so it is exposed
+# as itself. The subtitle proves the timeline hook resolved rather than hanging
+# on the store read.
+- assertVisible: 'Today'
+- assertVisible: '0 journeys · 0 stops'
+
+# The tracking notice. Labelled by its Pressable, so this string — not the
+# "Tracking is off" heading inside it — is what exists.
+- assertVisible: 'Start tracking'
+- assertVisible: 'Nothing recorded yet today.'
+
+# The vault generated a key and the store round-tripped. If the keychain call or
+# the cipher threw, the app would be stuck before this renders.
+- assertVisible: 'Distance: 0 m'
+- assertVisible: 'Calories: 0'
+
+# --- Nothing is conjured out of nothing -----------------------------------
+#
+# There is no Record button. Tracking is either on or it is not, and a journey
+# exists because fixes were recorded — never because something was pressed.
+#
+# A simulator does not move, so on a fresh install the day is genuinely empty
+# and stays that way. That *is* the assertion: the previous version of this flow
+# pressed Record and asserted a row appeared, which is precisely the fiction
+# that put a journey on the wrong day at a time that had not arrived.
+- assertVisible: 'Nothing recorded yet today.'
+- assertVisible: '0 journeys · 0 stops'
+
+# --- The other tabs render ------------------------------------------------
+# Worth the extra seconds: these screens pull in the icon font, the SVG renderer
+# and the settings store, and a missing native module shows up as a blank screen
+# here rather than as a crash on launch.
+# The day view is the app's front page and mounts the offline map canvas — SVG,
+# the projection, the scale bar. With maps off (the default) it must render
+# without MapKit being involved at all.
+- assertVisible: 'Today'
+
+# Every day, one tap away. Today and History used to be separate tabs; they were
+# both "look at a day" and are one screen now, with the list as its page.
+- tapOn: 'All days'
+- assertVisible: 'All days'
+- tapOn: 'Back'
+- assertVisible: 'Today'
+
+# Capture is the one screen that touches the camera, and the only place a
+# missing native module would surface as a blank rectangle rather than a crash.
+# Deliberately does NOT press the shutter: that writes a file and, on a fresh
+# install, raises the permission dialog, which has no Maestro affordance here.
+# The viewfinder fills the screen, so there is no header to assert on — the
+# shutter is what proves it came up. Deliberately does NOT press it: that writes
+# a file and, on a fresh install, raises the permission dialog, which has no
+# Maestro affordance here.
+#
+# **And deliberately does not touch Voice or Video.** Selecting either asks iOS
+# for the microphone the moment the mode changes, and the system alert that
+# follows covers the app — every assertion after it then fails on an element
+# that is rendered and not visible. That is what failed the v0.2.7 release: the
+# flow tapped Voice and looked for the shutter behind the dialog. The earlier
+# version got away with tapping Voice only because it asserted nothing
+# afterwards, which is a check that cannot fail rather than a check that
+# passes. Switching modes is covered in the Jest suite, where no dialog exists.
+- tapOn: 'Capture tab'
+- assertVisible: 'Take photo'
+
+# The zoom buttons are *absent* here on purpose, and asserting that is worth
+# more than it sounds: a simulator reports no cameras, so the optics module
+# returns nothing, the dial is null and no stop is drawn. This is the assertion
+# that the local Swift module degrades rather than crashing when the hardware
+# will not answer — the failure mode a native module has that a JS one does not.
+#
+# The label is generated per stop from the real lens data, so this fails the
+# moment the dial starts inventing stops the phone did not report.
+- assertNotVisible: 'Zoom to 1x, 24 millimetres'
+
+# Media mounts expo-video and expo-audio, and on a fresh install has nothing to
+# show. The empty state is the assertion worth having: it proves the media index
+# was read and decrypted rather than the screen hanging on the store.
+- tapOn: 'Media tab'
+- assertVisible: 'Media'
+- assertVisible: 'Nothing captured yet'
+
+# The gallery's own gestures and panels cannot be reached here: `clearState`
+# leaves nothing captured, and a simulator has no camera to capture with — so
+# the media rules are asserted in the Jest suite instead
+# (`verticalIntent.test.ts`, `MediaGalleryScreen.test.tsx`). What this proves is
+# the tab mounts expo-video and expo-audio without a native module missing.
+
+- tapOn: 'Settings tab'
+- assertVisible: 'Settings'
+- assertVisible: 'Track my day'
+# Each preset row is one collapsed element labelled "<name>. <detail>", built in
+# services/location.ts. Change a preset's `detail` and this must change with it.
+- assertVisible: 'Balanced. ~10 m accuracy, a point every 25 m'
+- assertVisible: 'Battery saver. ~100 m accuracy, a point every 100 m'
+
+# The one switch in the app that permits a network request. It must be off on a
+# fresh install — that is the whole design, and a default that silently flipped
+# would be the most consequential regression this app could ship.
+- scrollUntilVisible:
+    element:
+      text: 'Show routes on a map'
+    direction: DOWN
+- assertVisible: 'Off — routes are drawn without tiles'
+
+# --- Everything below the fold, from one scroll -----------------------------
+#
+# Scroll to the *last* element in the screen once, then tap the rows that are
+# now sitting comfortably above it. Every tab in this app keeps its scroll
+# position when a detail page opens over it and closes again, so one scroll
+# serves all three.
+#
+# `scrollUntilVisible` stops the moment its target is visible, which leaves that
+# target flush against the bottom edge of the scroll view — and the tab bar sits
+# directly under that edge. Scrolling *past* the rows we want is what makes this
+# independent of how many rows happen to be above them.
+#
+# The v0.2.0 release failed exactly here. Adding the Places row pushed "Raw data
+# & export" to bounds ending at y=788 with the tab bar starting at 786; the tap
+# reported success and the screen never changed.
+- scrollUntilVisible:
+    element:
+      text: 'Erase everything'
+    direction: DOWN
+
+# Places lost its tab to Replay and Capture, so this is also what proves the
+# page stack still reaches it. The sort controls exercise the place store.
+#
+# Asserted on a sort control rather than on "Places": that string is also the
+# label of the Settings row that was just tapped, so it stays visible whether or
+# not anything opened — an assertion that cannot fail is worse than none.
+- tapOn: 'Places'
+- assertVisible: 'Sort by Time spent'
+- tapOn: 'Sort by Visits'
+- tapOn: 'Sort by Name'
+- tapOn: 'Sort by Time spent'
+- tapOn: 'Back'
+# Asserted on the erase button, not on 'Track my day': the flow is scrolled to
+# the bottom of Settings by this point, so the switch at the top is off screen.
+# Not 'Settings' either — that is the tab label, visible from anywhere.
+- assertVisible: 'Erase everything'
+
+# Named journeys is where the label store is exercised. Empty on a fresh
+# install, which is what it should say rather than showing nothing at all.
+- tapOn: 'Named journeys'
+- assertVisible: 'Named journeys'
+- assertVisible: 'Nothing named yet. Open a journey from the timeline and give it a name.'
+- tapOn: 'Back'
+- assertVisible: 'Erase everything'
+
+# --- The raw data page opens ----------------------------------------------
+# Exercises the page stack and the counts. Deliberately does NOT tap an export
+# button: that opens the iOS share sheet, which has no Maestro affordance and
+# would hang the run waiting for a human.
+- tapOn: 'Raw data and export'
+- assertVisible: 'Raw data'
+- assertVisible: 'Route points (all history): 0'
+- tapOn: 'Back'
+# Asserted on the erase button, not on 'Track my day': the flow is scrolled to
+# the bottom of Settings by this point, so the switch at the top is off screen.
+# Not 'Settings' either — that is the tab label, visible from anywhere.
+- assertVisible: 'Erase everything'
+
+# --- Erase is present and asks first --------------------------------------
+# The one irreversible action in the app — it destroys the encryption key. It
+# must never be a single tap.
+- tapOn: 'Erase everything'
+- assertVisible: 'Erase everything?'
+- tapOn: 'Cancel'
+
+- tapOn: 'Day tab'
+# Still an empty day after a tour of every other tab. Today was never unmounted,
+# which is the guarantee that stops a timeline just derived, or a half-typed
+# name, being thrown away when you glance somewhere else.
+- assertVisible: '0 journeys · 0 stops'

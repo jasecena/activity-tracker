@@ -1,0 +1,280 @@
+import { EARTH_RADIUS_M, type PathPoint } from '../../geo';
+import { buildTrack } from '../../replay';
+import type { MoveSegment } from '../../segments';
+import {
+  groupMediaByDay,
+  capturedAtFromMediaId,
+  mediaForDay,
+  mediaIdFor,
+  normalizeMedia,
+  placeMedia,
+  totalBytes,
+  type MediaItem,
+} from '../index';
+
+/** Equator, longitude 0 — see `segments/__tests__/fixtures.ts` for why. */
+const DEG_PER_METRE_LAT = 1 / ((EARTH_RADIUS_M * Math.PI) / 180);
+
+const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
+const MINUTE = 60_000;
+
+function item(capturedAt: number, overrides: Partial<MediaItem> = {}): MediaItem {
+  return {
+    id: mediaIdFor(capturedAt),
+    kind: 'photo',
+    capturedAt,
+    durationMs: null,
+    fileName: `${mediaIdFor(capturedAt)}.bin`,
+    thumbFileName: null,
+    at: null,
+    byteLength: 1_024,
+    note: '',
+    orientation: null,
+    ...overrides,
+  };
+}
+
+function point(at: number, northM: number): PathPoint {
+  return { lat: northM * DEG_PER_METRE_LAT, lon: 0, at, speedMps: 1 };
+}
+
+function move(startedAt: number, endedAt: number): MoveSegment {
+  return {
+    kind: 'move',
+    id: `m-${startedAt}`,
+    startedAt,
+    endedAt,
+    fixCount: 2,
+    distanceM: 600,
+    mode: 'walk',
+    label: null,
+    modeIsManual: false,
+    path: [point(startedAt, 0), point(endedAt, 600)],
+    topSpeedMps: 1,
+  };
+}
+
+describe('mediaIdFor', () => {
+  // Derived, never generated: re-reading an index, or merging one a crashed
+  // write left behind, must update the same row rather than accumulate two.
+  it('is a function of the instant alone', () => {
+    expect(mediaIdFor(T0)).toBe(mediaIdFor(T0));
+    expect(mediaIdFor(T0)).not.toBe(mediaIdFor(T0 + 1));
+  });
+});
+
+describe('capturedAtFromMediaId', () => {
+  // A capture interrupted mid-seal is recovered from a file named after its id
+  // and nothing else — there is no index entry yet, by definition.
+  it('recovers the instant an id was made from', () => {
+    expect(capturedAtFromMediaId(mediaIdFor(T0))).toBe(T0);
+  });
+
+  it('refuses anything that is not one of ours', () => {
+    expect(capturedAtFromMediaId('1767600000000')).toBeNull();
+    expect(capturedAtFromMediaId('m-lunchtime')).toBeNull();
+    expect(capturedAtFromMediaId('m-')).toBeNull();
+    expect(capturedAtFromMediaId('m--1')).toBeNull();
+  });
+});
+
+describe('normalizeMedia', () => {
+  it('drops a position that is not a pair of finite numbers', () => {
+    const [result] = normalizeMedia([{ ...item(T0), at: { lat: 'north', lon: 0 } }]);
+    expect(result?.at).toBeNull();
+    const [alsoNull] = normalizeMedia([{ ...item(T0), at: { lat: Number.NaN, lon: 0 } }]);
+    expect(alsoNull?.at).toBeNull();
+  });
+
+  it('keeps a position that is', () => {
+    const [result] = normalizeMedia([{ ...item(T0), at: { lat: 1.5, lon: -2.5 } }]);
+    expect(result?.at).toEqual({ lat: 1.5, lon: -2.5 });
+  });
+
+  it('is empty for anything that is not a list', () => {
+    expect(normalizeMedia(null)).toEqual([]);
+    expect(normalizeMedia('nope')).toEqual([]);
+    expect(normalizeMedia({ 0: item(T0) })).toEqual([]);
+  });
+
+  it('drops entries it does not recognise rather than repairing them', () => {
+    const kept = item(T0);
+    const result = normalizeMedia([
+      kept,
+      { ...item(T0 + 1), kind: 'hologram' },
+      { ...item(T0 + 2), capturedAt: 'lunchtime' },
+      { ...item(T0 + 3), fileName: '' },
+      null,
+      42,
+    ]);
+    expect(result).toEqual([kept]);
+  });
+
+  it('fills the soft fields rather than dropping the row over them', () => {
+    const [result] = normalizeMedia([{ ...item(T0), durationMs: 'long', byteLength: -1, note: undefined }]);
+    expect(result?.durationMs).toBeNull();
+    expect(result?.byteLength).toBe(0);
+    expect(result?.note).toBe('');
+  });
+
+  /**
+   * The five-second "live" capture was built and withdrawn. On disk it was a
+   * clip and a still — which is what a video is — so it reads back as a video
+   * and keeps playing. Without this the row would be dropped as unrecognised
+   * and the file swept as an orphan on the next launch: somebody's capture
+   * deleted for a feature being taken away.
+   */
+  it('reads a capture an older build called live as the video it is', () => {
+    const [result] = normalizeMedia([{ ...item(T0), kind: 'live', durationMs: 5_000 }]);
+
+    expect(result?.kind).toBe('video');
+    expect(result?.durationMs).toBe(5_000);
+    expect(result?.fileName).toBe(item(T0).fileName);
+  });
+
+  it('sorts by capture time', () => {
+    const result = normalizeMedia([item(T0 + 2 * MINUTE), item(T0), item(T0 + MINUTE)]);
+    expect(result.map((entry) => entry.capturedAt)).toEqual([T0, T0 + MINUTE, T0 + 2 * MINUTE]);
+  });
+
+  /**
+   * A name from the index is joined onto the media directory and then opened —
+   * and in `deleteMedia`'s case, deleted. So it has to be a name and not a
+   * path. iOS bounds where a traversal could actually reach, but this is the
+   * function that claims to be the trust boundary, and the restore path in the
+   * backlog is what makes an index arrive from off this phone.
+   */
+  it('drops a row whose file name is a path rather than a name', () => {
+    const escapes = [
+      '../../Library/Preferences/com.apple.plist',
+      'nested/photo.jpg',
+      'back\\slash.jpg',
+      '..',
+      '.',
+      '.hidden.jpg',
+      'percent%2Fencoded.jpg',
+      'space in name.jpg',
+    ];
+
+    for (const fileName of escapes) {
+      expect(normalizeMedia([{ ...item(T0), fileName }])).toEqual([]);
+    }
+  });
+
+  it('keeps every name this app actually writes', () => {
+    const names = [`${mediaIdFor(T0)}.jpg`, `${mediaIdFor(T0)}.thumb.jpg`, `${mediaIdFor(T0)}.thumb.2.jpg`];
+
+    for (const fileName of names) {
+      expect(normalizeMedia([{ ...item(T0), fileName }])[0]?.fileName).toBe(fileName);
+    }
+
+    // The retired sealed container, which `unsealInPlace` still has to open.
+    expect(normalizeMedia([{ ...item(T0), fileName: `${mediaIdFor(T0)}.jpg.avm` }])[0]?.fileName).toBe(
+      `${mediaIdFor(T0)}.jpg.avm`,
+    );
+  });
+
+  /**
+   * A bad thumbnail name is the missing-thumbnail case, not a dropped row.
+   * Losing the row would lose the capture behind it; losing the thumbnail
+   * costs a blank square that the next launch's backfill repairs.
+   */
+  it('forgets a thumbnail name that is a path, and keeps the capture', () => {
+    const [result] = normalizeMedia([{ ...item(T0), thumbFileName: '../elsewhere.jpg' }]);
+
+    expect(result?.thumbFileName).toBeNull();
+    expect(result?.fileName).toBe(item(T0).fileName);
+  });
+});
+
+describe('mediaForDay', () => {
+  // A "day" is a wall-clock concept, so the offset decides which one an
+  // instant near midnight lands in — the same sign convention as `core/day`.
+  it('files an instant under the local day, not the UTC one', () => {
+    const lateEvening = Date.UTC(2026, 0, 5, 23, 30, 0);
+    const items = [item(lateEvening)];
+    expect(mediaForDay(items, '2026-01-05', 0)).toHaveLength(1);
+    expect(mediaForDay(items, '2026-01-06', 600)).toHaveLength(1);
+    expect(mediaForDay(items, '2026-01-05', 600)).toHaveLength(0);
+  });
+});
+
+describe('placeMedia', () => {
+  // The reading taken at the shutter beats anything worked out afterwards: it
+  // is the most direct answer there is, and it survives the fixes being pruned,
+  // the day being re-derived, and tracking having been off entirely.
+  it('prefers the position stored with the capture', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE)]);
+    const shutter = { lat: 42 * DEG_PER_METRE_LAT, lon: 0 };
+    const [placed] = placeMedia(track, [item(T0 + 5 * MINUTE, { at: shutter })]);
+
+    expect(placed?.at?.lat).toBe(shutter.lat);
+  });
+
+  it('falls back to the day for a capture taken before positions were stored', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE)]);
+    const [placed] = placeMedia(track, [item(T0 + 5 * MINUTE, { at: null })]);
+
+    expect(placed?.at?.lat).toBeCloseTo(300 * DEG_PER_METRE_LAT, 9);
+  });
+
+  it('places one the day knows nothing about, if the capture knew', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE), move(T0 + 130 * MINUTE, T0 + 140 * MINUTE)]);
+    const shutter = { lat: 7 * DEG_PER_METRE_LAT, lon: 0 };
+    const [placed] = placeMedia(track, [item(T0 + 60 * MINUTE, { at: shutter })]);
+
+    // In a hole as far as the timeline is concerned, and still placed.
+    expect(placed?.at?.lat).toBe(shutter.lat);
+  });
+
+  it('gives an item the position the day was in at that instant', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE)]);
+    const [placed] = placeMedia(track, [item(T0 + 5 * MINUTE)]);
+    expect(placed?.at?.lat).toBeCloseTo(300 * DEG_PER_METRE_LAT, 9);
+  });
+
+  it('gives an item captured in a hole no position at all', () => {
+    const track = buildTrack([move(T0, T0 + 10 * MINUTE), move(T0 + 130 * MINUTE, T0 + 140 * MINUTE)]);
+    const [placed] = placeMedia(track, [item(T0 + 60 * MINUTE)]);
+    expect(placed?.at).toBeNull();
+    // Still listed. A photo with no pin is a photo, not a missing photo.
+    expect(placed?.item.capturedAt).toBe(T0 + 60 * MINUTE);
+  });
+});
+
+describe('totalBytes', () => {
+  it('is zero for nothing', () => {
+    expect(totalBytes([])).toBe(0);
+  });
+
+  it('sums what is on disk', () => {
+    expect(totalBytes([item(T0), item(T0 + 1, { byteLength: 2_048 })])).toBe(3_072);
+  });
+});
+
+describe('groupMediaByDay', () => {
+  it('gathers captures into local days, newest day first', () => {
+    const grouped = groupMediaByDay([item(T0), item(T0 + MINUTE), item(T0 + 26 * 60 * MINUTE)], 0);
+
+    expect(grouped.map((day) => day.items.length)).toEqual([1, 2]);
+    expect(grouped[0]!.newestAt).toBe(T0 + 26 * 60 * MINUTE);
+  });
+
+  it('sorts within a day newest first, which is the order a grid is read in', () => {
+    const [day] = groupMediaByDay([item(T0), item(T0 + MINUTE)], 0);
+
+    expect(day?.items.map((entry) => entry.capturedAt)).toEqual([T0 + MINUTE, T0]);
+  });
+
+  // The same instant is a different day in a different place; the offset is
+  // the parameter, the same as everywhere else in core.
+  it('respects the UTC offset when cutting days', () => {
+    const lateEvening = Date.UTC(2026, 0, 5, 23, 30, 0);
+    expect(groupMediaByDay([item(lateEvening)], 0)[0]?.key).toBe('2026-01-05');
+    expect(groupMediaByDay([item(lateEvening)], 600)[0]?.key).toBe('2026-01-06');
+  });
+
+  it('is empty for nothing', () => {
+    expect(groupMediaByDay([], 0)).toEqual([]);
+  });
+});

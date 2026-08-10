@@ -1,0 +1,29 @@
+{
+  // The dependency audit, with a reviewed list of what it is allowed to ignore.
+  //
+  // `npm audit --audit-level=high` on its own has no way to say "we have looked
+  // at this one". That sounds like rigour and produces the opposite: this
+  // project's CI was red on every push for days over two advisories with no
+  // fixed version available anywhere, which is a check nobody reads and would
+  // have hidden a real finding.
+  //
+  // Every entry below has to name the advisory, and removing one is how a fix
+  // gets picked up — an allowlisted advisory that is no longer reachable makes
+  // audit-ci fail on the stale entry rather than passing quietly.
+  "high": true,
+  "allowlist": [
+    // image-size ≤ 2.0.2: infinite loops in the ICNS, JXL and HEIF parsers, so
+    // a crafted image can hang the process that measures it.
+    //
+    // Reachable only through metro, which measures image assets **at bundle
+    // time**, on this machine and the CI runner, over files that are in this
+    // repository. Nothing from a phone or a network reaches it, and none of it
+    // is in the shipped binary.
+    //
+    // 2.0.2 is the latest published version and the advisory covers every
+    // release up to it, so there is nothing to upgrade to. Recheck when
+    // image-size publishes again.
+    "GHSA-w3rx-r6r6-pgpr",
+    "GHSA-5p2g-fcmc-qvqq",
+  ],
+}

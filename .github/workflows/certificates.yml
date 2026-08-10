@@ -1,0 +1,69 @@
+### Certificates — list or revoke the signing certificates on the Apple account.
+#
+# Housekeeping, run by hand. The release workflow now revokes what it creates,
+# so this exists for the certificates left behind by the builds that ran before
+# it did — and for answering "what is actually on the account" without a Mac,
+# an Xcode window or the .p8 key on your laptop.
+#
+# Revoking is safe for anything already on TestFlight or the App Store: Apple
+# re-signs an uploaded build with its own certificate, so revoking the one that
+# archived it changes nothing for a tester. What it does break is a build
+# installed directly on a device from a Mac — Xcode issues a new certificate on
+# the next run, but that build must be rebuilt to launch again.
+#
+# Runs on Linux: it is a REST call, not a build.
+
+name: Certificates
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to do'
+        type: choice
+        options:
+          - list
+          - revoke-all
+        default: list
+      confirm:
+        description: 'Type "revoke" to confirm revoke-all (ignored for list)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+# Two of these at once would race on the same account for no good reason.
+concurrency:
+  group: certificates
+  cancel-in-progress: false
+
+jobs:
+  certificates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+
+      # The script has no dependencies, so there is nothing to install.
+      - name: Run
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.action }}" == "list" ]]; then
+            node scripts/asc-certificates.mjs list | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # An unguarded "revoke everything" button is one misclick from a bad
+          # afternoon, so it takes a typed word rather than a checkbox.
+          if [[ "${{ inputs.confirm }}" != "revoke" ]]; then
+            echo "::error::revoke-all needs confirm set to the word 'revoke'."
+            exit 1
+          fi
+          node scripts/asc-certificates.mjs revoke --all --yes 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
