@@ -7,7 +7,7 @@ import type { Fix, RejectionReason } from '@/core/geo';
 import { totalBytes, type MediaItem } from '@/core/media';
 import type { Place } from '@/core/places';
 import type { Segment } from '@/core/segments';
-import { measuredSpans } from '@/services/timing';
+import { labelOf, measuredSpans } from '@/services/timing';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { shareCsv } from '@/services/exportFile';
 import { allFixes, archivedCount } from '@/services/fixBuffer';
@@ -86,6 +86,11 @@ export function DataScreen({
       live = false;
     };
   }, []);
+
+  // Once per render, not once per reference. `measuredSpans` copies and sorts,
+  // and this screen used to call it twice — the instrument costing more than the
+  // thing it measures is the one bug an instrument must not have.
+  const spans = measuredSpans().slice(0, 12);
 
   const moves = segments.filter((segment) => segment.kind === 'move');
   const stays = segments.filter((segment) => segment.kind === 'stay');
@@ -195,14 +200,15 @@ export function DataScreen({
             a number nobody can see is a number nobody acts on. */}
         <Text style={styles.sectionLabel}>THIS SESSION, MEASURED</Text>
         <View style={styles.card}>
-          {measuredSpans().length === 0 ? (
+          {spans.length === 0 ? (
             <Text style={styles.footnote}>Nothing measured yet this session.</Text>
           ) : (
-            measuredSpans()
-              .slice(0, 12)
-              .map((span, position) => (
-                <Row key={`${span.name}-${position}`} label={span.name} value={`${span.ms} ms`} />
-              ))
+            // `labelOf` here rather than a name stored ready-formatted: only the
+            // dozen rows drawn pay for a string, which is the point of holding
+            // the count as a number.
+            spans.map((span, position) => (
+              <Row key={`${span.name}-${position}`} label={labelOf(span)} value={`${span.ms} ms`} />
+            ))
           )}
         </View>
 

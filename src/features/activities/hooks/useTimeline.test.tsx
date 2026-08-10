@@ -14,6 +14,9 @@ import { useTimeline } from './useTimeline';
 jest.mock('@/services/clock', () => ({
   now: () => Date.UTC(2026, 7, 8, 12, 0, 0),
   tzOffsetMinutes: () => 0,
+  // Durations, not instants. Pinning the wall clock above would otherwise pin
+  // this too, and every measured span would come out as exactly zero.
+  monotonicNow: () => performance.now(),
 }));
 
 const NOW = Date.UTC(2026, 7, 8, 12, 0, 0);

@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 594
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 598
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -487,6 +487,44 @@ place covers a stay. Confirming a stay that fell _outside_ a place widens that
 place (`widenToInclude`) rather than creating a second one with the same name —
 two identical rows with the totals split between them is the outcome nobody
 wants and everybody gets.
+
+**Measuring the app must not become a second way of recording its owner.**
+`services/timing.ts` is the instrumentation the performance audits rank by, and
+it is in memory, this session only, capped, and shown on the Data screen. Three
+rules hold it there. **A span name says a shape, never a content** — a duration,
+a count and a byte size are facts about the machine, while a coordinate, a place
+name, a note or a capture's file name are the diary; `fold (4200 fixes)` is a
+measurement and `stay at Home 2h` would be an entry. This is why a store read
+records `read archived day` rather than the key, which carries a date its owner
+had data on. **Nothing goes to `console`** — that is the vector that actually
+exists, and it is not the network: device logs are readable through Console.app
+and are swept into a sysdiagnose, which is a bundle a person deliberately sends
+to Apple, so a printed span has left the sandbox and a held one has not. And
+**nothing is persisted or exported**, the CSV included, because that one goes
+through the share sheet.
+
+No analytics SDK can satisfy any of this, so the one-request rule already
+forbids the thing that would otherwise be reached for. Most of what the
+remaining audits need ships nothing at all: Instruments, the Hermes sampling
+profiler and the RN performance monitor attach from outside, cost the release
+binary nothing, and never leave the Mac. In-app spans are for what a profiler
+cannot name — it hands you a stack, not "the fold took 340 ms for 4,200 fixes".
+
+**Durations are measured with `monotonicNow`, never `now`.** The wall clock is
+corrected — iOS pulls it back into line with the network — and a correction
+landing inside a measurement produces a duration wrong by however far the clock
+moved, including a negative one that sorts straight to the top of "what was
+slow". The reverse holds just as firmly: a _fix_ is stamped with the wall clock,
+because which day it belongs to is a wall-clock fact and monotonic time has no
+answer to "which Tuesday". `timing.test.ts` makes `now` throw, so a module that
+reaches for the wrong clock fails rather than passing quietly.
+
+**An instrument must cost less than what it measures.** `record` pushes rather
+than rebuilding the array, takes the count as a number so `labelOf` formats only
+the rows actually drawn, and checks the cap before the caller has done work
+that would be discarded. The Data screen calls `measuredSpans()` once per
+render, not once per reference — it sorts a copy, and calling it twice was the
+instrument being the overhead.
 
 **The Jest suite is pinned to UTC** in `jest.config.js`, before the workers fork.
 A "day" is a wall-clock concept, so without it `jest.setSystemTime` means a

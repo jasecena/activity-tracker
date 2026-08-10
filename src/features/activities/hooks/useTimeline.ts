@@ -4,7 +4,7 @@ import { AppState } from 'react-native';
 import { groupByDay, type DayGroup } from '@/core/day';
 import type { Fix, RejectionReason } from '@/core/geo';
 import { applyJourneyLabels, segmentFixes, type JourneyLabel, type Segment } from '@/core/segments';
-import { now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
+import { monotonicNow, now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { freezeFinishedDays } from '@/services/dayLog';
 import { readBuffer } from '@/services/fixBuffer';
 import type { Settings } from '@/services/settings';
@@ -76,9 +76,11 @@ export function useTimeline(settings: Settings, labels: readonly JourneyLabel[],
 
       const buffered = await timed('read fix buffer', () => readBuffer());
       // The fold is synchronous, so it is timed by hand rather than wrapped.
-      const foldBegan = readNow();
+      // `monotonicNow` and not `readNow`: this measures a duration, and the wall
+      // clock is corrected under a phone that has been running all day.
+      const foldBegan = monotonicNow();
       const { segments, rejected: dropped } = segmentFixes(buffered, settings.segmentation);
-      record(`fold ${buffered.length} fixes`, readNow() - foldBegan);
+      record('fold', monotonicNow() - foldBegan, buffered.length, 'fixes');
 
       // Freeze first: it writes finished days to the log and shrinks the
       // buffer, and returns the log we then read the past out of.

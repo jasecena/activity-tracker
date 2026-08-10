@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { now } from './clock';
+import { monotonicNow } from './clock';
 import { eraseAllMedia } from './mediaStore';
 import { record } from './timing';
 import { destroyKey, open, seal } from './vault';
@@ -141,11 +141,25 @@ export async function dropRetiredKeys(): Promise<void> {
   }
 }
 
+/**
+ * The name a read is measured under.
+ *
+ * Every archived day collapses to one name. The key itself is
+ * `fix-archive/2026-08-09`, and a date its owner had data on is a diary fact
+ * rather than a machine one — `services/timing.ts` has the rule. Nothing is
+ * lost by it: the spans stay separate, so a launch that read four archived days
+ * still shows four rows, and what you actually want to know is whether archive
+ * reads are the slow ones.
+ */
+function spanNameFor(key: StorageKey): string {
+  return key.startsWith(STORAGE_KEYS.fixArchive) ? 'read archived day' : `read ${key}`;
+}
+
 /** Reads, decrypts and parses a stored value, or null if it is missing or unusable. */
 export async function readJson<T>(key: StorageKey): Promise<T | null> {
   // Every launch read funnels through here, so timing this one function is a
   // per-store breakdown of the slow first tab for free.
-  const began = now();
+  const began = monotonicNow();
   try {
     const envelope = await AsyncStorage.getItem(key);
     if (envelope === null) return null;
@@ -155,7 +169,9 @@ export async function readJson<T>(key: StorageKey): Promise<T | null> {
     // longer speak. Identical handling, because there is nothing else to do.
     if (plaintext === null) return null;
 
-    record(`read ${key} (${Math.round(envelope.length / 1024)} kB)`, now() - began);
+    // The size goes over as a number: formatting it here would be a string
+    // built on every read, including the ones past the cap that are discarded.
+    record(spanNameFor(key), monotonicNow() - began, Math.round(envelope.length / 1024), 'kB');
     return JSON.parse(plaintext) as T;
   } catch (error) {
     console.warn(`Discarding unreadable stored value for ${key}`, error);
