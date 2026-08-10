@@ -4,7 +4,7 @@ Features agreed for later, written down before they are built so the thinking
 survives the wait. Ordered roughly by how they unlock each other, not by priority
 — priorities get decided when work starts.
 
-**Where the app is as of v0.3.0 (10 August 2026).** Everything through the
+**Where the app is as of v0.4.2 (10 August 2026).** Everything through the
 capture work has shipped to TestFlight: the four-tab shell, the day screen with
 history and replay, places and journey labels, the encrypted store, CSV export,
 the low-battery lens, the Media tab with the Photos gestures, capture orientation,
@@ -36,10 +36,22 @@ they were never uploaded while sitting in a backed-up directory. The fixes are
 in the git history and the reasoning is in `SECURITY.md` and
 `docs/ARCHITECTURE.md` § 12b.
 
-Three audits remain and all three need a phone with a real day of data on it:
-performance, memory and CPU, plus the lag hunt in item 6. `services/timing.ts`
-was rebuilt for them — monotonic clock, lazy labels, and the rule that a span
-names a shape and never a content.
+Three audits remain, and they are **not equally reachable**, which is worth
+saying plainly rather than leaving them looking like one queue:
+
+- **Performance and the lag hunt (item 6)** need a phone with a few days of real
+  data, and nothing else. `services/timing.ts` was rebuilt for exactly this —
+  monotonic clock, lazy labels, and the rule that a span names a shape and never
+  a content — and v0.4.2 added the launch-path spans, so the Data screen answers
+  three of item 6's four candidates on its own.
+- **Memory and CPU** need Instruments, which needs a Mac. This project has never
+  otherwise needed one — the macOS runner builds and TestFlight delivers — so
+  these two are blocked on hardware rather than on effort. Xcode Organizer's
+  aggregated field metrics would eventually show hang and battery data from real
+  TestFlight use, but that is weeks of passive collection, not an audit anyone
+  runs. Do not substitute a reading of the code for either: producing something
+  that looks like a memory audit and is really a guess is the failure the audits
+  exist to prevent.
 
 Two things were **built and withdrawn** during that run, and both are written up
 in `docs/ARCHITECTURE.md` rather than here, because withdrawing is a decision and

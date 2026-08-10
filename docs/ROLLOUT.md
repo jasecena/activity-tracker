@@ -18,7 +18,7 @@ fully usable at the end of Stage 3 without ever touching TestFlight.
 | 6     | Confidence it works as a diary | A real week      | 1 week, passive        |
 
 **Status: all six stages are done.** The app has been shipping to TestFlight since
-`v0.2.2`; `v0.3.0` went up on 10 August 2026 and CI is green on `main`. This
+`v0.2.2`; `v0.4.2` went up on 10 August 2026 and CI is green on `main`. This
 document is kept because it is the instructions for doing it again — a new
 machine, a new Apple account, or somebody else's phone — and because §§ 4–6 are
 where the pipeline's failure modes are written down. Read `docs/DEPLOYMENT.md` for
