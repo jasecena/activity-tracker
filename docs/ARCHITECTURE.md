@@ -601,8 +601,26 @@ had already been forgotten.
 
 The one thing the layer genuinely bought was **backups**: the key is
 `THIS_DEVICE_ONLY`, so an iCloud or Finder backup restored elsewhere held
-ciphertext and nothing else. That is the guarantee given up here, knowingly, and
-it is the one to weigh if this is ever revisited.
+ciphertext and nothing else. That was given up when the container went, and it
+has since been bought back a different way — `Documents/media` carries
+`NSURLIsExcludedFromBackupKey`, so the files are not copied into a backup at
+all. Not being there is a stronger guarantee than being there unreadable, and
+it costs nothing at read time, which is the whole complaint against the
+container.
+
+`expo-file-system` exposes no way to set that key, so it is a second local
+native module: `modules/file-backup`, one Swift function, in the mould
+`modules/camera-optics` established. `mediaStore.ts` applies it from
+`ensureDirectory` on every write rather than once at creation — that is also
+the migration, since a library written by an earlier build has an unflagged
+directory and there is no launch step to fix it. The native side reads before
+it writes, so the repetition costs one `getattr`.
+
+**What this does not do is survive the phone.** A capture excluded from backup
+is gone with a lost or replaced device, and until the S3 sync in
+`docs/BACKLOG.md` § 12 there is no other copy anywhere. That is the deliberate
+position — a location diary's photographs should not sit in iCloud — and it is
+the reason the sync is the item that matters most in the backlog.
 
 What it buys instead is that video actually streams. `expo-video` is handed the
 stored file and AVFoundation reads the frames it needs; a ten-minute clip costs
@@ -832,10 +850,13 @@ and it is not a degraded mode — it shows exactly what the app knows and invent
 no streets around it. Apple Maps is one switch away and says what it costs. See
 § 12.
 
-**Media in the Photos library.** Captures stay in this app's encrypted container
-rather than the camera roll. The roll is synced to iCloud, which is precisely the
-guarantee the vault exists to make — a photo attached to a location diary should
-not be the one thing in it that leaves.
+**Media in the Photos library.** Captures stay in this app's own storage rather
+than the camera roll — files iOS encrypts under the passcode, flagged so they
+are left out of backups. "Encrypted container" is what this said while media was
+sealed under the vault key, and the phrase survived the container by a release;
+it is worth being exact, because the roll is synced to iCloud and staying out of
+it is the entire point. A photo attached to a location diary should not be the
+one thing in it that leaves.
 
 **A committed `ios/` directory.** `expo prebuild` regenerates it from
 `app.config.ts` on every build, so it is output rather than source. Committing it

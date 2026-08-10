@@ -16,14 +16,14 @@ sensitive thing on most people's phones, and the design treats it that way.
 **The threat model is not a determined attacker holding your unlocked phone.**
 Against that, nothing an app can do helps. It is the ordinary ways a file leaks:
 
-| Leak                                             | Mitigation                                                                                                                                            |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key — **except media**; see below. |
-| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                          |
-| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                         |
-| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                         |
-| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                   |
-| Data sent somewhere by accident                  | The app makes one kind of request — Apple Maps tiles, off by default. Your track is never in it. See _Network posture_.                               |
+| Leak                                             | Mitigation                                                                                                                                                                                           |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key. Media is not sealed, so it is excluded from the backup outright — see below. |
+| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                                                                         |
+| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                                                                        |
+| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                                                                        |
+| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                                                                  |
+| Data sent somewhere by accident                  | The app makes one kind of request — Apple Maps tiles, off by default. Your track is never in it. See _Network posture_.                                                                              |
 
 ### Media at rest: the one place this changed
 
@@ -39,10 +39,25 @@ a key derived from the passcode, so the second pass added very little against th
 threat it was named for — someone holding the phone.
 
 What it did buy was the **backup** row above. `Documents` is backed up; the key was
-not; so a restored backup held ciphertext. That is what has been given up. A media
-file now restores as a readable photo on another device, in the same way every
-other app's photos do, and everything else in the store still restores as
-undecryptable bytes.
+not; so a restored backup held ciphertext. For one release that was simply given
+up, and a media file restored as a readable photo on another device. It is now
+bought back without the cipher: `Documents/media` is flagged
+`NSURLIsExcludedFromBackupKey`, so the files are not copied into a backup at all.
+
+Not being in the backup is a stronger property than being in it unreadable, and it
+costs nothing on the read path — which was the entire complaint against the
+container. `expo-file-system` has no API for the flag, so it is a second local
+native module, `modules/file-backup`, applied from `ensureDirectory` on every
+write. That repetition is deliberate: it is also the migration for a library
+written before the flag existed, and the Swift reads the current value before
+writing, so the repeat calls are a single `getattr`.
+
+**The cost is real and it is the other direction.** A capture excluded from backup
+does not survive a lost, stolen or replaced phone, and there is no other copy
+anywhere. Everything the vault covers has the same property for the same reason —
+`THIS_DEVICE_ONLY` — so this makes media consistent with the rest of the store
+rather than exceptional. It is also why the S3 sync is the backlog item that
+matters most.
 
 The conclusion drawn from that, which the sync work is bound by: encryption belongs
 at the boundary where data actually leaves the phone, and the bytes get sealed on

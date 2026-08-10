@@ -81,9 +81,11 @@ files in the app's own container, which iOS already encrypts under the passcode.
 A second pass in JavaScript bought very little against a stolen phone and cost
 forty megabytes of pure-TypeScript AEAD on the thread that draws the screen, which
 made the gallery unusable. What it did buy — a restored backup holding ciphertext
-— is given up knowingly; encryption belongs at the boundary where data leaves the
-phone, and today nothing does. See [`SECURITY.md`](SECURITY.md) for what that
-changes.
+— is bought back a cheaper way: the media directory is flagged
+`NSURLIsExcludedFromBackupKey`, so those files are never copied into a backup in
+the first place. The cost is that a lost phone takes them with it, which is what
+the S3 sync in [`docs/BACKLOG.md`](docs/BACKLOG.md) is for. See
+[`SECURITY.md`](SECURITY.md) for what that changes.
 
 ## What it does not do
 
@@ -93,8 +95,9 @@ changes.
   It is the only network request in the app.
 - **No geocoding.** A place has no name until you type one. There is nothing to
   ask.
-- **Nothing in the camera roll.** Captures stay in this app's encrypted store
-  rather than syncing to iCloud Photos.
+- **Nothing in the camera roll, and nothing in a backup.** Captures stay in this
+  app's own storage rather than syncing to iCloud Photos, and the directory they
+  live in is flagged so backups skip it.
 - **No accounts, no sync, no analytics, no crash reporting.** App Transport
   Security stays fully enforced.
 - **No Core Motion activity classification** — yet. See _Known limits_.

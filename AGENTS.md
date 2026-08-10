@@ -165,10 +165,31 @@ AEAD, on the one thread that also draws the screen, before anything could be
 looked at. The gallery was unusable and the cause was entirely self-inflicted.
 
 What that layer really protected was a **backup**: the key is
-`THIS_DEVICE_ONLY`, so a restored backup held ciphertext. That is what has been
-given up, knowingly. Encryption belongs at the boundary where data actually
-leaves the phone — the sync that is coming — and the bytes get sealed on the
-way out rather than on the way in.
+`THIS_DEVICE_ONLY`, so a restored backup held ciphertext. That was given up for
+one release and has been bought back without the cipher — `Documents/media`
+carries `NSURLIsExcludedFromBackupKey`, so the files are never copied into a
+backup at all. Not being there beats being there unreadable, and it costs
+nothing on the read path, which was the entire complaint against the container.
+Encryption still belongs at the boundary where data actually leaves the phone —
+the sync that is coming — and the bytes get sealed on the way out.
+
+The flag has no JavaScript API in `expo-file-system`, so it is the second local
+native module: `modules/file-backup`, one Swift function, applied from
+`ensureDirectory` on **every** write rather than once at creation. That is
+deliberate and it is the migration — a library written before the flag existed
+has an unflagged directory and there is no launch step that would find it — and
+the Swift reads the current value before writing so the repeats cost a
+`getattr`. The price is that a capture does not survive a lost phone, which is
+the same property everything the vault covers already has, and is what makes
+the S3 sync the backlog item that matters most.
+
+**Erase everything deletes the plaintext first, then the key, then the rows.**
+Ordering can only protect what is not already protected, and media is now the
+only thing a crash halfway through could leave readable — destroying the key
+does nothing to a JPEG. `eraseAllMedia` is synchronous, so it completes before
+the first `await` and there is no window at all. This reverses the rule that
+used to stand: key first, so dying halfway left ciphertext. That was right while
+media was sealed under the same key and wrong the moment it wasn't.
 
 `unsealInPlace` migrates a library written by an older build, once, on launch.
 Do not delete it without a very good reason: a build that cannot read a sealed

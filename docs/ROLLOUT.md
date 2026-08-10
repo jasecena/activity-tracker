@@ -36,7 +36,7 @@ cp .env.example .env
 npm run verify
 ```
 
-**Done when:** 572 tests pass in well under a minute. This is the whole engine —
+**Done when:** 575 tests pass in well under a minute. This is the whole engine —
 segmentation, classification, places, calories, encryption — verified without a
 phone, a simulator or a network.
 

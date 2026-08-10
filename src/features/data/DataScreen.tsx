@@ -251,8 +251,9 @@ export function DataScreen({
 
         {/* Said before the button is used, not after. */}
         <Text style={styles.warning}>
-          An exported file is plain text. Everything the app stores is encrypted with a key that never leaves this phone
-          — a CSV is not, and once you save or send it, that protection no longer applies to that copy.
+          An exported file is plain text. Your days are encrypted on this phone with a key that never leaves it, and
+          nothing the app stores is copied into a backup — a CSV is neither, and once you save or send it, that
+          protection no longer applies to that copy.
         </Text>
       </ScrollView>
     </View>

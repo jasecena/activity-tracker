@@ -49,9 +49,9 @@ const ALWAYS_REASON =
  * review rejection rather than an approval.
  */
 const CAMERA_REASON =
-  'Takes the photos and videos you attach to a day in your diary. They are encrypted on this phone and are never uploaded.';
+  'Takes the photos and videos you attach to a day in your diary. They stay in this app on this phone, are kept out of backups, and are never uploaded.';
 const MICROPHONE_REASON =
-  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They are encrypted on this phone and are never uploaded.';
+  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They stay in this app on this phone, are kept out of backups, and are never uploaded.';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,

@@ -41,9 +41,17 @@ interface CaptureScreenProps {
 }
 
 /**
- * A minute. Long enough for anything worth attaching to a day, short enough
- * that sealing it stays a second or two rather than a stall — the bytes are
- * encrypted on the way in and decrypted again to play.
+ * A minute, and the reason has changed.
+ *
+ * It used to be the encryption: the bytes were sealed on the way in and
+ * decrypted again to play, and both passes are something you would wait for at
+ * ten minutes. Neither pass exists now — a capture is a rename. What is left is
+ * a diary's own judgement about what a capture is for, a clip attached to a
+ * moment rather than a recording session, plus a disk budget with no ceiling if
+ * nothing bounds it. That is a weaker argument than the old one and
+ * `docs/ARCHITECTURE.md` § 12b says so; it is the one to revisit if the segment
+ * model in `docs/BACKLOG.md` is built, since pause and resume make "how long is
+ * one clip" a different question.
  */
 const MAX_VIDEO_SECONDS = 60;
 

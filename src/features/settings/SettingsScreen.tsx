@@ -38,13 +38,37 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
 export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, onOpenJourneys }: SettingsScreenProps) {
   const { settings: values } = settings;
 
+  /**
+   * Two prompts, not one, and the second is not a repeat of the first.
+   *
+   * The first says what is destroyed. The second says that it is already gone
+   * by the time you could regret it — there is no key escrow, no backup to
+   * restore from and, until the sync lands, nothing off this phone at all. A
+   * single destructive alert is the pattern for an action that can be redone;
+   * this one cannot be, and the whole store is behind it.
+   *
+   * The second prompt asks a *different* question so that a person tapping
+   * through by reflex has to read something. Repeating "Erase everything?"
+   * twice trains exactly the muscle memory the second prompt exists to break.
+   */
+  const confirmEraseFinal = () => {
+    Alert.alert(
+      'There is no way back',
+      'Nothing is kept anywhere else, so none of it can be recovered. Erase it all?',
+      [
+        { text: 'Keep my data', style: 'cancel' },
+        { text: 'Erase everything', style: 'destructive', onPress: () => void settings.eraseAll() },
+      ],
+    );
+  };
+
   const confirmErase = () => {
     Alert.alert(
       'Erase everything?',
-      'This destroys the encryption key, which makes every recorded day permanently unreadable. There is no copy anywhere else.',
+      'This destroys the encryption key and deletes every photo, video and voice note. Every recorded day becomes permanently unreadable.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Erase', style: 'destructive', onPress: () => void settings.eraseAll() },
+        { text: 'Continue', style: 'destructive', onPress: confirmEraseFinal },
       ],
     );
   };
@@ -232,13 +256,23 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
 
         <Text style={styles.sectionLabel}>PRIVACY</Text>
         <View style={styles.card}>
-          {/* This paragraph has to track the switch above it. "No network
-              requests of any kind" was true of every build until maps existed,
-              and leaving it there once they do would make the one screen that
-              promises honesty the one screen that is wrong. */}
+          {/* This paragraph has to track the app, and it has now been wrong
+              twice for the same reason: something changed underneath it and the
+              sentence stayed. "No network requests of any kind" outlived the
+              maps switch; "everything is encrypted with a key in the keychain"
+              outlived the media container, which was withdrawn in favour of
+              ordinary files that iOS encrypts and a backup-exclusion flag.
+
+              Both times the error ran the same way — the screen claimed more
+              protection than the app provided. That is the direction that
+              matters, and it is why this is two sentences about two mechanisms
+              rather than one comfortable sentence about everything. The one
+              screen that promises honesty must not be the one screen that is
+              wrong. */}
           <Text style={styles.privacy}>
-            Everything — days, places, photos, video and voice notes — is encrypted on this phone with a key held in the
-            iOS keychain and marked so it never enters a backup.{' '}
+            Days, places and labels are encrypted on this phone with a key held in the iOS keychain and marked so it
+            never enters a backup. Photos, video and voice notes are files in this app&apos;s own storage, which iOS
+            encrypts under your passcode, and they are marked so they never enter a backup either.{' '}
             {values.mapsEnabled
               ? 'Map imagery is the one exception: it is fetched from Apple while you look at a map. Nothing you have recorded is sent with it, and nothing else in the app talks to a network.'
               : 'The app makes no network requests of any kind — there is no server to send anything to.'}

@@ -175,12 +175,27 @@ export async function writeJson(key: StorageKey, value: unknown): Promise<void> 
 /**
  * Erase everything, irreversibly.
  *
- * Destroys the key first. If the process dies halfway through, what is left on
- * disk is ciphertext nobody can read — whereas clearing the rows first and
- * dying before the key is gone leaves a key protecting nothing. Order matters
- * here in exactly one direction.
+ * **The plaintext goes first, then the key, then the rows the key protected.**
+ * Ordering can only ever protect what is not already protected, and since
+ * captures stopped being sealed, media is the only thing here that a crash
+ * halfway through could leave readable. Destroying the key does nothing to a
+ * JPEG.
+ *
+ * That reverses the rule that used to stand here — key first, so that dying
+ * halfway left ciphertext — which was correct while media was sealed under the
+ * same key and stopped being correct when it wasn't. Between the two calls, the
+ * old order left a directory of photographs.
+ *
+ * `eraseAllMedia` is **synchronous**, which is what makes this worth the
+ * reordering rather than merely tidier: it runs to completion before the first
+ * `await` below, so there is no suspension point inside it and no window at all
+ * where the app can be killed mid-delete. The key and the rows keep their own
+ * order relative to each other, for the original reason — clearing rows first
+ * and dying before the key is gone leaves a key protecting nothing.
  */
 export async function eraseEverything(): Promise<void> {
+  eraseAllMedia();
+
   await destroyKey();
 
   // Everything under the prefix, not a list of names. The archive is a key per
@@ -195,8 +210,4 @@ export async function eraseEverything(): Promise<void> {
   }
 
   await AsyncStorage.multiRemove([...new Set([...owned, ...Object.values(STORAGE_KEYS), ...RETIRED_KEYS])]);
-  // Housekeeping, not protection. The sealed media became unreadable the
-  // instant the key above was destroyed; this stops the bytes sitting in the
-  // container for the life of the install.
-  eraseAllMedia();
 }

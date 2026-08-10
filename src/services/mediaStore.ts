@@ -2,23 +2,45 @@ import { Directory, File, FileMode, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { getThumbnailAsync } from 'expo-video-thumbnails';
 
+import { excludeFromBackup } from '../../modules/file-backup';
 import type { MediaItem, MediaKind } from '@/core/media';
 
 import { openBytes } from './vault';
 
 /**
- * Photos, video and voice notes on disk — encrypted, like everything else.
+ * Photos, video and voice notes on disk — ordinary files, and the one thing in
+ * this app the vault does not seal.
  *
- * The vault seals *values*: short strings that go into AsyncStorage. A minute
- * of 1080p is forty megabytes, which cannot go through `JSON.stringify` and
- * should not be turned into hex. So media gets its own container, sealed under
- * the same device key, and the index describing it stays in the ordinary store.
+ * They used to be sealed, into a chunked container of their own under the same
+ * device key, and the reasoning was consistent with everything around it. It
+ * was withdrawn: iOS already encrypts the container under a key derived from
+ * the passcode, so the second pass bought very little against a stolen phone
+ * and cost every read — forty megabytes of pure-JavaScript AEAD on the thread
+ * that also draws the screen, before anything could be looked at. The gallery
+ * was unusable and the cause was entirely self-inflicted. `docs/ARCHITECTURE.md`
+ * § 12b has the full argument; `writeMedia` below has the short version.
  *
- * **Chunked, at a megabyte a time.** Sealing a whole video in one call would
- * hold the plaintext, the ciphertext and the base JS string in memory at once —
- * three copies of forty megabytes on a device that will happily kill the app
- * for less. Reading and writing a chunk at a time keeps the high-water mark at
- * a couple of megabytes no matter how long the clip is.
+ * **What that layer really protected was a backup**, because the vault key is
+ * `THIS_DEVICE_ONLY` and a restored backup therefore held ciphertext. That is
+ * not given up: `ensureDirectory` flags the media directory
+ * `NSURLIsExcludedFromBackupKey` through `modules/file-backup`, so the bytes
+ * stay off iCloud without anything having to decrypt them to show a thumbnail.
+ * Encryption still belongs at the boundary where data actually leaves the
+ * phone — the sync that is coming seals on the way out.
+ *
+ * So the plaintext rules that matter here are about *where a file sits*, not
+ * about ciphertext:
+ *
+ * - Captures live in `Documents/media`, excluded from backup.
+ * - A capture in flight waits in **cache** — see `PENDING_DIRECTORY`.
+ * - An export is a disposable copy and goes to cache too, per `exportFile.ts`.
+ * - Playback reads the stored file directly. There is nothing to decrypt and
+ *   nothing to clean up, which is why `releasePlayback` is empty.
+ *
+ * **The sealed format is still read, once, and only on the way in.**
+ * `unsealInPlace` migrates a library written by an older build. `MAGIC` and the
+ * chunk constants below exist for that and for nothing else — a build that
+ * cannot read a sealed file silently loses every photo its owner took.
  *
  * ```
  *   "AVM1"                       4-byte magic and format version
@@ -31,11 +53,6 @@ import { openBytes } from './vault';
  * dying mid-write — fails to open rather than decrypting into noise. It is also
  * why the length prefix is *outside* the sealed bytes and therefore untrusted:
  * it is bounds-checked before being believed.
- *
- * **Playback decrypts to the cache directory**, not documents, for the reason
- * `exportFile.ts` gives: a decrypted copy is disposable, and cache is the one
- * iOS is free to reclaim. Leaving plaintext video in a documents directory
- * would quietly undo the encryption.
  */
 
 /** Plaintext bytes per chunk. */
@@ -53,16 +70,21 @@ const MAX_SEALED_CHUNK = CHUNK_BYTES + SEAL_OVERHEAD + 64;
 const MEDIA_DIRECTORY = 'media';
 
 /**
- * Where a capture waits between the camera handing it over and the seal
- * finishing.
+ * Where a capture waits between the camera handing it over and the store
+ * taking it.
  *
- * **In cache, deliberately, and this is the one decision here that is not
- * negotiable.** The file is plaintext until it is sealed. Documents is backed
- * up to iCloud, so parking video there — even for the seconds a seal takes —
- * would put unencrypted recordings in a backup and undo the guarantee the whole
- * store exists to make. Cache is excluded from backups. iOS may reclaim it
- * under storage pressure, which costs an interrupted capture and never costs
- * privacy; that is the right way round.
+ * **In cache, deliberately.** Two reasons, and only the second one survived the
+ * container being withdrawn. It used to be that the file was plaintext until it
+ * was sealed, so parking it in Documents — even for the seconds a seal took —
+ * put an unencrypted recording in a backup. Nothing is sealed now, and
+ * `ensureDirectory` flags the media directory itself, so that argument has
+ * moved rather than vanished: the flag is on `Documents/media` and not on
+ * Documents, so a staging directory beside it would be backed up while the
+ * finished capture is not.
+ *
+ * The reason that never depended on encryption: a staged file is disposable and
+ * a stored one is not. iOS may reclaim cache under storage pressure, which
+ * costs an interrupted capture and never costs a capture already taken.
  */
 const PENDING_DIRECTORY = 'pending';
 
@@ -187,9 +209,22 @@ function mediaDirectory(): Directory {
   return new Directory(Paths.document, MEDIA_DIRECTORY);
 }
 
+/**
+ * The media directory, created if it is not there, and kept out of backups.
+ *
+ * The exclusion is applied on **every** call rather than only on creation, and
+ * that is the migration as well as the rule: a phone that stored captures under
+ * a build before this existed has an unflagged directory and no launch-time
+ * step to fix it, so the next write heals it. `excludeFromBackup` reads before
+ * it writes, so the other ten thousand calls cost one `getattr`.
+ *
+ * Order matters in one direction only — create, then flag. The flag is a
+ * resource value on a path, so there has to be a path.
+ */
 function ensureDirectory(): Directory {
   const directory = mediaDirectory();
   if (!directory.exists) directory.create({ intermediates: true });
+  excludeFromBackup(directory.uri);
   return directory;
 }
 
@@ -573,12 +608,17 @@ export function deleteMedia(item: MediaItem): void {
 }
 
 /**
- * Delete every sealed file.
+ * Delete every stored file, staged captures included.
  *
- * Called by `eraseEverything`, *after* the key is destroyed. By then what is on
- * disk is already unreadable by anyone including this app — this is housekeeping
- * so the bytes do not sit there for the life of the install, not the thing that
- * makes them safe.
+ * Called by `eraseEverything` **first**, before the key is destroyed, and it is
+ * the only step there that removes anything readable: captures are ordinary
+ * files, so destroying the vault key leaves every one of them intact. This is
+ * the protection, not the housekeeping — which is the reverse of what it was
+ * while media was sealed, and why `eraseEverything` says so at length.
+ *
+ * Synchronous, deliberately. It runs to completion before its caller's first
+ * `await`, so there is no point inside it at which the app can be killed with
+ * the photographs half gone and the key still live.
  */
 export function eraseAllMedia(): void {
   for (const directory of [mediaDirectory(), pendingDirectory()]) {
