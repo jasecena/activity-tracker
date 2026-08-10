@@ -260,9 +260,26 @@ jobs:
           #
           # So: retry, but only that. Retrying a *flow* failure would hide the
           # thing this job exists to catch, so an attempt that got as far as
-          # executing a single command is final, pass or fail. Maestro writes
-          # commands.json per flow only once it starts running one, which is
-          # exactly the signal needed to tell the two apart.
+          # executing a single command used to be final, pass or fail. Maestro
+          # writes commands.json per flow only once it starts running one, which
+          # is exactly the signal needed to tell the two apart.
+          #
+          # That last rule is now **one** retry rather than none, and the
+          # reasoning above is what shapes the exception rather than what it
+          # overrides. v0.4.0 failed on `assertVisible: Settings` after a tap
+          # that XCUITest dispatched at the dead centre of the tab's bounds:
+          # the app was alive and rendering the previous tab perfectly, nothing
+          # in the release touched the tab bar or the press path, and the
+          # identical commit passed on a re-run. A dropped tap is a driver
+          # failure that presents as a flow failure, which is the same class of
+          # mistake `DeviceUnreachableException` above already corrects for.
+          #
+          # One, not five. A bug that reproduces every time still fails twice
+          # and still blocks the release, which is the guarantee worth keeping;
+          # five would turn an intermittent crash into a coin toss nobody sees.
+          # And a flow failure that passes on retry emits a **warning on the
+          # green run** — swallowing it silently is how a real intermittent bug
+          # would hide here, so the retry buys tolerance and not silence.
           # NOTE: GitHub runs this as `bash -e {0}`, so `-e` is already on and a
           # `set -uo pipefail` here does not clear it. A bare `maestro ...` that
           # exits non-zero would kill the step before any of the retry logic
@@ -276,6 +293,12 @@ jobs:
           # release.
           attempt=1
           max_attempts=5
+
+          # Counted separately from `attempt`, which covers driver failures too:
+          # a run that reboots the simulator three times and then fails the flow
+          # once has not established anything about the app.
+          flow_failures=0
+          max_flow_failures=2
 
           while true; do
             rm -rf ~/.maestro/tests "$RUNNER_TEMP/maestro-debug"
@@ -298,6 +321,13 @@ jobs:
                  --format junit --output "$RUNNER_TEMP/maestro-report.xml"; then
               echo "::endgroup::"
               echo "Smoke passed on attempt ${attempt}."
+              # Loud on a green run, deliberately. A flow that fails and then
+              # passes is either a flaky driver or an intermittent app bug, and
+              # this job cannot tell which — so it ships the build and says so,
+              # rather than deciding on the release's behalf.
+              if [[ $flow_failures -gt 0 ]]; then
+                echo "::warning::The smoke flow failed ${flow_failures} time(s) before passing. Check the uploaded diagnostics: if the app is at fault this is an intermittent bug that just shipped."
+              fi
               break
             fi
             echo "::endgroup::"
@@ -328,8 +358,26 @@ jobs:
             cp -R ~/.maestro/tests/. "$RUNNER_TEMP/maestro-debug/" 2>/dev/null || true
 
             if [[ -n "$(find ~/.maestro/tests "$RUNNER_TEMP/maestro-debug" -name commands.json 2>/dev/null)" ]]; then
-              echo "::error::Smoke flow ran and failed. This is the app or the flow, not the driver."
-              exit 1
+              flow_failures=$((flow_failures + 1))
+
+              if [[ $flow_failures -ge $max_flow_failures || $attempt -ge $max_attempts ]]; then
+                echo "::error::Smoke flow ran and failed ${flow_failures} time(s). This is the app or the flow, not the driver."
+                exit 1
+              fi
+
+              # Kept from the run that failed, because the next attempt wipes
+              # ~/.maestro/tests and a first failure that turns out to matter is
+              # only diagnosable from its own hierarchy dump.
+              mkdir -p "$RUNNER_TEMP/maestro-debug-failed-${flow_failures}"
+              cp -R "$RUNNER_TEMP/maestro-debug/." "$RUNNER_TEMP/maestro-debug-failed-${flow_failures}/" 2>/dev/null || true
+
+              echo "Smoke flow failed. Rebooting the simulator and retrying once — see the note above on why exactly once."
+              xcrun simctl shutdown "$SIM_UDID" || true
+              xcrun simctl boot "$SIM_UDID"
+              xcrun simctl bootstatus "$SIM_UDID" -b
+              xcrun simctl install "$SIM_UDID" "$APP_PATH"
+              attempt=$((attempt + 1))
+              continue
             fi
 
             if [[ $attempt -ge $max_attempts ]]; then
@@ -350,10 +398,16 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: smoke-test-${{ github.run_number }}
+          # `maestro-debug-failed-*` is a flow failure that then passed on
+          # retry: the green run's warning points there, and without it the only
+          # evidence would be wiped by the attempt that succeeded. Note these
+          # are paths and not comments — `path: |` is a literal block scalar, so
+          # a `#` line inside it is a glob, not a note.
           path: |
             ${{ runner.temp }}/maestro-report.xml
             ${{ runner.temp }}/simulator-build.log
             ${{ runner.temp }}/maestro-debug/**
+            ${{ runner.temp }}/maestro-debug-failed-*/**
           if-no-files-found: warn
           retention-days: 7
 
