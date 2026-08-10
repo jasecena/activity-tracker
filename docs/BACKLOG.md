@@ -18,6 +18,29 @@ smaller residue three sweeps turned up. The version moved off 0.2.x to mark
 that, and 1.0.0 is deliberately still unspent: it belongs to the sync or the
 segment model below, not to a tidy-up.
 
+**v0.4.0 is the audit release**, and it is a minor rather than a patch for one
+reason: captures no longer enter an iCloud or iTunes backup. That is a change to
+what leaves the phone, it runs one way, and a device restored from a backup taken
+after it comes back without them — which is not a patch-shaped sentence. It is
+also the change that makes item 12 below the backlog item that matters most,
+because until the sync exists a lost phone is the end of a photograph.
+
+Four audits from item 7 ran, all of the kind that needs no device: privacy,
+security, CI/CD and storage. What they mostly found was **drift between the
+documents and the code** rather than broken behaviour — the app was doing the
+right thing and saying something slightly better than the truth about it, which
+in an app whose whole argument is its privacy posture is the failure that
+matters. The Settings paragraph still claimed captures were sealed under the
+keychain key a release after they stopped being; the permission strings promised
+they were never uploaded while sitting in a backed-up directory. The fixes are
+in the git history and the reasoning is in `SECURITY.md` and
+`docs/ARCHITECTURE.md` § 12b.
+
+Three audits remain and all three need a phone with a real day of data on it:
+performance, memory and CPU, plus the lag hunt in item 6. `services/timing.ts`
+was rebuilt for them — monotonic clock, lazy labels, and the rule that a span
+names a shape and never a content.
+
 Two things were **built and withdrawn** during that run, and both are written up
 in `docs/ARCHITECTURE.md` rather than here, because withdrawing is a decision and
 not an absence: the pan-to-zoom wheel (§ 16) and the five-second "live" capture
