@@ -211,6 +211,19 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
             );
           })}
         </View>
+        {/* Retention reaches the day log and the fix archive and nothing else,
+            so "keep 30 days" is not what it sounds like once there are
+            photographs. That asymmetry is deliberate — a fix is something the
+            app collected on its own, a capture is something you chose to take,
+            and deleting the second on a timer is not the app's call — but it
+            was previously invisible, which is what made it a problem. Captures
+            are also the only store with no bound on them, so the sentence has
+            to be here rather than inferred from the Data screen's total. */}
+        <Text style={styles.footnote}>
+          This covers the recorded days and the raw fixes behind them. Photos, video and voice notes are never deleted
+          on a timer — they stay until you forget them, however old the day they belong to. Their total is on the Data
+          screen.
+        </Text>
 
         <Text style={styles.sectionLabel}>DATA</Text>
         <View style={styles.card}>

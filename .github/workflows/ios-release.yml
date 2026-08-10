@@ -571,8 +571,16 @@ jobs:
           path: |
             ios/Pods
             ~/Library/Caches/CocoaPods
+          # An exact key or nothing. `restore-keys: pods-${{ runner.os }}-`
+          # used to sit here, and a prefix hit restores Pods built from a
+          # *different* Podfile.lock into a binary that then gets signed and
+          # shipped. Nobody can poison this from outside — GitHub scopes caches
+          # so a pull request cannot write one that main will read — but a
+          # release build should be a function of the tag it was cut from, and
+          # a fallback makes it a function of whatever ran here last.
+          #
+          # The cost is one slow build after a dependency bump, paid once.
           key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: pods-${{ runner.os }}-
 
       - name: Install CocoaPods dependencies
         if: steps.kind.outputs.uses_cocoapods == 'true'

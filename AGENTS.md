@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 575
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 594
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -317,6 +317,23 @@ the next launch, after the index settles, one at a time.
 
 The tracking switch governs what the app records **on its own**. Pressing the
 shutter is not the app acting on its own.
+
+**Retention deletes days and fixes, never captures.** `retentionDays` reaches
+the day log and the fix archive and stops there, so "keep 30 days" does not mean
+what it sounds like once there are photographs — and the asymmetry is the point
+rather than an oversight. It is the line the tracking switch already draws: a
+fix is something the app collected on its own and may discard on its own, a
+capture is something you chose to take. Deleting the second on a timer is not
+the app's call, and with media excluded from backups there is now no copy
+anywhere to recover from until the sync exists.
+
+What was wrong was that nothing said so. The retention picker states it now,
+because captures are also the **only store in the app with no bound on them** —
+a minute of 1080p is forty megabytes, so a handful of clips outweigh a year of
+archived fixes. `formatBytes` exists so the total on the Data screen stays
+readable that far up: it was `bytes / 1024` labelled `kB`, wrong in both
+directions and illegible at exactly the size where it starts to matter. It
+counts in powers of ten so the figure agrees with iPhone Storage.
 
 **The player stops at a hole; it never slides across one.** `positionAt` returns
 null wherever the fixes stopped and the screen says "No signal". An icon gliding

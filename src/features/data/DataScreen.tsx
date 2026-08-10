@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { exportFilename, fixesToCsv, pointsToCsv, segmentsToCsv } from '@/core/export';
-import { formatDistance, formatIsoWithOffset } from '@/core/format';
+import { formatBytes, formatDistance, formatIsoWithOffset } from '@/core/format';
 import type { Fix, RejectionReason } from '@/core/geo';
 import { totalBytes, type MediaItem } from '@/core/media';
 import type { Place } from '@/core/places';
@@ -120,7 +120,11 @@ export function DataScreen({
           <Row label="Stops" value={`${stays.length}`} />
           <Row label="Named places" value={`${places.length}`} />
           <Row label="Photos, video and voice notes" value={`${media.length}`} />
-          <Row label="  Their size on disk" value={`${Math.round(totalBytes(media) / 1024)} kB`} />
+          {/* The only store in the app with nothing bounding it, so this is the
+              one figure that has to stay readable into the gigabytes. It was
+              `bytes / 1024` labelled kB, which is both wrong and unreadable at
+              exactly the size where it starts to matter. */}
+          <Row label="  Their size on disk" value={formatBytes(totalBytes(media))} />
         </View>
 
         {first && last ? (

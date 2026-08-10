@@ -113,7 +113,7 @@ cp .env.example .env      # then set IOS_BUNDLE_IDENTIFIER to something you own
 npm run ios
 ```
 
-`npm run verify` runs the whole check suite — typecheck, lint, format and 575
+`npm run verify` runs the whole check suite — typecheck, lint, format and 594
 tests — in well under a minute, entirely on Linux.
 
 Full first-time setup, including the Apple side: [`docs/SETUP_CHECKLIST.md`](docs/SETUP_CHECKLIST.md).
@@ -137,7 +137,9 @@ src/features/    screens and their hooks — activities, replay, capture, media,
                  places, labels, history, data, settings
 src/components/  shared UI, including the map and its offline canvas
 src/shell/       four tabs and a minimal page stack, no router
-modules/         local native modules: camera-optics, one Swift file
+modules/         local native modules, one Swift file each: camera-optics
+                 (lens zoom ranges and fields of view) and file-backup
+                 (keeping the media directory out of iCloud backups)
 ```
 
 The whole engine is a fold — `(state, fix) => state` — with no clock, no entropy

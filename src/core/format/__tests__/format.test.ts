@@ -1,4 +1,5 @@
 import {
+  formatBytes,
   formatClockTime,
   formatDayTitle,
   formatDistance,
@@ -7,6 +8,37 @@ import {
   formatSpeed,
   modeLabel,
 } from '../index';
+
+describe('formatBytes', () => {
+  it.each([
+    [0, '0 B'],
+    [512, '512 B'],
+    [999, '999 B'],
+    [1_000, '1 kB'],
+    [847_000, '847 kB'],
+    [1_000_000, '1.0 MB'],
+    [41_900_000, '41.9 MB'],
+    [1_000_000_000, '1.0 GB'],
+    [4_190_000_000, '4.2 GB'],
+  ])('renders %p as %p', (bytes, expected) => {
+    expect(formatBytes(bytes)).toBe(expected);
+  });
+
+  /**
+   * Decimal, so this agrees with Settings › General › iPhone Storage. The
+   * binary reading of the same number is 3.9 GB, and a diary that disagrees
+   * with the phone about how much of it a diary is using is the wrong one.
+   */
+  it('counts in powers of ten, as iOS does', () => {
+    expect(formatBytes(4_294_967_296)).toBe('4.3 GB');
+  });
+
+  it('refuses a number that is not a size', () => {
+    expect(formatBytes(-1)).toBe('—');
+    expect(formatBytes(Number.NaN)).toBe('—');
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('—');
+  });
+});
 
 describe('formatDistance', () => {
   it.each([

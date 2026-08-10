@@ -37,6 +37,31 @@ export function formatDistance(metres: number): string {
 }
 
 /**
+ * Bytes on disk, the way iOS says them.
+ *
+ * **Decimal, not binary**, because this number is compared against the one in
+ * Settings › General › iPhone Storage, and Apple has counted in powers of ten
+ * since OS X 10.6. A library the phone calls 4.19 GB should not be called
+ * 3.9 GB here over a convention nobody outside a terminal uses.
+ *
+ * It exists because the media total was `Math.round(bytes / 1024)` with a `kB`
+ * label — wrong twice over, and unreadable at exactly the size where it starts
+ * to matter. Captures are the only store in this app with no bound on them
+ * (retention covers days and fixes and deliberately leaves photographs alone),
+ * so this is the number that has to stay legible into the gigabytes.
+ *
+ * One decimal above a megabyte, none below: "847 kB" is precise enough for a
+ * thumbnail, and "1.4 GB" is the answer to how much of the phone this is using.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1_000) return `${Math.round(bytes)} B`;
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} kB`;
+  if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+}
+
+/**
  * Duration, in the largest two units that matter.
  *
  * "1h 24m", not "1h 24m 09s": the seconds are noise at that scale and they make
