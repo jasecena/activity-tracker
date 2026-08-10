@@ -203,6 +203,23 @@ It never touches a certificate that predates the run, so the one on your Mac is
 never in scope. If the snapshot fails, the cleanup skips: a missing list means
 "nothing is known to be new", never "everything is new".
 
+**Apple emails you every time this happens, and the email is alarming.** Subject
+lines along the lines of a certificate having been revoked, arriving minutes
+after a release, while the build is not yet showing in TestFlight — it reads
+exactly like the release having broken itself. It has not. The cleanup revokes
+what the run created and the run log says precisely what went:
+
+```
+Snapshot: 1 certificate(s) already on the account.
+revoked DEVELOPMENT Z9VGVNPBDL (Created via API)
+revoked 1 certificate(s).
+```
+
+If that names only certificates marked `Created via API`, and the count matches
+what the run made, nothing is wrong. A revocation email is **not** a signal
+about the build, and it is never the reason a build is missing from TestFlight —
+for that, see §8.
+
 **Revoking is safe for builds already on TestFlight or the App Store.** Apple
 re-signs an uploaded build with its own certificate, so revoking the one that
 archived it changes nothing for a tester. What it does break is a build
@@ -239,3 +256,47 @@ If a key is ever exposed:
 3. Then, if you like, deal with the history.
 
 The pre-commit hook and the CI gitleaks job exist to make step 1 unnecessary.
+
+---
+
+## 8. A build that uploaded but is not in TestFlight
+
+**`UPLOAD SUCCEEDED` means Apple accepted the bytes, not that anyone can install
+them.** Processing happens afterwards, on Apple's side, and the workflow has
+already finished and gone green by then. A green release and an empty TestFlight
+are a normal pair for a while.
+
+**What to look for.** The build number is the workflow run number, so the string
+in TestFlight is `<version> (<run number>)` — `0.4.2 (37)`, not `v0.4.2`. The run
+log names both:
+
+```
+APP_VERSION_NAME: 0.4.2
+Artifact ios-build-37
+```
+
+**How long.** Usually five to fifteen minutes. An hour is unremarkable and it can
+be longer, with no signal in between — the same upload processes in three minutes
+one day and forty the next.
+
+**Where the truth is.** App Store Connect → My Apps → TestFlight shows the real
+state — *Processing*, *Ready to Submit*, *Invalid Binary*. The TestFlight app on
+the phone caches hard: pull to refresh, and force-quit it if that does not help.
+A build can be installable for ten minutes before the phone admits it exists.
+
+**What would actually be wrong**, in the order worth checking:
+
+- **An email from Apple about the binary.** Processing failures are always
+  emailed — invalid binary, missing icon, a disallowed entitlement. No email
+  means processing has not failed.
+- **Export compliance.** The classic silent stall: the build processes fine, then
+  waits at *Missing Compliance* for an answer nobody knows to give.
+  `app.config.ts` sets `ITSAppUsesNonExemptEncryption: false`, so this project
+  never sees it — but that key going missing would bring it straight back.
+- **A build number already used.** TestFlight refuses a duplicate for the same
+  marketing version. The run number makes this near-impossible here, since it
+  only ever increases.
+
+**What is never the cause:** the certificate revocation email from §6. It arrives
+minutes after every release, it looks like something broke, and it has no bearing
+on a build's processing at all.
