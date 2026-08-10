@@ -88,14 +88,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # `init` and `analyze` must be the **same version**, and Dependabot cannot
+      # know that: it opens one PR per action path, so each arrives bumping half
+      # the pair. Either one alone fails with "Loaded a configuration file for
+      # version X, but running version Y" — which is what #3 and #4 both did.
+      # Bump them together, in one commit, or not at all.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           languages: javascript-typescript
           queries: security-extended
 
       - name: Analyze
-        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
 
   # Guards the supply chain of the pipeline itself: a third-party action
   # referenced by a mutable tag can be repointed at malicious code without any
