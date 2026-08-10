@@ -1,28 +1,17 @@
-import { ACTIVITY_MODES, durationMs, type ActivityMode, type Segment } from '../segments';
-
-export interface ModeTotals {
-  readonly distanceM: number;
-  readonly durationMs: number;
-  readonly count: number;
-}
-
-export const EMPTY_MODE_TOTALS: ModeTotals = { distanceM: 0, durationMs: 0, count: 0 };
+import { durationMs, type Segment } from '../segments';
 
 export interface DaySummary {
   readonly distanceM: number;
   readonly movingMs: number;
+  /**
+   * Time inside a stay. Deliberately not "the rest of the day" — see the note
+   * on `summarizeDay`, and the test that asserts the two do not add up.
+   */
   readonly stillMs: number;
   /** First to last segment, including the pauses. Zero for an empty day. */
   readonly spanMs: number;
-  readonly byMode: Readonly<Record<ActivityMode, ModeTotals>>;
   readonly moveCount: number;
   readonly stayCount: number;
-}
-
-function emptyByMode(): Record<ActivityMode, ModeTotals> {
-  const byMode = {} as Record<ActivityMode, ModeTotals>;
-  for (const mode of ACTIVITY_MODES) byMode[mode] = EMPTY_MODE_TOTALS;
-  return byMode;
 }
 
 /**
@@ -33,9 +22,21 @@ function emptyByMode(): Record<ActivityMode, ModeTotals> {
  * indoors, battery flat — are not silently counted as "still". An app that
  * reports sixteen hours stationary because it was in a drawer is lying with
  * arithmetic that is technically correct.
+ *
+ * **`stillMs` and `spanMs` are the assertion surface for that claim**, which is
+ * why they are here although no screen prints either. `properties.test.ts`
+ * checks `movingMs + stillMs <= spanMs` over generated fix streams, and
+ * `day.test.ts` pins both halves: exactly equal for a contiguous day, strictly
+ * less once there is a gap in it. Removing them would remove the only proof
+ * that the app does not do the thing described above.
+ *
+ * There was a `byMode` breakdown here too — distance, duration and a count per
+ * activity mode, allocated on every call. It was built for a summary card that
+ * no longer exists, nothing read it, and `summarizeDay` runs once per row of
+ * the all-days list. Per-mode totals are a fold over `segments` if something
+ * wants them again.
  */
 export function summarizeDay(segments: readonly Segment[]): DaySummary {
-  const byMode = emptyByMode();
   let distanceM = 0;
   let movingMs = 0;
   let stillMs = 0;
@@ -58,13 +59,6 @@ export function summarizeDay(segments: readonly Segment[]): DaySummary {
     moveCount += 1;
     movingMs += elapsed;
     distanceM += segment.distanceM;
-
-    const previous = byMode[segment.mode];
-    byMode[segment.mode] = {
-      distanceM: previous.distanceM + segment.distanceM,
-      durationMs: previous.durationMs + elapsed,
-      count: previous.count + 1,
-    };
   }
 
   return {
@@ -72,7 +66,6 @@ export function summarizeDay(segments: readonly Segment[]): DaySummary {
     movingMs,
     stillMs,
     spanMs: segments.length === 0 ? 0 : latest - earliest,
-    byMode,
     moveCount,
     stayCount,
   };

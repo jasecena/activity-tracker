@@ -11,7 +11,7 @@ imports — ESLint enforces this. The `core` Jest project compiles it with nothi
 but `@babel/preset-typescript`, so any new dependency there breaks the suite.
 That is intentional: it is how a location app is testable on a Linux runner that
 is not, and never will be, moving. Every core domain (`geo`, `segments`, `day`,
-`format`, `places`, `energy`, `replay`, `media`, `power`) has its own coverage gate. `core` also reads no
+`format`, `places`, `energy`, `replay`, `media`, `power`, `export`) has its own coverage gate. `core` also reads no
 clock, no timezone and no entropy source: ids are derived from the data, "what
 time is it" is a parameter, and so is the UTC offset.
 
@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 572
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 575
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -495,9 +495,13 @@ behind.
 Nothing reads the archive to build a timeline; adding a caller that does would
 undo the reason freezing exists.
 
-**GPX export is not built yet.** Per activity, on demand and never automatic.
-`services/dayLog.ts` stores a plain array of `Segment` precisely so that stays
-straightforward.
+**CSV export is built; GPX is not.** Three files rather than one — raw fixes,
+route points, the timeline — because the app holds three genuinely different
+things and flattening them loses the distinction. `core/export` builds the bytes
+so a test can assert them, and `services/exportFile.ts` hands the result to the
+share sheet, which is not a network request. GPX per activity is still to come,
+on demand and never automatic; `services/dayLog.ts` stores a plain array of
+`Segment` precisely so that stays straightforward.
 
 **Keep the Expo patch versions in step, and check the audit is still readable.**
 `npm run verify` does not run either: `npx expo-doctor` and `npx audit-ci

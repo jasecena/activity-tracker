@@ -17,6 +17,13 @@ fully usable at the end of Stage 3 without ever touching TestFlight.
 | 5     | Builds delivered over the air  | Stages 2–4       | 45 min                 |
 | 6     | Confidence it works as a diary | A real week      | 1 week, passive        |
 
+**Status: all six stages are done.** The app has been shipping to TestFlight since
+`v0.2.2`; `v0.3.0` went up on 10 August 2026 and CI is green on `main`. This
+document is kept because it is the instructions for doing it again — a new
+machine, a new Apple account, or somebody else's phone — and because §§ 4–6 are
+where the pipeline's failure modes are written down. Read `docs/DEPLOYMENT.md` for
+how a release works now that one does.
+
 ---
 
 ## Stage 0 — Get it running locally
@@ -29,7 +36,7 @@ cp .env.example .env
 npm run verify
 ```
 
-**Done when:** 248 tests pass in well under a minute. This is the whole engine —
+**Done when:** 572 tests pass in well under a minute. This is the whole engine —
 segmentation, classification, places, calories, encryption — verified without a
 phone, a simulator or a network.
 
@@ -108,7 +115,7 @@ builds without plugging in a cable.
 **Needs:** the repository on GitHub. Independent of Stages 1–3 — do it whenever.
 
 Push. `ci.yml` and `security.yml` run with **no configuration and no secrets**:
-typecheck, lint, format, 248 tests, `expo-doctor`, gitleaks over full history,
+typecheck, lint, format, 572 tests, `expo-doctor`, gitleaks over full history,
 `npm audit`, CodeQL, and a job that fails if any action is not pinned to a commit
 SHA.
 

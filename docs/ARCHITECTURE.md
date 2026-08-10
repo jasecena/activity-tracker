@@ -13,7 +13,7 @@ from React, React Native, Expo or `src/services`, and ESLint makes that an error
 rather than a convention.
 
 The obvious reason is testability: an app about being in motion is otherwise
-untestable on a CI runner that is bolted to a rack. 248 tests run in about three
+untestable on a CI runner that is bolted to a rack. 572 tests run in about three
 seconds on Linux, including property tests over generated fix streams.
 
 The less obvious reason is the persistence design. Because folding is
@@ -391,6 +391,30 @@ A segment that crosses midnight is filed under the day it **started**, whole.
 Splitting it is more literally correct and much worse to look at: a night ride
 home becomes two rides, neither of them the distance you actually went.
 
+### Pruned fixes are archived, not dropped
+
+Freezing removes a day's raw readings from the buffer — the fold never needs them
+again, because the day's segments are its record. They used to be **deleted**,
+which is why exporting "all raw fixes" produced a file containing today and
+nothing else.
+
+`pruneBuffer` now writes them under `fix-archive/<YYYY-MM-DD>`, **one key for the
+day that just ended, and never one blob.** A single entry would mean every freeze
+reads the whole archive, sorts it and writes it back, sealed as hex — 337 KB on
+day one and 120 MB a year later, on the thread that draws the screen. That is the
+same shape as the failure that made the media gallery unusable (§ 12b), and it
+degrades silently over months rather than failing anywhere a person would see it.
+
+The date in the key is load-bearing. `YYYY-MM-DD` compares as a string exactly as
+it compares as a day, so `trimArchive` deletes whole days by name and reads only
+the one the cutoff lands inside. It runs on the same cutoff as the log, so an
+archive can never outlive the days it describes. `eraseEverything` enumerates by
+**prefix** rather than by a list of names, or it would leave a year of days
+behind.
+
+**Nothing reads the archive to build a timeline**, and adding a caller that does
+would undo the reason freezing exists.
+
 ---
 
 ## 11. Encryption at rest
@@ -528,10 +552,20 @@ day's track. The fallback is not legacy handling to be removed later: it is what
 gives every capture taken before this existed a location, and what covers a
 reading the judge rejected.
 
-The link from a capture to a timeline row is still derived (`attachToSegments`)
-rather than written onto a segment. Segments are re-derived from the fix buffer
-every time they are needed (§ 1); a stored link would orphan every photo the
-first time a day was folded under a different config.
+**Nothing links a capture to a segment, and nothing ever did on disk.** There
+was an `attachToSegments` that bucketed items by which row contained their
+instant, derived on read rather than written onto a segment — because segments
+are re-derived from the fix buffer every time they are needed (§ 1), and a
+stored link would orphan every photo the first time a day was folded under a
+different config.
+
+It went with the capture's own detail page. A capture is selected by _time_
+now: the gallery groups by day (`groupMediaByDay`), the day screen filters by
+day (`mediaForDay`), and the map places each item with `placeMedia`. Time is
+what the item stores and what no re-fold can change, so the question the
+bucketing answered — which row owns this photo — stopped being asked. The
+principle it demonstrated stands: if the link is ever wanted again, it is
+derived on read and never written down.
 
 ### Showing them: thumbnails are what make a gallery possible
 
@@ -611,9 +645,17 @@ before it is believed.
 The plaintext the OS hands over is deleted once sealed, or the container would
 hold an unencrypted copy of everything ever captured. Playback decrypts to the
 **cache** directory for the reason `exportFile.ts` gives, and the copy is deleted
-when the screen closes. Video capture is capped at 60 seconds because the bytes
-are encrypted on the way in and decrypted again to play, and both passes are
-something you would wait for at ten minutes.
+when the screen closes.
+
+**Video capture is still capped at 60 seconds, and the reason has changed.** It
+was the encryption: the bytes were sealed on the way in and decrypted again to
+play, and both passes are something you would wait for at ten minutes. Neither
+pass exists now. What remains is a diary's own judgement about what a capture is
+for — a clip attached to a moment on a timeline, not a recording session — plus a
+disk budget that grows without a ceiling if nothing bounds it. That is a weaker
+argument than the old one, and it is the one to revisit if the segment model in
+`docs/BACKLOG.md` is ever built, since pause and resume make "how long is one
+clip" a different question.
 
 ### Interrupted mid-seal
 
@@ -694,6 +736,12 @@ tab into a "More" list, which is worse than either choice available here, so
 something had to give. Replay and Capture are things you _do_; Places is a
 reference list you consult, and it keeps its full screen one tap away.
 
+**Pressing a tab twice goes home.** Every detail page above it closes, and on Day
+the day itself returns to today — the day is a parameter of one screen rather than
+a page of its own, so "the root of the Day tab" and "today" are the same place.
+Only a second press on the _same_ tab counts: two quick presses on two different
+tabs is somebody looking around, not asking to go home.
+
 Every tab stays **mounted**, with the inactive ones hidden, and a detail page
 renders _over_ its tab rather than replacing it. Both for the same reason: Today
 holds a running recording and a timeline it just derived, and neither should be
@@ -745,15 +793,35 @@ over a year of visits.
 ## 14. What is deliberately absent
 
 **Core Motion activity classification.** `CMMotionActivityManager` has no Expo
-binding and needs a custom native module plus a config plugin. Mode is inferred
-from speed alone, which is why a slow cycle and a fast walk are hard to tell
-apart — and why the Record button exists. `services/motion.ts` uses the
-pedometer, which _is_ reachable and costs approximately nothing since the motion
-coprocessor counts steps whether the app asks or not.
+binding and needs a custom native module. Mode is inferred from speed alone,
+which is why a slow cycle and a fast walk are hard to tell apart — and why a
+journey's mode can be corrected by hand, with a long press (§ 16).
 
-**Export.** GPX per activity and a JSON dump are planned, on demand and never
-automatic. `services/dayLog.ts` stores a plain array of `Segment` precisely so
-that stays a small piece of work.
+The barrier is **procedural now rather than structural**: `modules/camera-optics`
+(§ 16) established the local-native-module pattern, so binding the classifier is a
+file in `modules/` when something wants it. Nothing does yet, and that is the
+bar.
+
+There was a `services/motion.ts` wrapping the pedometer, which _is_ reachable and
+costs approximately nothing since the coprocessor counts steps whether the app
+asks or not. It existed against the day something would use it to confirm that a
+stretch called a walk had steps under it. Nothing ever did, so it has gone and
+`expo-sensors` with it: an unused native module still links into the binary and
+still carries a permission the app has no reason to want. Bring both back when
+there is a caller, not before.
+
+**GPX export.** CSV is built — three files, because the app holds three genuinely
+different things and flattening them into one table would lose the distinction:
+raw fixes as Core Location gave them, every route point kept with its derived
+speed, and the timeline itself one row per segment. It is all string building in
+`core/export`, so the exact bytes are asserted in a test rather than eyeballed in
+a spreadsheet afterwards, and `services/exportFile.ts` hands the result to the
+share sheet. That is not a network request: the app hands iOS a file and iOS
+decides what happens to it.
+
+GPX per activity is still to come, on demand and never automatic.
+`services/dayLog.ts` stores a plain array of `Segment` precisely so that stays a
+small piece of work.
 
 **A watchOS app.** Planned — standalone tracking on the wrist, syncing when the
 phone comes back in range. See § 15 for what that needs and what it cannot run
@@ -771,9 +839,14 @@ not be the one thing in it that leaves.
 
 **A committed `ios/` directory.** `expo prebuild` regenerates it from
 `app.config.ts` on every build, so it is output rather than source. Committing it
-means the config and the native project can silently diverge. If custom native
-code ever becomes necessary — the Core Motion module above, or the watch target
-below — delete the two lines from `.gitignore` and commit `ios/` deliberately.
+means the config and the native project can silently diverge.
+
+Custom native code did become necessary, and it did **not** cost this: a local
+Expo module under `modules/` is autolinked into the generated project on every
+prebuild, so `modules/camera-optics` is source, `ios/` stays output, and the
+question never arose. What would still force the issue is a target Expo cannot
+generate — the watch app below being the obvious one — and at that point the two
+lines come out of `.gitignore` deliberately rather than by accident.
 
 Note that `expo-camera`, `expo-audio`, `expo-video` and `expo-maps` are native
 modules, so the app no longer runs in stock Expo Go: development needs a dev
@@ -845,3 +918,157 @@ Xcode, written in Swift. That means:
 
 None of that touches `src/core`, which is the argument for the boundary being
 where it is.
+
+---
+
+## 16. The camera: real optics, and a screen that never turns
+
+The capture tab is a viewfinder rather than a page — the preview fills the screen,
+the shutter sits under a thumb, and there is no header and no list. The controls
+float over the picture, which is the same argument the gallery makes below: a
+header and a subtitle cost about a fifth of a phone screen, and both tabs exist to
+look at a picture.
+
+### Zoom is three buttons, and the numbers behind them are real
+
+0.5×, 1× and 3×. A wheel you turned with a finger was built, refined over four
+releases and **withdrawn**: it was never reliably better than tapping a lens, and
+the gesture cost more than the control was worth.
+
+What survives is the part that was always sound. `modules/camera-optics` is one
+Swift file reading what AVFoundation knows and Expo does not pass on, so the stops
+sit exactly where the lenses hand over
+(`virtualDeviceSwitchOverVideoZoomFactors`) and the millimetres are derived from
+each lens's measured field of view rather than looked up from a table that goes
+stale with the next phone.
+
+**The module reads and does not write, and that is the second thing the wheel
+took with it.** It used to set the zoom on the device by factor, through
+`ramp(toVideoZoomFactor:withRate:)` — the call that makes zoom feel like glass
+moving rather than a value changing, and one there is no reaching from
+JavaScript. Three buttons do not need it: they drive `expo-camera`'s own prop,
+and the format-dependence that justified going around the prop is handled where
+it arises, by re-reading the description when the mode changes. Roughly a third
+of the Swift went. The argument for bringing it back is in the git history
+beside the code, and any future gesture over this camera will want to read it.
+
+The dial drives the **virtual** device — Triple Camera, or Dual Wide — and that is
+the difference between a zoom and a crop: `expo-camera`'s default device is the
+bare wide lens, which cannot reach the ultra-wide at all. Asking for 0.5× on it
+gets you a digital downscale of the wide lens and nothing else.
+
+**Two number spaces run through `core/media/optics.ts`, and confusing them puts
+every figure out by exactly 2×.** _Device_ factors are AVFoundation's, where 1.0
+is the widest lens on the virtual device. _Display_ factors are the ones a person
+says out loud, where 1× is the main lens. They differ by the wide lens's
+switch-over factor.
+
+The value reaches the camera through `expo-camera`'s own `zoom` prop, which its
+Swift raises the running format's `videoMaxZoomFactor` to the power of — so
+`zoomPropFor` inverts it exactly. **Read the Swift, not the docs:** the published
+formula is the older linear one and is wrong for this version. The description is
+re-read when the mode changes, because photo and video run different formats and
+the exponent's base changes with them.
+
+### What the withdrawn wheel taught, kept so it is not re-learned
+
+Any future gesture over this camera meets all three of these:
+
+- `CameraView` interfering with touches on iOS is an accepted expo bug
+  (expo#28966), and zoom failing to apply is an open one (expo#33279).
+- The wider advice — expo#11032, and VisionCamera's own guide — is that camera
+  zoom should not be driven from React state at all.
+- A `PanResponder` rebuilt each render closes over that render, so a gesture
+  re-granted mid-drag runs an older closure and reverts to its base. The shutter
+  being a `Pressable` means only a _capture_-phase handler can take a drag off
+  it.
+
+And the arithmetic rule that outlived the control: **zoom is measured from the
+start of each gesture, never accumulated.** Adding deltas per movement drifts, and
+it means letting go and repeating the same movement from the same place gives a
+different answer the second time.
+
+### Nothing is rotated on disk
+
+`responsiveOrientationWhenOrientationLocked` on `CameraView` reports the device's
+orientation while the interface stays locked to portrait — the signal iOS already
+computes for the status bar, needing no permission and no `expo-sensors`.
+
+The orientation goes onto the `MediaItem`. `core/media/orientation.ts` turns it
+into an angle, and the gallery applies that angle **to the view, at the moment it
+draws**. A rotation is a property of looking, in the same way the timeline is
+derived rather than stored: a file rewritten on the way in is a file that can be
+turned twice, and there is no way back from that.
+
+The same angle turns the capture controls, and the same fact moves them — the mode
+rail takes whichever edge is uppermost and zoom takes the other, because turning
+the glyphs alone leaves the rail along the bottom half the time.
+
+**Which landscape is which was a coin toss until a phone settled it.** iOS has
+meant opposite things by "landscape left" — `UIDeviceOrientation` names it for
+where the home button went, `AVCaptureVideoOrientation` for where the top of the
+frame points — and the prop's documentation names neither. `UPRIGHT` in
+`core/media/orientation.ts` is one table, and swapping its two landscape rows
+fixes the photographs and the rails together. The tests assert only what holds
+either way: that the two are opposite quarter turns.
+
+**The camera turns the pixels itself, so the display turns nothing.**
+`CAMERA_WRITES_UPRIGHT_PIXELS` is `true`, and a phone is what settled it: the
+photograph came out **ninety** degrees off rather than a hundred and eighty. That
+is the whole diagnosis — half a turn would have meant the landscape rows were the
+wrong way round; a quarter meant a rotation had been applied to a file that was
+already upright.
+
+**A wrapper on the media stage must not take layout space.** Everything drawn
+there positions itself with `absoluteFill`, so a plain sized `View` around the
+picture stops being an overlay and becomes a flex child — which is how the
+thumbnail beneath a capture became a band across the top with the photograph
+pushed below it. `Turned` returns its children untouched when there is no angle,
+and overlays rather than wraps when there is.
+
+### The screen is held awake while a capture is in progress
+
+Nothing about a camera preview counts as user activity, so a recording made
+without touching the screen looks to the auto-lock timer exactly like a phone left
+alone. That was reported from a real phone as a clip cut off half a minute in.
+
+The lock covers **sealing as well**, and is keyed on "busy" rather than on the
+recording state: dropping it between recording and saving would release it
+precisely where the phone would lock, and the saving overlay asks you to keep the
+app open while the app is letting the phone shut itself.
+
+### The gallery's gestures are the Photos gestures
+
+The capture detail page is gone; the gallery absorbed it. Swipe **up** and
+everything the app knows about the capture rises under it — the fields, the map
+with it pinned to the spot, Forget. Swipe **down** and every day's captures arrive
+as a grid, newest first, where tapping a thumbnail lands the pager on it. The ⋯
+menu went with the page: the swipe is the affordance.
+
+The Day timeline's captures are small thumbnails, and tapping one switches to the
+Media tab focused on that capture — one screen that shows a capture, rather than
+two that drift apart, which is what retiring `MediaScreen` bought.
+
+**This vertical gesture can be reliable where the timeline's horizontal swipe
+could not, and the difference is structural rather than a better threshold.** The
+pager underneath scrolls _horizontally_, so a decisively vertical drag has no
+other claimant. Its two decisions are exported from `verticalIntent.ts` and tested
+directly, per `SwipeBackPage`'s precedent.
+
+The same reasoning is why **correcting a journey's activity type is a long press,
+not a swipe**: a row on a vertically scrolling list has to hand a horizontal drag
+back to the scroller often enough that the swipe is unreliable by nature — reported
+from a phone as simply not working — and a correction that only sometimes happens
+is worse than a menu that always does.
+
+### A five-second "live" capture was built and withdrawn
+
+It recorded forwards from the shutter, because `expo-camera` has no rolling
+buffer, and that is not what a Live Photo is. `normalizeMedia` still reads the
+retired kind as `video`, which is what it always was on disk — a clip and a still.
+Dropping the kind outright would have dropped the row, and `sweepOrphans` would
+have deleted the file on the next launch: somebody's capture gone, silently,
+because a feature was taken away.
+
+A real Live Photo is `AVCapturePhotoOutput.livePhotoCaptureEnabled`, which the
+local-native-module pattern now makes reachable. It is parked, not refused.

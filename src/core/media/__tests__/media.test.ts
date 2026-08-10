@@ -1,8 +1,7 @@
 import { EARTH_RADIUS_M, type PathPoint } from '../../geo';
 import { buildTrack } from '../../replay';
-import type { MoveSegment, Segment, StaySegment } from '../../segments';
+import type { MoveSegment } from '../../segments';
 import {
-  attachToSegments,
   groupMediaByDay,
   capturedAtFromMediaId,
   mediaForDay,
@@ -52,18 +51,6 @@ function move(startedAt: number, endedAt: number): MoveSegment {
     modeIsManual: false,
     path: [point(startedAt, 0), point(endedAt, 600)],
     topSpeedMps: 1,
-  };
-}
-
-function stay(startedAt: number, endedAt: number, northM: number): StaySegment {
-  return {
-    kind: 'stay',
-    id: `s-${startedAt}`,
-    startedAt,
-    endedAt,
-    fixCount: 10,
-    center: { lat: northM * DEG_PER_METRE_LAT, lon: 0 },
-    radiusM: 5,
   };
 }
 
@@ -160,38 +147,6 @@ describe('mediaForDay', () => {
     expect(mediaForDay(items, '2026-01-05', 0)).toHaveLength(1);
     expect(mediaForDay(items, '2026-01-06', 600)).toHaveLength(1);
     expect(mediaForDay(items, '2026-01-05', 600)).toHaveLength(0);
-  });
-});
-
-describe('attachToSegments', () => {
-  const walk = move(T0, T0 + 10 * MINUTE);
-  const café = stay(T0 + 10 * MINUTE, T0 + 40 * MINUTE, 600);
-
-  it('puts an item on the segment containing its instant', () => {
-    const buckets = attachToSegments([walk, café], [item(T0 + 5 * MINUTE), item(T0 + 20 * MINUTE)]);
-    expect(buckets.get(walk.id)?.map((entry) => entry.capturedAt)).toEqual([T0 + 5 * MINUTE]);
-    expect(buckets.get(café.id)?.map((entry) => entry.capturedAt)).toEqual([T0 + 20 * MINUTE]);
-  });
-
-  it('leaves an item captured in a hole attached to nothing', () => {
-    const later = stay(T0 + 130 * MINUTE, T0 + 140 * MINUTE, 4_000);
-    const buckets = attachToSegments([walk, later], [item(T0 + 60 * MINUTE)]);
-    expect(buckets.size).toBe(0);
-  });
-
-  it('sorts each bucket by time', () => {
-    const buckets = attachToSegments([café], [item(T0 + 30 * MINUTE), item(T0 + 15 * MINUTE)]);
-    expect(buckets.get(café.id)?.map((entry) => entry.capturedAt)).toEqual([T0 + 15 * MINUTE, T0 + 30 * MINUTE]);
-  });
-
-  // Segments are re-derived from the fix buffer every time they are needed, and
-  // their ids come out identical. That is what lets the link live here, on read,
-  // instead of being written onto a segment that will be rebuilt tomorrow.
-  it('survives the day being re-derived', () => {
-    const media = [item(T0 + 5 * MINUTE)];
-    const first = attachToSegments([walk, café], media);
-    const rederived: Segment[] = [move(T0, T0 + 10 * MINUTE), stay(T0 + 10 * MINUTE, T0 + 40 * MINUTE, 600)];
-    expect(attachToSegments(rederived, media)).toEqual(first);
   });
 });
 

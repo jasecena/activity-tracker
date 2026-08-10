@@ -29,9 +29,10 @@ function isLabel(candidate: unknown): candidate is JourneyLabel {
   if (typeof candidate !== 'object' || candidate === null) return false;
   const { id, label, mode, startedAt, endedAt } = candidate as Partial<JourneyLabel>;
   if (typeof id !== 'string' || typeof label !== 'string') return false;
-  // Null is a real value: a label written by the merge feature that used to
-  // exist had no mode of its own. Those are dropped on load, but the shape has
-  // to be recognised before it can be dropped.
+  // Null is a real value, not a missing one: a named journey whose mode
+  // correction was taken back has no opinion of its own, and so did every label
+  // the retired merge feature wrote. Both have to be recognised here — the
+  // first to be kept, the second so `saysSomething` can drop it.
   if (mode !== null && typeof mode !== 'string') return false;
   if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return false;
   return typeof endedAt === 'number' && Number.isFinite(endedAt) && endedAt > startedAt;

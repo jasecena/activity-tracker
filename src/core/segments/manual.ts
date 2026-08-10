@@ -34,19 +34,25 @@ export interface JourneyLabel {
   /**
    * What you called it, or empty.
    *
-   * Empty is a real state, not a missing one: joining two journeys into one is
-   * a label over their combined span with nothing said about it yet. The row
-   * then reads as whatever the engine makes of the whole, and naming it later
-   * fills this in without creating a second label.
+   * Empty is a real state, not a missing one: **a mode correction is nameless
+   * by design.** Holding a journey and saying it was a cycle rather than a run
+   * stores an opinion about the mode and nothing about the name, and the row
+   * goes on reading as whatever the engine calls it. Naming it later fills this
+   * in without creating a second label.
    */
   readonly label: string;
   /**
    * Your answer, which overrules the classifier for this stretch — or null to
    * let the classifier decide.
    *
-   * Null is what makes a merge silent. The merged whole is longer and faster
-   * than either part, so re-classifying it is more likely to be right than
-   * inheriting the mode of whichever piece happened to come first.
+   * Null is a real state too, and it is what taking a correction back leaves
+   * behind on a journey that still has a name. The detected mode is never
+   * stored, so removing the opinion is enough to get the classifier's answer
+   * returned — there is nothing to restore.
+   *
+   * A label that is nameless *and* modeless says nothing at all, and
+   * `saysSomething` drops it rather than letting it sit in the store as a row
+   * with no content.
    */
   readonly mode: ActivityMode | null;
   readonly startedAt: number;
@@ -199,16 +205,6 @@ function splitAll(segments: readonly Segment[], at: number): Segment[] {
 }
 
 /**
- * Collapse a run of segments into the single activity a manual window says they
- * were.
- *
- * Stays inside the window are swallowed rather than preserved. That is
- * deliberate: you pressed Record at the start of a walk, so the four minutes
- * waiting at the crossing are part of the walk. They still cost you the time —
- * the coalesced segment spans them — they just do not appear as a separate row
- * saying you stopped.
- */
-/**
  * The id of the segment a label produces.
  *
  * Namespaced by the label rather than by an instant, so the UI can find the row
@@ -247,8 +243,8 @@ function coalesce(inside: readonly Segment[], label: JourneyLabel, from: number,
     endedAt: to,
     fixCount,
     distanceM: distance,
-    // A label with no mode of its own is a merge: classify the combined whole
-    // rather than inheriting from whichever piece came first.
+    // No opinion stored means the classifier still owns this row — a name on
+    // its own says what the journey was, never what kind of journey it was.
     mode: label.mode ?? classifyMode({ distanceM: distance, durationMs: to - from, topSpeedMps: topSpeed }),
     label: name.length > 0 ? name : null,
     modeIsManual: label.mode !== null,

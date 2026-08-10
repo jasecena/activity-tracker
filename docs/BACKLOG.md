@@ -1,9 +1,27 @@
 # Backlog
 
 Features agreed for later, written down before they are built so the thinking
-survives the wait. Nothing here is being developed yet; v0.2.13's features get
-tested and fixed first. Ordered roughly by how they unlock each other, not by
-priority — priorities get decided when work starts.
+survives the wait. Ordered roughly by how they unlock each other, not by priority
+— priorities get decided when work starts.
+
+**Where the app is as of v0.3.0 (10 August 2026).** Everything through the
+capture work has shipped to TestFlight: the four-tab shell, the day screen with
+history and replay, places and journey labels, the encrypted store, CSV export,
+the low-battery lens, the Media tab with the Photos gestures, capture orientation,
+and the three-stop zoom on real lens optics. Nothing in this file is being
+developed yet.
+
+v0.3.0 itself adds no feature. It is the release where the documents were
+brought back in line with the app and the code left behind by withdrawn features
+was deleted — the spent coordinate migration, a third of the Swift, and the
+smaller residue three sweeps turned up. The version moved off 0.2.x to mark
+that, and 1.0.0 is deliberately still unspent: it belongs to the sync or the
+segment model below, not to a tidy-up.
+
+Two things were **built and withdrawn** during that run, and both are written up
+in `docs/ARCHITECTURE.md` rather than here, because withdrawing is a decision and
+not an absence: the pan-to-zoom wheel (§ 16) and the five-second "live" capture
+(§ 16). Neither should be rebuilt without reading why it went.
 
 ---
 

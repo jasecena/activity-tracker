@@ -138,10 +138,11 @@ describe('summarizeDay', () => {
   it('is all zeroes for an empty day', () => {
     const summary = summarizeDay([]);
     expect(summary).toMatchObject({ distanceM: 0, movingMs: 0, stillMs: 0, spanMs: 0, moveCount: 0, stayCount: 0 });
-    expect(summary.byMode.walk).toEqual({ distanceM: 0, durationMs: 0, count: 0 });
   });
 
-  it('adds up distance, time and counts by mode', () => {
+  // Mixed modes on purpose, though nothing groups by them any more: distance
+  // has to sum across a walk, a cycle and a second walk as one number.
+  it('adds up distance and counts the rows, whatever the modes were', () => {
     const summary = summarizeDay([
       stay(start, start + HOUR),
       move(start + HOUR, start + HOUR + 20 * MINUTE, 1_600, 'walk'),
@@ -153,9 +154,6 @@ describe('summarizeDay', () => {
     expect(summary.distanceM).toBe(15_000);
     expect(summary.moveCount).toBe(3);
     expect(summary.stayCount).toBe(2);
-    expect(summary.byMode.walk).toEqual({ distanceM: 3_000, durationMs: 35 * MINUTE, count: 2 });
-    expect(summary.byMode.cycle).toEqual({ distanceM: 12_000, durationMs: 30 * MINUTE, count: 1 });
-    expect(summary.byMode.drive).toEqual({ distanceM: 0, durationMs: 0, count: 0 });
   });
 
   // The hours the phone recorded nothing — asleep, in a drawer, battery flat —

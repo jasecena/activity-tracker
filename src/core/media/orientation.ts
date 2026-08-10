@@ -133,11 +133,6 @@ export function topEdgeFor(orientation: CaptureOrientation | null): Edge {
   return turned === 0 || turned === 90 ? 'right' : 'left';
 }
 
-/** The edge the other rail takes, so the two never stack on one side. */
-export function oppositeEdge(edge: Edge): Edge {
-  return edge === 'left' ? 'right' : 'left';
-}
-
 export interface Size {
   readonly width: number;
   readonly height: number;

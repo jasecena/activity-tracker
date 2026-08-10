@@ -104,11 +104,14 @@ appId: ${APP_ID}
 - tapOn: 'Capture tab'
 - assertVisible: 'Take photo'
 
-# The zoom wheel is *absent* here on purpose, and asserting that is worth more
-# than it sounds: a simulator reports no cameras, so the optics module returns
-# nothing, the dial is null and the wheel does not draw. This is the assertion
+# The zoom buttons are *absent* here on purpose, and asserting that is worth
+# more than it sounds: a simulator reports no cameras, so the optics module
+# returns nothing, the dial is null and no stop is drawn. This is the assertion
 # that the local Swift module degrades rather than crashing when the hardware
 # will not answer — the failure mode a native module has that a JS one does not.
+#
+# The label is generated per stop from the real lens data, so this fails the
+# moment the dial starts inventing stops the phone did not report.
 - assertNotVisible: 'Zoom to 1x, 24 millimetres'
 
 # Media mounts expo-video and expo-audio, and on a fresh install has nothing to

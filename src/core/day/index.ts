@@ -8,4 +8,4 @@
  */
 export { dayKeyOf, groupByDay, startOfLocalDay, type DayGroup, type TzOffsetMinutes } from './day';
 export { applyRetention, mergeIntoLog, planFreeze, type FreezePlan } from './freeze';
-export { summarizeDay, EMPTY_MODE_TOTALS, type DaySummary, type ModeTotals } from './summary';
+export { summarizeDay, type DaySummary } from './summary';

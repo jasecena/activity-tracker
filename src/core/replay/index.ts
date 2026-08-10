@@ -183,20 +183,6 @@ export function positionAt(track: Track, at: number): Position | null {
   };
 }
 
-/** First and last instant a day has anything to show, or null for an empty one. */
-export function replaySpan(segments: readonly Segment[]): { readonly from: number; readonly to: number } | null {
-  let from = Infinity;
-  let to = -Infinity;
-
-  for (const segment of segments) {
-    if (segment.startedAt < from) from = segment.startedAt;
-    if (segment.endedAt > to) to = segment.endedAt;
-  }
-
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
-  return { from, to };
-}
-
 /**
  * Every stretch of the span where the app has nothing.
  *

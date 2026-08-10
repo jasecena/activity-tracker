@@ -12,7 +12,7 @@ document describing an app that no longer exists.
 
 ```bash
 npm install
-npm run verify      # typecheck, lint, format, 248 tests — well under a minute
+npm run verify      # typecheck, lint, format, 572 tests — well under a minute
 ```
 
 `npm run verify` is the gate. It runs entirely on Linux and needs no simulator,
@@ -40,8 +40,16 @@ cheap to test and gated at 90% branches / 100% functions. `services` should stay
 thin enough to be obviously correct by reading it.
 
 **`src/services` owns the platform.** `location.ts`, `vault.ts`, `storage.ts`,
-`motion.ts` and `clock.ts` are the only files importing a native module or
-calling `Date.now()`.
+`battery.ts`, `mediaStore.ts`, `optics.ts` and `clock.ts` are the only files
+importing a native module or calling `Date.now()`. `components/MapCanvas.tsx` is
+the one exception outside the folder, and it may import `expo-maps` and nothing
+else may.
+
+**`modules/` holds local native modules.** `camera-optics` is one Swift file
+reading what AVFoundation knows and Expo does not pass on. The pattern is
+established, so binding something else native is a file in `modules/` rather than
+a change of project shape — but the bar is a caller that exists, not one that
+might.
 
 ## Tests
 
@@ -68,8 +76,9 @@ the file silently never runs its effects.
 
 ## Things that will get a change sent back
 
-- A network request. Any network request. The app makes none, and that claim is
-  load-bearing for everything in [`SECURITY.md`](SECURITY.md).
+- A network request. The app makes exactly one kind — Apple Maps tiles, behind a
+  switch that starts off — and that claim is load-bearing for everything in
+  [`SECURITY.md`](SECURITY.md).
 - Storing the derived timeline instead of re-deriving it.
 - A generated segment id.
 - Interpolating across a gap.

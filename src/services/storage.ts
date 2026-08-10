@@ -70,14 +70,6 @@ export const STORAGE_KEYS = {
    */
   media: `${PREFIX}media`,
   settings: `${PREFIX}settings`,
-  /**
-   * Whether the one-off pass over impossible coordinates has run.
-   *
-   * A marker rather than an inspection: re-running over clean data is harmless,
-   * and a migration that runs on every launch is one nobody remembers to
-   * remove. Delete this together with `services/cleanup.ts`.
-   */
-  cleanedFarPositions: `${PREFIX}cleaned-far-positions`,
 } as const;
 
 /**
@@ -131,7 +123,14 @@ export async function removeKeys(keys: readonly StorageKey[]): Promise<void> {
  * that had not arrived. Leaving it would also leave an encrypted blob nobody
  * can account for, and "erase everything" would still have to know about it.
  */
-const RETIRED_KEYS: readonly string[] = [`${PREFIX}manual-windows`];
+const RETIRED_KEYS: readonly string[] = [
+  `${PREFIX}manual-windows`,
+  // The marker for a one-off pass over impossible coordinates. The pass has
+  // gone, and the marker has to be retired rather than merely deleted from
+  // `STORAGE_KEYS`: a phone that ran it still holds the key, and dropping the
+  // name from the enumeration would leave "erase everything" unable to name it.
+  `${PREFIX}cleaned-far-positions`,
+];
 
 /** Drop what older builds wrote. Cheap, idempotent, and safe to call on every launch. */
 export async function dropRetiredKeys(): Promise<void> {

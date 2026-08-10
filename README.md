@@ -47,20 +47,43 @@ counted as time spent standing still.
 at up to 1200×. Where the fixes stopped, so does the icon — the player says "No
 signal" rather than sliding smoothly through two hours it knows nothing about.
 
-**Captures the moment, not the coordinate.** A photo, a video from either camera,
-or a voice note records _when_ it was taken and nothing else. Where it happened is
-worked out afterwards from the day's own fixes, so pressing the shutter never
-touches the GPS — and a photo taken with no signal honestly has no position.
+**Captures the moment, and where you were standing in it.** A photo, a video from
+either camera, or a voice note takes one position reading and writes it both onto
+the capture and into the day's fix stream — one reading, so the pin on the photo
+and the route drawn under it can never disagree. The reading is taken when it
+matters: the shutter for a photo, the _start_ for a clip or a voice note, because
+by the time either finishes you may be somewhere else. A reading the engine does
+not believe is refused, and a capture with no position honestly has none.
+
+**Has a camera with real numbers on it.** Three zoom stops — 0.5×, 1× and 3× —
+sitting exactly where the lenses hand over, with the millimetres derived from each
+lens's measured field of view rather than looked up. The controls turn with the
+phone while the interface stays upright, and nothing is ever rotated on disk: a
+rotation is a property of looking, applied when the picture is drawn.
+
+**Keeps the captures in one place.** Media is a whole tab: swipe sideways through
+every capture, swipe up for what the app knows about one — the fields, the map
+with it pinned to the spot, Forget — and swipe down for every day's captures as a
+grid. Tapping a thumbnail on the timeline lands you on that capture.
 
 **Shows a route on a map, if you want one.** Off by default. The offline canvas
 draws the route, the stops, a scale bar and north from your own coordinates and
 nothing else; one switch in Settings swaps in Apple Maps underneath, and says
 plainly what that costs.
 
-**Keeps everything encrypted, on one device.** Every stored byte — days, places,
-photos, video, voice notes — is sealed with XChaCha20-Poly1305 under a key
-generated on first launch, held in the iOS keychain and marked so it never enters
-an iCloud or iTunes backup. "Erase everything" destroys that key.
+**Keeps everything encrypted, on one device.** Days, places, labels, settings and
+the media index are sealed with XChaCha20-Poly1305 under a key generated on first
+launch, held in the iOS keychain and marked so it never enters an iCloud or iTunes
+backup. "Erase everything" destroys that key.
+
+Photos, video and voice notes are the deliberate exception: they are ordinary
+files in the app's own container, which iOS already encrypts under the passcode.
+A second pass in JavaScript bought very little against a stolen phone and cost
+forty megabytes of pure-TypeScript AEAD on the thread that draws the screen, which
+made the gallery unusable. What it did buy — a restored backup holding ciphertext
+— is given up knowingly; encryption belongs at the boundary where data leaves the
+phone, and today nothing does. See [`SECURITY.md`](SECURITY.md) for what that
+changes.
 
 ## What it does not do
 
@@ -87,7 +110,7 @@ cp .env.example .env      # then set IOS_BUNDLE_IDENTIFIER to something you own
 npm run ios
 ```
 
-`npm run verify` runs the whole check suite — typecheck, lint, format and 230
+`npm run verify` runs the whole check suite — typecheck, lint, format and 575
 tests — in well under a minute, entirely on Linux.
 
 Full first-time setup, including the Apple side: [`docs/SETUP_CHECKLIST.md`](docs/SETUP_CHECKLIST.md).
@@ -103,12 +126,15 @@ src/core/        pure TypeScript. No React, no Expo, no clock, no I/O.
   energy/        calories, from a MET model
   format/        every string the UI shows for a number
   replay/        where the day was at an instant, and where it has no idea
-  media/         captures on the timeline, placed by time alone
+  media/         captures on the timeline, plus lens optics and orientation
+  power/         what a low battery coarsens, and what it never touches
+  export/        the CSV bytes, asserted in a test rather than eyeballed
 src/services/    the only files that touch a native module or ask the time
-src/features/    screens and their hooks — replay, capture, media, places,
-                 labels, history, data, settings
+src/features/    screens and their hooks — activities, replay, capture, media,
+                 places, labels, history, data, settings
 src/components/  shared UI, including the map and its offline canvas
 src/shell/       four tabs and a minimal page stack, no router
+modules/         local native modules: camera-optics, one Swift file
 ```
 
 The whole engine is a fold — `(state, fix) => state` — with no clock, no entropy
@@ -145,15 +171,24 @@ when it decides you have stopped moving, but it does not reliably resume, and th
 failure is silent and total — the app looks like it is tracking and records
 nothing. A day missing from a diary is worse than a percent of battery.
 
+**Below 20% the app coarsens itself**, and it is a lens rather than a setting: the
+preset you chose is never overwritten, so a charged phone returns to full detail
+on its own. It only ever coarsens, never refines, and it restores at 25% rather
+than 20% — dropping and restoring at one figure would restart Core Location on
+every flicker, which costs more than the coarse preset saves. Charging suppresses
+it entirely, and a missing reading is not a low reading.
+
 ## Privacy
 
 The threat this design addresses is not someone holding your unlocked phone —
 against that, nothing an app does helps. It is the ordinary ways a file leaks: a
 backup, a device handed on, a forensic extraction, a bug in some other app.
 
-- Every stored value is encrypted with XChaCha20-Poly1305 (authenticated, so a
-  tampered or truncated store fails to decrypt rather than parsing into
-  something that looks like a day).
+- Every stored _value_ — days, places, labels, settings, the media index — is
+  encrypted with XChaCha20-Poly1305 (authenticated, so a tampered or truncated
+  store fails to decrypt rather than parsing into something that looks like a
+  day). Media files are the exception and rely on the iOS container encryption
+  instead; the trade is written out in [`SECURITY.md`](SECURITY.md).
 - The key is 32 bytes from the system CSPRNG, held in the keychain as
   `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`. `THIS_DEVICE_ONLY` keeps it out of every
   backup; `AFTER_FIRST_UNLOCK` rather than `WHEN_UNLOCKED` because background
@@ -170,16 +205,21 @@ Reporting a vulnerability: [`SECURITY.md`](SECURITY.md).
 **Mode is inferred from speed alone.** `CMMotionActivityManager`, the Core Motion
 classifier that reports walking/running/automotive with a confidence, has no Expo
 binding — it needs a custom native module. A slow cycle and a fast walk are
-genuinely hard to tell apart, which is why you can correct the mode by hand. The
-pedometer _is_ reachable and is used in `src/services/motion.ts`.
+genuinely hard to tell apart, which is why you can correct the mode by hand: hold
+a journey and pick what it really was. The barrier is procedural rather than
+structural now — `modules/camera-optics` establishes the local-native-module
+pattern — but nothing has needed it enough to write it.
 
 **A stay is only as accurate as indoor GPS.** Fixes taken inside are often 65 m
 to 3 km wide and are rejected, so a long stay indoors can end up thinner than it
 was. Settings shows how many fixes were dropped and why — "two thirds were too
 vague to use" is the difference between a broken app and a day spent inside.
 
-**Export is not built yet.** GPX per activity and a JSON dump are planned, on
-demand and never automatic.
+**Export is CSV, and GPX is not built yet.** Settings will hand you three files —
+raw fixes, every route point kept, and the timeline itself — through the share
+sheet, on demand and never automatically. GPX per activity is still to come;
+`services/dayLog.ts` stores a plain array of `Segment` precisely so that stays
+straightforward.
 
 **No watch app yet.** Planned: record on the wrist without the phone, sync when
 they are back together. The design already accommodates it — the watch would be

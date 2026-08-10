@@ -3,7 +3,6 @@ import {
   displayRotationFor,
   isCaptureOrientation,
   isQuarterTurn,
-  oppositeEdge,
   stageSizeFor,
   topEdgeFor,
   uprightRotationFor,
@@ -119,14 +118,6 @@ describe('topEdgeFor', () => {
       const turned = uprightRotationFor(orientation);
       expect(topEdgeFor(orientation)).toBe(turned < 180 ? 'right' : 'left');
     }
-  });
-});
-
-describe('oppositeEdge', () => {
-  it('is its own inverse, so the two rails can never share a side', () => {
-    expect(oppositeEdge('left')).toBe('right');
-    expect(oppositeEdge('right')).toBe('left');
-    expect(oppositeEdge(oppositeEdge('left'))).toBe('left');
   });
 });
 

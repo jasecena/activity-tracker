@@ -9,7 +9,7 @@ repository secret or variable; nothing account-specific is committed.
 
 | Workflow           | Trigger                           | What it does                                                                                           |
 | ------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `ci.yml`           | every push and PR                 | typecheck, lint, format, 248 tests, `expo config`, `expo-doctor`. All on Linux, all under a minute.    |
+| `ci.yml`           | every push and PR                 | typecheck, lint, format, 572 tests, `expo config`, `expo-doctor`. All on Linux, all under a minute.    |
 | `security.yml`     | every push/PR + Mondays 03:00 UTC | gitleaks over full history, `npm audit`, CodeQL, and a job that fails if any action is not SHA-pinned. |
 | `ios-release.yml`  | a `v*` tag, or manual dispatch    | macOS runner: prebuild, archive, sign, optional Maestro smoke test, upload to TestFlight.              |
 | `certificates.yml` | manual dispatch only              | Lists or revokes the signing certificates on the Apple account. See §6.                                |
@@ -123,9 +123,18 @@ naming what is recorded, and that it stays on the phone, is what does not. The
 strings in `app.config.ts` are written for this.
 
 **Camera and microphone.** Same rule as location: the strings must name what is
-recorded and where it goes. Both say the capture is encrypted on the phone and
-never uploaded, which is true — see § 12b of the architecture doc for the
-container it goes into.
+recorded and where it goes. Both currently say the capture "is encrypted on this
+phone and is never uploaded".
+
+**Check that wording before you submit.** "Never uploaded" is unconditionally
+true. "Encrypted on this phone" was written when media went into the app's own
+sealed container, and media is now ordinary files under `Documents/media`
+(architecture § 12b). The claim is still defensible — iOS encrypts the app
+container under a key derived from the passcode, so the bytes are encrypted at
+rest on the phone — but it now rests on the platform rather than on anything this
+app does, and a restored backup contains readable photographs where it once
+contained ciphertext. If the sync in `docs/BACKLOG.md` lands first, both strings
+want revisiting together, because "never uploaded" is the half that changes.
 
 **Privacy nutrition label: Data Not Collected.** Apple defines "collect" as
 transmitted off device. Nothing the app records leaves the phone, so that is the

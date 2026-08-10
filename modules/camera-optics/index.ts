@@ -30,8 +30,6 @@ export interface DeviceDescription {
 
 interface CameraOpticsNative {
   describe(position: 'back' | 'front'): Promise<DeviceDescription[]>;
-  setZoomFactor(localizedName: string, factor: number, ramped: boolean): Promise<void>;
-  getZoomFactor(localizedName: string): Promise<number>;
 }
 
 const native = requireOptionalNativeModule<CameraOpticsNative>('CameraOptics');
@@ -42,25 +40,5 @@ export async function describeCameras(position: 'back' | 'front'): Promise<reado
     return await native.describe(position);
   } catch {
     return [];
-  }
-}
-
-/** Set the zoom by factor, ramped so it moves like glass rather than stepping. */
-export async function setZoomFactor(localizedName: string, factor: number, ramped = true): Promise<void> {
-  if (!native) return;
-  try {
-    await native.setZoomFactor(localizedName, factor, ramped);
-  } catch {
-    // A zoom that did not move is visible on the glass; a crash over it would
-    // take the viewfinder down with it.
-  }
-}
-
-export async function getZoomFactor(localizedName: string): Promise<number | null> {
-  if (!native) return null;
-  try {
-    return await native.getZoomFactor(localizedName);
-  } catch {
-    return null;
   }
 }

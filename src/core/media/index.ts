@@ -1,6 +1,5 @@
 import { dayKeyOf, type TzOffsetMinutes } from '../day';
 import type { LatLon } from '../geo';
-import type { Segment } from '../segments';
 import { positionAt, type Position, type Track } from '../replay';
 import { isCaptureOrientation, type CaptureOrientation } from './orientation';
 
@@ -9,7 +8,6 @@ export {
   displayRotationFor,
   isCaptureOrientation,
   isQuarterTurn,
-  oppositeEdge,
   stageSizeFor,
   topEdgeFor,
   uprightRotationFor,
@@ -233,38 +231,6 @@ export function mediaForDay(
   tzOffsetMinutes: TzOffsetMinutes,
 ): readonly MediaItem[] {
   return items.filter((item) => dayKeyOf(item.capturedAt, tzOffsetMinutes) === dayKey);
-}
-
-/**
- * Which timeline row each item belongs to.
- *
- * Derived on read and never written back onto a segment — the same shape as
- * `applyManualWindows`. It is what lets the engine re-fold a day, produce
- * byte-identical segments, and find every photo still attached to the right
- * one. Storing the link the other way round would leave a photo orphaned the
- * first time a day was re-derived under a different config.
- *
- * An item captured in a hole belongs to no segment and appears in no bucket.
- */
-export function attachToSegments(
-  segments: readonly Segment[],
-  items: readonly MediaItem[],
-): ReadonlyMap<string, readonly MediaItem[]> {
-  const buckets = new Map<string, MediaItem[]>();
-
-  for (const item of items) {
-    const owner = segments.find(
-      (segment) => item.capturedAt >= segment.startedAt && item.capturedAt <= segment.endedAt,
-    );
-    if (!owner) continue;
-
-    const bucket = buckets.get(owner.id);
-    if (bucket) bucket.push(item);
-    else buckets.set(owner.id, [item]);
-  }
-
-  for (const bucket of buckets.values()) bucket.sort((a, b) => a.capturedAt - b.capturedAt);
-  return buckets;
 }
 
 export interface PlacedMedia {

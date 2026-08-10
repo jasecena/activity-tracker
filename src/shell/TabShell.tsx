@@ -470,7 +470,6 @@ const styles = StyleSheet.create({
   // state and its scroll position, and switching costs nothing.
   screen: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   // A detail page sits over its tab's root, which stays mounted underneath.
-  page: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background },
   hidden: { display: 'none' },
   tabBar: {
     flexDirection: 'row',

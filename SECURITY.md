@@ -16,14 +16,40 @@ sensitive thing on most people's phones, and the design treats it that way.
 **The threat model is not a determined attacker holding your unlocked phone.**
 Against that, nothing an app can do helps. It is the ordinary ways a file leaks:
 
-| Leak                                             | Mitigation                                                                                                              |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key. |
-| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                            |
-| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305.                                                                   |
-| A bug in another app that can read the container | Same.                                                                                                                   |
-| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.     |
-| Data sent somewhere by accident                  | The app makes no network requests of any kind. There is no endpoint to send to.                                         |
+| Leak                                             | Mitigation                                                                                                                                            |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key — **except media**; see below. |
+| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                          |
+| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                         |
+| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                         |
+| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                   |
+| Data sent somewhere by accident                  | The app makes one kind of request — Apple Maps tiles, off by default. Your track is never in it. See _Network posture_.                               |
+
+### Media at rest: the one place this changed
+
+Photos, video and voice notes used to be sealed into a chunked container under the
+same device key. They are now **ordinary files** under `Documents/media`.
+
+The reasoning, in full, because it is a real reduction in guarantee and not a
+tidy-up. `@noble/ciphers` is audited, pure TypeScript and has no hardware
+acceleration, so opening a minute of video meant forty megabytes of AEAD on the
+single thread that also draws the screen. The gallery took seconds to open and the
+cost was entirely self-inflicted: **iOS already encrypts the app container** under
+a key derived from the passcode, so the second pass added very little against the
+threat it was named for — someone holding the phone.
+
+What it did buy was the **backup** row above. `Documents` is backed up; the key was
+not; so a restored backup held ciphertext. That is what has been given up. A media
+file now restores as a readable photo on another device, in the same way every
+other app's photos do, and everything else in the store still restores as
+undecryptable bytes.
+
+The conclusion drawn from that, which the sync work is bound by: encryption belongs
+at the boundary where data actually leaves the phone, and the bytes get sealed on
+the way out rather than on the way in.
+
+`unsealInPlace` still reads the old container so a library written by an earlier
+build is not lost. Do not remove it.
 
 ### Cryptography
 
@@ -51,13 +77,25 @@ and leaving the interesting part untested.
 
 ### Network posture
 
-The app makes no HTTP request of any kind. No analytics, no telemetry, no crash
-reporting upload, no remote config, no geocoder, no map tiles.
-`NSAllowsArbitraryLoads` is `false` with no exception domains, because there is
-nothing for App Transport Security to permit.
+The app makes **exactly one kind of request, and only when you ask for it**: Apple
+Maps imagery, behind `settings.mapsEnabled`, which is **off on a fresh install**.
+With it on, Apple learns which part of the map is on screen. It never learns your
+track — the route is an overlay drawn on the device from coordinates that do not
+leave it. `components/MapCanvas.tsx` is the only file permitted to import
+`expo-maps`; with the switch off, every map in the app is the offline canvas drawn
+from your own coordinates and nothing else.
+
+There is no analytics, no telemetry, no crash reporting upload, no remote config
+and no geocoder — which is still why a place has no name until you type one, and
+why there is nothing to ask. `NSAllowsArbitraryLoads` is `false` with no exception
+domains: App Transport Security stays fully enforced.
+
+The share sheet is not a network request. `exportFile.ts` hands iOS a file and iOS
+decides what happens to it, which is the user's choice and not the app's.
 
 If you are reviewing a change and it adds a dependency that opens a socket, that
-is the change to push back on.
+is the change to push back on. The planned S3 backup widens this rule considerably
+and must rewrite the reasoning rather than slip past it.
 
 ## Credentials
 

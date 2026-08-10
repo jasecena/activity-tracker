@@ -9,21 +9,19 @@ import ExpoModulesCore
  real zoom dial needs to print `0.5×` or `24 mm` as a fact rather than a guess
  lives in AVFoundation, and this module reads it out.
 
- It also sets the zoom, by factor, on the device itself. Two reasons rather
- than going through the `zoom` prop:
+ **Reading is all it does, and that is a decision rather than an omission.**
+ It used to set the zoom as well, by factor and through
+ `ramp(toVideoZoomFactor:withRate:)`, because that is how the built-in camera
+ makes zoom feel like glass moving rather than a value changing — and because
+ the `zoom` prop's mapping runs through `activeFormat.videoMaxZoomFactor`,
+ which changes with the session's format.
 
- - The prop's mapping runs through `activeFormat.videoMaxZoomFactor`, which
-   changes with the session's format. A factor computed in JavaScript from a
-   value read at a different moment lands somewhere near the target; the device
-   asked directly lands on it.
- - `ramp(toVideoZoomFactor:withRate:)` is how the built-in camera makes zoom
-   feel like glass moving rather than a value changing. There is no reaching it
-   from JavaScript.
-
- Writing to the device `expo-camera` is running is deliberate, not a trick:
- `AVCaptureDevice` instances are per-hardware singletons, so looking the device
- up by name yields the same object the session configured, and
- `lockForConfiguration` is the documented way for anyone to adjust it.
+ That went with the wheel it existed for. Three buttons drive `expo-camera`'s
+ own prop, and the format-dependence is handled where it arises: the
+ description is re-read when the mode changes, and `zoomPropFor` inverts the
+ exponent exactly. Writing to a device the camera session owns is safe but it
+ is not free of surprise, and nothing needs it. The argument for bringing it
+ back is in the git history alongside the code.
  */
 public class CameraOpticsModule: Module {
   private static let deviceTypes: [AVCaptureDevice.DeviceType] = [
@@ -44,10 +42,6 @@ public class CameraOpticsModule: Module {
       mediaType: .video,
       position: position
     ).devices
-  }
-
-  private func findDevice(named localizedName: String) -> AVCaptureDevice? {
-    (discover(.back) + discover(.front)).first { $0.localizedName == localizedName }
   }
 
   public func definition() -> ModuleDefinition {
@@ -84,41 +78,6 @@ public class CameraOpticsModule: Module {
           },
         ]
       }
-    }
-
-    /**
-     Set the zoom on a named device, as a factor in its own space.
-
-     Ramped by default, which is the built-in camera's feel. `rate` is in
-     powers of two per second; 4 tracks a finger closely without stepping.
-     A factor outside the device's range is clamped rather than thrown —
-     the dial's edge is not an error.
-     */
-    AsyncFunction("setZoomFactor") { (localizedName: String, factor: Double, ramped: Bool) in
-      guard let device = self.findDevice(named: localizedName) else {
-        throw Exception(name: "DeviceNotFound", description: "No camera called \(localizedName)")
-      }
-      let clamped = max(
-        device.minAvailableVideoZoomFactor,
-        min(device.maxAvailableVideoZoomFactor, CGFloat(factor))
-      )
-      try device.lockForConfiguration()
-      defer { device.unlockForConfiguration() }
-      if ramped {
-        device.ramp(toVideoZoomFactor: clamped, withRate: 4)
-      } else {
-        device.videoZoomFactor = clamped
-      }
-    }
-
-    /**
-     Where the zoom actually is, for settling the dial after a ramp.
-     */
-    AsyncFunction("getZoomFactor") { (localizedName: String) -> Double in
-      guard let device = self.findDevice(named: localizedName) else {
-        throw Exception(name: "DeviceNotFound", description: "No camera called \(localizedName)")
-      }
-      return Double(device.videoZoomFactor)
     }
   }
 }

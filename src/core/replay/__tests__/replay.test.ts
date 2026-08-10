@@ -2,7 +2,7 @@ import fc from 'fast-check';
 
 import { EARTH_RADIUS_M, type PathPoint } from '../../geo';
 import type { MoveSegment, Segment, StaySegment } from '../../segments';
-import { buildTrack, holesIn, positionAt, replaySpan } from '../index';
+import { buildTrack, holesIn, positionAt } from '../index';
 
 /**
  * Everything here is at the equator, at longitude 0 — the middle of the
@@ -202,23 +202,5 @@ describe('holesIn', () => {
     const before = stay(T0, T0 + 10 * MINUTE, 0);
     const after = stay(T0 + 130 * MINUTE, T0 + 140 * MINUTE, 4_000);
     expect(holesIn(buildTrack([before, after]))).toEqual([{ from: T0 + 10 * MINUTE, to: T0 + 130 * MINUTE }]);
-  });
-});
-
-describe('replaySpan', () => {
-  it('is null for no segments', () => {
-    expect(replaySpan([])).toBeNull();
-  });
-
-  it('covers the first start and the last end', () => {
-    expect(replaySpan(contiguousDay())).toEqual({ from: T0, to: T0 + 60 * MINUTE });
-  });
-
-  // A segment that straddles midnight is filed under the day it started, whole,
-  // so a day's span can legitimately run past its own last row's start.
-  it('takes the latest end, not the last segment in the list', () => {
-    const long = move(T0, [point(T0, 0, null), point(T0 + 200 * MINUTE, 600)]);
-    const short = stay(T0 + 10 * MINUTE, T0 + 20 * MINUTE, 100);
-    expect(replaySpan([long, short])?.to).toBe(T0 + 200 * MINUTE);
   });
 });
