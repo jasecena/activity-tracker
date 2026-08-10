@@ -151,12 +151,40 @@ function readableKind(candidate: unknown): MediaKind | null {
   return isMediaKind(candidate) ? candidate : null;
 }
 
+/**
+ * Every name this app has ever written: `m-<instant>` with an extension, plus
+ * `.thumb`, `.thumb.<n>` and the retired `.avm`. Deliberately narrower than
+ * "what a filesystem accepts".
+ */
+const STORED_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * A stored name must be a *name*, not a path.
+ *
+ * The index names files that `services/mediaStore.ts` then opens, and in one
+ * case deletes, by joining the name onto the media directory. A name carrying
+ * `../` walks out of that directory; percent-encoding does the same thing one
+ * decode later. iOS bounds the damage — the URL is standardised and checked
+ * against what the app is allowed to touch — but "the platform stops it going
+ * anywhere too interesting" is not the same as this app having checked, and
+ * `normalizeMedia` is the function that claims to be the trust boundary here.
+ *
+ * It matters more later than now. Today an index entry can only be planted by
+ * something that already holds the device key, which is game over anyway. The
+ * S3 restore in `docs/BACKLOG.md` § 12 is the path that makes an index arrive
+ * from somewhere other than this phone, and this is much cheaper to require
+ * before that exists than to retrofit after.
+ */
+function isStoredFileName(candidate: unknown): candidate is string {
+  return typeof candidate === 'string' && candidate.length > 0 && STORED_FILE_NAME.test(candidate);
+}
+
 function isMediaItem(candidate: unknown): candidate is MediaItem {
   if (typeof candidate !== 'object' || candidate === null) return false;
   const { id, kind, capturedAt, fileName } = candidate as Partial<MediaItem>;
   if (typeof id !== 'string' || readableKind(kind) === null) return false;
   if (typeof capturedAt !== 'number' || !Number.isFinite(capturedAt)) return false;
-  return typeof fileName === 'string' && fileName.length > 0;
+  return isStoredFileName(fileName);
 }
 
 /**
@@ -181,9 +209,10 @@ export function normalizeMedia(input: unknown): MediaItem[] {
       durationMs: typeof item.durationMs === 'number' && Number.isFinite(item.durationMs) ? item.durationMs : null,
       fileName: item.fileName,
       // Absent on anything written before thumbnails existed, which is a state
-      // the app has to handle rather than a value to invent.
-      thumbFileName:
-        typeof item.thumbFileName === 'string' && item.thumbFileName.length > 0 ? item.thumbFileName : null,
+      // the app has to handle rather than a value to invent — and the same
+      // state a name that is not a name collapses to, since a missing thumbnail
+      // is drawn as a blank square and a bad one must not be opened at all.
+      thumbFileName: isStoredFileName(item.thumbFileName) ? item.thumbFileName : null,
       byteLength: typeof item.byteLength === 'number' && item.byteLength >= 0 ? item.byteLength : 0,
       at: isLatLon(item.at) ? { lat: item.at.lat, lon: item.at.lon } : null,
       note: typeof item.note === 'string' ? item.note : '',

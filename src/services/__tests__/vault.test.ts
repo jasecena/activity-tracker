@@ -1,3 +1,5 @@
+import * as SecureStore from 'expo-secure-store';
+
 import { destroyKey, open, seal } from '../vault';
 
 /**
@@ -66,5 +68,54 @@ describe('the vault', () => {
 
     // A fresh key is generated on the next use, and it cannot read the old blob.
     expect(await open(sealed)).toBeNull();
+  });
+
+  /**
+   * A keychain entry that is not a key at all.
+   *
+   * The failure this prevents is silent and permanent rather than loud: a
+   * malformed entry makes `hexToBytes` throw inside `deviceKey`, which `open`
+   * swallows into "unreadable" and `seal` does not catch at all — so `writeJson`
+   * logs a warning and drops every write, for ever, on an app that looks like a
+   * fresh install. Replacing the entry costs nothing that was not already lost:
+   * a key that cannot be parsed cannot decrypt anything either.
+   */
+  describe('an unreadable stored key', () => {
+    const KEY_ALIAS = 'activity-tracker.vault-key.v1';
+
+    beforeEach(async () => {
+      await destroyKey();
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it.each([
+      ['not hex at all', 'lunchtime'],
+      ['hex of the wrong length', 'abcdef'],
+      ['empty', ''],
+    ])('is replaced rather than kept when it is %s', async (_label, stored) => {
+      await SecureStore.setItemAsync(KEY_ALIAS, stored);
+
+      const sealed = await seal('a day of walking');
+      expect(await open(sealed)).toBe('a day of walking');
+    });
+
+    it('says so, rather than failing quietly', async () => {
+      await SecureStore.setItemAsync(KEY_ALIAS, 'lunchtime');
+      await seal('anything');
+
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('unreadable'));
+    });
+
+    it('leaves a good key alone', async () => {
+      const sealed = await seal('somewhere I went');
+      const key = await SecureStore.getItemAsync(KEY_ALIAS);
+
+      expect(await open(sealed)).toBe('somewhere I went');
+      expect(await SecureStore.getItemAsync(KEY_ALIAS)).toBe(key);
+    });
   });
 });

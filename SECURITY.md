@@ -66,6 +66,23 @@ the way out rather than on the way in.
 `unsealInPlace` still reads the old container so a library written by an earlier
 build is not lost. Do not remove it.
 
+### The file protection class, which is the default on purpose
+
+Nothing in this app sets `NSFileProtection*`, so every file it writes takes iOS's
+default: **`CompleteUntilFirstUserAuthentication`** — readable after the first
+unlock following a boot, and unreadable before it.
+
+That is the right class here rather than a gap, and it is the same trade the
+keychain flag makes for the same reason. `Complete` would make files unreadable
+whenever the phone is locked, and this app writes location fixes and captures
+while the phone is locked in a pocket; a stricter class would leave a hole in
+every day, which is the failure `AFTER_FIRST_UNLOCK` was chosen to avoid on the
+key. Matching them means there is one story about when data is reachable, not two.
+
+Written down because it was previously true only by accident. The "forensic
+extraction" row above depends on it, and a future change that sets a protection
+class explicitly should be a decision about background capture, not about files.
+
 ### Cryptography
 
 - **XChaCha20-Poly1305**, from [`@noble/ciphers`](https://github.com/paulmillr/noble-ciphers)

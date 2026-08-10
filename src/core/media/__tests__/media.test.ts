@@ -136,6 +136,55 @@ describe('normalizeMedia', () => {
     const result = normalizeMedia([item(T0 + 2 * MINUTE), item(T0), item(T0 + MINUTE)]);
     expect(result.map((entry) => entry.capturedAt)).toEqual([T0, T0 + MINUTE, T0 + 2 * MINUTE]);
   });
+
+  /**
+   * A name from the index is joined onto the media directory and then opened —
+   * and in `deleteMedia`'s case, deleted. So it has to be a name and not a
+   * path. iOS bounds where a traversal could actually reach, but this is the
+   * function that claims to be the trust boundary, and the restore path in the
+   * backlog is what makes an index arrive from off this phone.
+   */
+  it('drops a row whose file name is a path rather than a name', () => {
+    const escapes = [
+      '../../Library/Preferences/com.apple.plist',
+      'nested/photo.jpg',
+      'back\\slash.jpg',
+      '..',
+      '.',
+      '.hidden.jpg',
+      'percent%2Fencoded.jpg',
+      'space in name.jpg',
+    ];
+
+    for (const fileName of escapes) {
+      expect(normalizeMedia([{ ...item(T0), fileName }])).toEqual([]);
+    }
+  });
+
+  it('keeps every name this app actually writes', () => {
+    const names = [`${mediaIdFor(T0)}.jpg`, `${mediaIdFor(T0)}.thumb.jpg`, `${mediaIdFor(T0)}.thumb.2.jpg`];
+
+    for (const fileName of names) {
+      expect(normalizeMedia([{ ...item(T0), fileName }])[0]?.fileName).toBe(fileName);
+    }
+
+    // The retired sealed container, which `unsealInPlace` still has to open.
+    expect(normalizeMedia([{ ...item(T0), fileName: `${mediaIdFor(T0)}.jpg.avm` }])[0]?.fileName).toBe(
+      `${mediaIdFor(T0)}.jpg.avm`,
+    );
+  });
+
+  /**
+   * A bad thumbnail name is the missing-thumbnail case, not a dropped row.
+   * Losing the row would lose the capture behind it; losing the thumbnail
+   * costs a blank square that the next launch's backfill repairs.
+   */
+  it('forgets a thumbnail name that is a path, and keeps the capture', () => {
+    const [result] = normalizeMedia([{ ...item(T0), thumbFileName: '../elsewhere.jpg' }]);
+
+    expect(result?.thumbFileName).toBeNull();
+    expect(result?.fileName).toBe(item(T0).fileName);
+  });
 });
 
 describe('mediaForDay', () => {
