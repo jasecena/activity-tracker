@@ -4,59 +4,78 @@ Features agreed for later, written down before they are built so the thinking
 survives the wait. Ordered roughly by how they unlock each other, not by priority
 — priorities get decided when work starts.
 
-**Where the app is as of v0.4.2 (10 August 2026).** Everything through the
-capture work has shipped to TestFlight: the four-tab shell, the day screen with
-history and replay, places and journey labels, the encrypted store, CSV export,
-the low-battery lens, the Media tab with the Photos gestures, capture orientation,
-and the three-stop zoom on real lens optics. Nothing in this file is being
-developed yet.
+Every item carries a **Status**. `Not started` means exactly that: the thinking
+is here and no code is. Anything else says what happened or what is in the way.
 
-v0.3.0 itself adds no feature. It is the release where the documents were
-brought back in line with the app and the code left behind by withdrawn features
-was deleted — the spent coordinate migration, a third of the Swift, and the
-smaller residue three sweeps turned up. The version moved off 0.2.x to mark
-that, and 1.0.0 is deliberately still unspent: it belongs to the sync or the
-segment model below, not to a tidy-up.
+---
 
-**v0.4.0 is the audit release**, and it is a minor rather than a patch for one
-reason: captures no longer enter an iCloud or iTunes backup. That is a change to
-what leaves the phone, it runs one way, and a device restored from a backup taken
-after it comes back without them — which is not a patch-shaped sentence. It is
-also the change that makes item 12 below the backlog item that matters most,
-because until the sync exists a lost phone is the end of a photograph.
+## Where the app is, as of v0.4.2 (10 August 2026)
 
-Four audits from item 7 ran, all of the kind that needs no device: privacy,
-security, CI/CD and storage. What they mostly found was **drift between the
-documents and the code** rather than broken behaviour — the app was doing the
-right thing and saying something slightly better than the truth about it, which
-in an app whose whole argument is its privacy posture is the failure that
-matters. The Settings paragraph still claimed captures were sealed under the
-keychain key a release after they stopped being; the permission strings promised
-they were never uploaded while sitting in a backed-up directory. The fixes are
-in the git history and the reasoning is in `SECURITY.md` and
-`docs/ARCHITECTURE.md` § 12b.
+Everything through the capture work has shipped to TestFlight: the four-tab
+shell, the day screen with history and replay, places and journey labels, the
+encrypted store, CSV export, the low-battery lens, the Media tab with the Photos
+gestures, capture orientation, and the three-stop zoom on real lens optics.
 
-Three audits remain, and they are **not equally reachable**, which is worth
-saying plainly rather than leaving them looking like one queue:
+**No feature in this file has been started.** What the recent releases contain is
+correctness, privacy and pipeline work.
 
-- **Performance and the lag hunt (item 6)** need a phone with a few days of real
-  data, and nothing else. `services/timing.ts` was rebuilt for exactly this —
-  monotonic clock, lazy labels, and the rule that a span names a shape and never
-  a content — and v0.4.2 added the launch-path spans, so the Data screen answers
-  three of item 6's four candidates on its own.
-- **Memory and CPU** need Instruments, which needs a Mac. This project has never
-  otherwise needed one — the macOS runner builds and TestFlight delivers — so
-  these two are blocked on hardware rather than on effort. Xcode Organizer's
-  aggregated field metrics would eventually show hang and battery data from real
-  TestFlight use, but that is weeks of passive collection, not an audit anyone
-  runs. Do not substitute a reading of the code for either: producing something
-  that looks like a memory audit and is really a guess is the failure the audits
-  exist to prevent.
+### The releases behind that
 
-Two things were **built and withdrawn** during that run, and both are written up
-in `docs/ARCHITECTURE.md` rather than here, because withdrawing is a decision and
-not an absence: the pan-to-zoom wheel (§ 16) and the five-second "live" capture
-(§ 16). Neither should be rebuilt without reading why it went.
+**v0.3.0** — no feature. The release where the documents were brought back in
+line with the app and the code left by withdrawn features was deleted: the spent
+coordinate migration, a third of the Swift, and the smaller residue three sweeps
+turned up.
+
+**v0.4.0 — the audit release**, and a minor rather than a patch for one reason:
+captures no longer enter an iCloud or iTunes backup. That is a change to what
+leaves the phone, it runs one way, and a device restored from a backup taken
+after it comes back without them. It is also what makes item 12 the item that
+matters most, because until the sync exists a lost phone is the end of a
+photograph.
+
+**v0.4.1** — the Data screen says whether the backup exclusion is actually
+holding. The flag has no user-visible effect until someone restores a backup, and
+`excludeFromBackup` returns `false` rather than throwing when the native module
+is missing — so without the row, the failure mode is a healthy app whose Settings
+paragraph claims something untrue.
+
+**v0.4.2** — the launch path is measured, so the lag hunt has data to rank.
+
+1.0.0 stays deliberately unspent. It belongs to the sync or the segment model,
+not to a tidy-up.
+
+### What the audits found
+
+Four of the seven ran — privacy, security, CI/CD, storage — all of the kind that
+needs no device. What they mostly found was **drift between the documents and the
+code** rather than broken behaviour: the app was doing the right thing and saying
+something slightly better than the truth about it, which in an app whose whole
+argument is its privacy posture is the failure that matters. The Settings
+paragraph still claimed captures were sealed under the keychain key a release
+after they stopped being; the permission strings promised they were never
+uploaded while sitting in a backed-up directory.
+
+Three real defects came with them: the vault could not survive a corrupt keychain
+entry (it bricked writing, silently and permanently), `destroyKey` could be
+undone by an in-flight key generation, and `normalizeMedia` accepted a path where
+it required a name. Reasoning in `SECURITY.md` and `docs/ARCHITECTURE.md` § 12b.
+
+### Open actions, not features
+
+| Action                                       | State                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------- |
+| Confirm `Kept out of backups: Yes` on device | **Open.** Needs v0.4.2 installed. Settings → Data.                         |
+| Performance audit + lag hunt (item 6, 7)     | **Ready to run.** Needs a few days of real use, then read the Data screen. |
+| Memory audit (item 7)                        | **Blocked.** Instruments, therefore a Mac.                                 |
+| CPU audit (item 7)                           | **Blocked.** Instruments, therefore a Mac.                                 |
+| CodeQL over the Swift (item 13)              | **Deferred.** Revisit when item 1–4's composition module exists.           |
+| Recheck the `audit-ci` allowlist (item 14)   | **Standing.** When `image-size` publishes past 2.0.2.                      |
+
+### Built and withdrawn
+
+Written up in `docs/ARCHITECTURE.md` rather than here, because withdrawing is a
+decision and not an absence: the pan-to-zoom wheel (§ 16) and the five-second
+"live" capture (§ 16). Neither should be rebuilt without reading why it went.
 
 ---
 
@@ -78,10 +97,11 @@ becomes a list of segment files composed into one clip on save.**
   the point.
 
 The composition itself — trim, concatenate, crossfade — is `AVMutableComposition`
-and `AVAssetExportSession`, which Expo does not expose. That is a second local
-native module in the `modules/camera-optics` mould: one Swift file, one job
-(compose segment files into one movie), everything decidable in TypeScript and
-testable there, with the native side doing only what only it can do.
+and `AVAssetExportSession`, which Expo does not expose. That is a third local
+native module in the `modules/camera-optics` and `modules/file-backup` mould: one
+Swift file, one job (compose segment files into one movie), everything decidable
+in TypeScript and testable there, with the native side doing only what only it
+can do.
 
 Worth knowing before starting: an in-progress QuickTime file is unreadable —
 the moov atom is written at stop — so "go back three seconds _while still
@@ -94,6 +114,8 @@ go back, and then resume, and it cuts to that stage").
 
 ## 1. Pause and resume a recording
 
+**Status:** not started. Needs a device to verify.
+
 `expo-camera` already has `toggleRecordingAsync()` — "pauses or resumes the
 video recording" — so a minimal version needs no native work at all: one clip,
 paused and resumed, with the shutter row growing a pause control while
@@ -104,6 +126,8 @@ Decisions when built: what the elapsed clock does while paused (stop, clearly);
 whether max duration counts wall time or recorded time (recorded).
 
 ## 2. The live rewind ("time frame viewer")
+
+**Status:** not started. Depends on the segment model.
 
 While paused: scrub through what was just recorded, pick a moment, and resume —
 the clip continues from that moment, the discarded tail gone. On the segment
@@ -117,6 +141,8 @@ segment like any clip.
 
 ## 3. Transitions, marked live
 
+**Status:** not started. Depends on the composition module.
+
 A button press during recording (or while paused) marks the current boundary:
 "put a transition here". The mark is data — `{ boundaryIndex, kind }` — and
 the composition module applies it on save. Hard cuts are free; crossfade and
@@ -125,6 +151,8 @@ with cut and one crossfade; a transition picker is creep until proven wanted.
 
 ## 4. Live editing, generally
 
+**Status:** a principle, not a task. Nothing to build; everything to test against.
+
 The principle the above three add up to, kept as a principle: **every editing
 decision is expressible while shooting, and saving composes automatically.**
 No timeline editor after the fact, ever — that is a different app. Anything
@@ -132,6 +160,9 @@ proposed later for "editing" gets tested against this: if it cannot be decided
 live with one button, it does not belong here.
 
 ## 5. Teleprompter
+
+**Status:** not started. Pure TypeScript, but UI-heavy — buildable without
+hardware, only partly provable without it.
 
 A text box near the camera — top of the screen, where the front lens is, so
 reading and looking into the lens are the same direction — that scrolls a fed
@@ -148,25 +179,28 @@ not just turn in place; `topEdgeFor` already answers which edge that is.
 
 ## 6. Lag hunt
 
+**Status:** instrumented and ready to run. The measuring is done; the measuring
+_with real data_ is not, and that needs a few days of ordinary use.
+
 Investigation, not a feature: find where the app actually stutters on the
 phone, with the JS thread as prime suspect. Known candidates, from the
 architecture rather than from measurement (measurement is the task):
 
 - **The launch path: index normalisation, orphan sweep, thumbnail backfill.**
-  All three now record a span with the count they ran over, so the Data screen
-  answers this one without a cable. `sweepOrphans` is the one to watch: it
+  **Done —** all three record a span with the count they ran over, so the Data
+  screen answers this one without a cable. `sweepOrphans` is the one to watch: it
   walks the whole media directory and stats every file, and it runs before the
   gallery can draw anything.
 - **Opening a day: the fold** runs on the JS thread while the page animates —
-  exactly the case `SwipeBackPage` runs its animation natively for. Recorded as
-  `fold`, with the number of fixes.
+  exactly the case `SwipeBackPage` runs its animation natively for. **Done —**
+  recorded as `fold`, with the number of fixes.
 - ~~The thumbnail decrypt queue behind a fast scroll.~~ **Gone, not deferred.**
   This described the sealed container, and the container was withdrawn:
   `openThumbnail` is now an existence check and a URI. There is no decryption
   anywhere on the read path, so there is no queue to be behind. Left visible
   rather than deleted, because "we should look at the decrypt queue" is exactly
   the kind of thing that gets repeated from a stale list.
-- **The offline map canvas re-projecting on every scrub tick.** Still real, and
+- **The offline map canvas re-projecting on every scrub tick.** **Open**, and
   deliberately **not** instrumented in-app: a span per frame would add work to
   the frame path being measured and fill a 120-entry cap in about two seconds.
   This one belongs to the RN performance monitor, which counts dropped frames
@@ -184,25 +218,37 @@ A family of them, each producing numbers or findings first and a ranked fix
 list second — the deliverable is the ranking, so the work that follows is
 spent where the evidence says, not where the code looks guilty.
 
-- **Performance**: the lag hunt widened — startup time, frame drops, the JS
-  thread under load, worst day of data available.
-- **Memory**: footprint with a year of days, the gallery under a long scroll,
-  leaks across tab switches and long sessions.
-- **CPU**: what burns cycles while tracking runs all day; the background task's
-  budget; anything hot while the screen is off.
-- **Storage**: disk growth over time — the media directory, the fix archive,
-  the encrypted store — and what bounds each.
-- **Privacy**: everything the app records, where it lives, what leaves the
-  device (it should be Apple Maps tiles and nothing else), what a lost phone
-  or a backup exposes, and whether the docs' claims still match the code.
-- **Security**: the vault and its key handling, the keychain flags, file
-  protection classes, the migration paths, what a malicious file or store
-  entry could do on the way in.
-- **CI/CD and pipeline**: the workflows' permissions and pinning, secret
-  handling, what a compromised dependency or action could reach, and whether
-  the release path has quiet failure modes.
+- **Performance** — _open, ready._ The lag hunt widened: startup time, frame
+  drops, the JS thread under load, worst day of data available. Needs use, not
+  hardware.
+- **Memory** — _blocked on a Mac._ Footprint with a year of days, the gallery
+  under a long scroll, leaks across tab switches and long sessions.
+- **CPU** — _blocked on a Mac._ What burns cycles while tracking runs all day;
+  the background task's budget; anything hot while the screen is off.
+- **Storage** — **done (v0.4.0).** Found the one unbounded store: retention
+  reaches the day log and the fix archive and stops, so captures grow forever.
+  Kept that on purpose — a fix is collected by the app, a capture is chosen by
+  you — but the retention picker now says so, and `formatBytes` keeps the total
+  legible past a gigabyte. Item 9 is the remaining half: bounding the archive.
+- **Privacy** — **done (v0.4.0).** Behaviour was clean: no network calls in
+  `src/` at all, no telemetry, `expo-maps` imported in exactly one file and off
+  by default, ATS enforced. The claims were not: fixed, plus media excluded from
+  backups via `modules/file-backup`.
+- **Security** — **done (v0.4.0).** Cipher, nonce and keychain flags all as
+  documented; `unsealInPlace` is the best-defended code in the app. Three defects
+  at the edges, all fixed. The file protection class is now written down as a
+  deliberate default rather than an accident.
+- **CI/CD and pipeline** — **done (v0.4.0).** Better than most: every action
+  SHA-pinned with a job enforcing it, `contents: read` throughout, no
+  `pull_request_target`, secrets via `env` and never interpolated into a shell,
+  Maestro checksum-verified, an ephemeral signing keychain torn down under
+  `always()`. Two changes: the Pods cache lost its `restore-keys` fallback so a
+  release binary is a function of its tag, and the smoke test gained one retry on
+  a flow failure after a dropped tap blocked v0.4.0.
 
 ## 8. Save a capture to the iPhone photo library
+
+**Status:** not started. Needs a device to verify.
 
 The other direction from the parked import: a photo or video, exported from
 this app's store into Photos. `expo-media-library`'s `saveToLibraryAsync` does
@@ -211,13 +257,19 @@ exactly this and needs only the add-only permission
 no library browsing, just "may this app add".
 
 Two things to hold onto when building it. It is **per capture and on demand**
-— a button on the capture's info panel, never a sync — because the whole store
-is encrypted precisely so that captures do not sit in places the vault does
-not cover, and putting one into Photos is the deliberate, visible exception.
-And what lands in Photos is a copy: forgetting the capture here afterwards
-does not reach into the library, same shape as the import rule in reverse.
+— a button on the capture's info panel, never a sync — because the store is
+kept off backups and out of the camera roll precisely so captures do not sit
+in places this app does not control, and putting one into Photos is the
+deliberate, visible exception. And what lands in Photos is a copy: forgetting
+the capture here afterwards does not reach into the library, same shape as the
+import rule in reverse.
 
 ## 9. Compact the stationary fixes
+
+**Status:** not started, and the best-placed item to build next — it is entirely
+`src/core` and `services`, so it is testable on Linux with no device and no Mac.
+It is also the unfinished half of the storage audit: the archive is the growth
+term nothing bounds.
 
 An afternoon at a desk is hundreds of readings at the same spot at zero speed,
 and they say one thing between them: _here, from then until then_. Keeping the
@@ -256,7 +308,16 @@ speed estimate, for the reason already settled: Doppler speed lies for seconds
 after stopping. The cluster test is the same arithmetic `judgeFix` and the
 stay machine already trust.
 
+**One thing to prove before shipping it:** exporting raw fixes must still
+produce what the exporter promises. A compacted archive is a smaller CSV by
+design, and the difference between "smaller because the readings were
+redundant" and "smaller because a bug ate them" has to be visible in a test.
+
 ## 10. The assumed stay: bridging a gap whose two ends agree
+
+**Status:** not started. Also pure `src/core`, so also buildable without
+hardware — but it revises a settled decision, so `docs/ARCHITECTURE.md` changes
+with it rather than around it.
 
 When the signal stops and later returns _at the same place_ — the last fix
 before the hole and the first fix after it within about twenty-five metres —
@@ -294,7 +355,16 @@ sit the cursor at the place through the gap rather than saying "No signal"
 as measured stillness anywhere the distinction could matter — calories already
 count movement only, so they are safe by construction.
 
+**Interaction with item 9**, worth settling before either is built: compaction
+makes stationary runs sparser, and an assumed stay reads a gap. Compact too
+aggressively in the live buffer and an ordinary afternoon at a desk starts
+looking like a gap whose ends agree — inferred rather than measured, for time
+that was measured perfectly well. The `gapMs` skeleton rule already prevents
+this; whichever is built second must have a test that says so.
+
 ## 11. Rotating a video
+
+**Status:** not started. Depends on the composition module from items 1–4.
 
 A photograph rotates by re-encoding one JPEG — cheap, and lossless enough at
 full quality. A video cannot: decoding and re-encoding every frame costs
@@ -310,6 +380,10 @@ why it checks the kind rather than hiding a failure.
 
 ## 12. Backup and sync, to an S3 bucket
 
+**Status:** not started, and the item that matters most. Media is excluded from
+backups as of v0.4.0, so a lost phone is now the end of a photograph — the
+guarantee this replaces has no substitute until this exists.
+
 The store, backed up off the phone — the item the architecture has been
 waiting for: media encryption moved to files precisely because "encryption
 belongs at the boundary where data actually leaves the phone — the sync that
@@ -324,6 +398,46 @@ restore story is on a new phone (the key is THIS_DEVICE_ONLY today — restore
 is the hard half of this feature, not upload), scheduling (manual first),
 and what the one-network-request rule becomes — this widens it far more than
 Apple Maps tiles did, and the reasoning must be rewritten with it.
+
+Two things the audits left specifically for this item:
+
+- **Key handling gets revisited here, not before.** `deviceKey` currently
+  replaces an unreadable key rather than keeping it, which is right while there
+  is nothing behind it to lose and nowhere to re-encrypt to. Restore changes
+  both halves of that sentence.
+- **The restore path is what makes `normalizeMedia`'s strictness load-bearing.**
+  A media index arriving from off the phone is untrusted input in a way a local
+  one never was — that is why file names are now required to be names rather
+  than paths, and the check exists before the path that needs it.
+
+## 13. CodeQL over the Swift
+
+**Status:** deferred, deliberately. Trigger: the composition module.
+
+`security.yml` runs CodeQL with `languages: javascript-typescript`, so neither
+local native module is analysed by anything. Today that is ~120 lines across
+`camera-optics` and `file-backup`, mostly reading AVFoundation properties and
+one filesystem attribute — and CodeQL's Swift support needs a real build on a
+macOS runner, which is meaningful CI minutes for a small surface.
+
+The composition module in items 1–4 is what changes the trade: it does real file
+manipulation, and that is worth scanning. Turn it on with that, not before.
+
+## 14. Recheck the dependency-audit allowlist
+
+**Status:** standing. Trigger: `image-size` publishing past 2.0.2.
+
+`audit-ci.jsonc` allowlists two advisories against `image-size` ≤ 2.0.2 —
+infinite loops in the ICNS, JXL and HEIF parsers. Reachable only through metro,
+at bundle time, over files in this repository; nothing from a phone or a network
+reaches it and none of it is in the shipped binary. 2.0.2 is the latest published
+version and the advisory covers every release up to it, so there is nothing to
+upgrade to.
+
+The allowlist fails the build on a **stale** entry, so this is self-reminding
+rather than a chore: when `image-size` publishes a fix, `audit-ci` starts
+complaining about an entry that no longer applies. That is the signal to remove
+it, not a date in a calendar.
 
 ---
 
