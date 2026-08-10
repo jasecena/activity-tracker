@@ -617,21 +617,19 @@ function InfoPanel({
         </View>
 
         {at ? (
-          <View>
-            <MapCanvas
-              mapsEnabled={mapsEnabled}
-              tracks={[]}
-              marks={[{ id: item.id, at, label: '', kind: 'media' }]}
-              height={180}
-              label="Map of where this was captured"
-            />
-            {thumbUri ? (
-              <View style={styles.pin} pointerEvents="none">
-                <Image source={{ uri: thumbUri }} style={styles.pinImage} resizeMode="cover" />
-                <View style={styles.pinTail} />
-              </View>
-            ) : null}
-          </View>
+          // The thumbnail goes *in* the mark, not over the map. It used to be
+          // an absolutely-positioned overlay centred on this container, which
+          // is right only while the map has not been touched: the camera opens
+          // centred on the capture, so the middle of the view and the spot
+          // coincide until the first pan slides one away from the other.
+          // Reported from a phone as the pin staying put while the map moved.
+          <MapCanvas
+            mapsEnabled={mapsEnabled}
+            tracks={[]}
+            marks={[{ id: item.id, at, label: '', kind: 'media', thumbUri }]}
+            height={180}
+            label="Map of where this was captured"
+          />
         ) : (
           <Text style={styles.infoFootnote}>
             The day has no fixes for this moment, so there is nowhere to put it on a map.
@@ -835,21 +833,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   rotateText: { ...typography.caption, color: colors.textPrimary },
-  pin: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 10,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinImage: { width: 56, height: 56, borderRadius: radius.sm, borderWidth: 2, borderColor: colors.textPrimary },
-  pinTail: {
-    width: 2,
-    height: 8,
-    backgroundColor: colors.textPrimary,
-  },
   stripHidden: { opacity: 0 },
   grid: { backgroundColor: colors.background },
   gridHeader: {

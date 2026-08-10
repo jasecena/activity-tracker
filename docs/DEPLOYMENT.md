@@ -9,7 +9,7 @@ repository secret or variable; nothing account-specific is committed.
 
 | Workflow           | Trigger                           | What it does                                                                                           |
 | ------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `ci.yml`           | every push and PR                 | typecheck, lint, format, 598 tests, `expo config`, `expo-doctor`. All on Linux, all under a minute.    |
+| `ci.yml`           | every push and PR                 | typecheck, lint, format, 601 tests, `expo config`, `expo-doctor`. All on Linux, all under a minute.    |
 | `security.yml`     | every push/PR + Mondays 03:00 UTC | gitleaks over full history, `npm audit`, CodeQL, and a job that fails if any action is not SHA-pinned. |
 | `ios-release.yml`  | a `v*` tag, or manual dispatch    | macOS runner: prebuild, archive, sign, optional Maestro smoke test, upload to TestFlight.              |
 | `certificates.yml` | manual dispatch only              | Lists or revokes the signing certificates on the Apple account. See §6.                                |
