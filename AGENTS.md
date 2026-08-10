@@ -512,6 +512,21 @@ is one nobody reads. `audit-ci` exists so an advisory can be _reviewed_ rather
 than merely ignored; every entry in the allowlist names why, and a stale one
 fails the build rather than passing quietly.
 
+**An Expo package nothing imports is not necessarily unused: it may be a
+required peer dependency.** `expo-font` and `expo-asset` appear in no `import`
+anywhere in this repository and are in `package.json` deliberately —
+`@expo/vector-icons` needs the first, `expo-audio` the second. They were
+removed in a dead-code sweep on the reasoning that npm installs them
+transitively anyway, and `npm run verify` passed: nothing imports them, so
+nothing broke on Linux. `expo-doctor` failed on the next push, and its wording
+is the rule worth keeping — _native module peer dependencies must be installed
+directly_. Transitive resolution is not the same contract, and the failure this
+avoids is a crash on a device rather than an error in CI.
+
+So a package with no importer is a question for `npx expo-doctor`, not a
+conclusion. This is the second entry here about a check `verify` cannot run;
+both cost a red build to learn.
+
 **A precompiled Expo module can fail to link at launch, and the smoke test is
 the only thing that will tell you.** `expo-image-manipulator@57.0.8` shipped an
 xcframework built against a newer `ExpoModulesCore` than `expo@57.0.9` provided,
