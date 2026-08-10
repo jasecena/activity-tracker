@@ -210,6 +210,31 @@ function mediaDirectory(): Directory {
 }
 
 /**
+ * Whether captures really are being kept out of backups.
+ *
+ * **This exists because the claim is otherwise unfalsifiable from the phone.**
+ * `NSURLIsExcludedFromBackupKey` is a file attribute with no user-visible
+ * effect until the day someone restores a backup and finds out — and
+ * `excludeFromBackup` returns `false` rather than throwing when the native
+ * module is missing, deliberately, so that a capture is never lost over a
+ * filesystem attribute. Put those together and the failure mode is a perfectly
+ * healthy app in which the exclusion silently is not applied, while the privacy
+ * paragraph in Settings says it is.
+ *
+ * A launch smoke test cannot close that gap either: a malformed
+ * `expo-module.config.json` means the Swift is never compiled in at all, the
+ * app launches perfectly, and `requireOptionalNativeModule` quietly returns
+ * null. The only honest check is to ask on the device and print the answer,
+ * which is what the Data screen does.
+ *
+ * Reads through `ensureDirectory` rather than reading the flag alone, so the
+ * answer is "it is applied now", not "it was applied once".
+ */
+export function backupExclusionApplied(): boolean {
+  return excludeFromBackup(ensureDirectory().uri);
+}
+
+/**
  * The media directory, created if it is not there, and kept out of backups.
  *
  * The exclusion is applied on **every** call rather than only on creation, and

@@ -11,6 +11,7 @@ import { labelOf, measuredSpans } from '@/services/timing';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { shareCsv } from '@/services/exportFile';
 import { allFixes, archivedCount } from '@/services/fixBuffer';
+import { backupExclusionApplied } from '@/services/mediaStore';
 import { TRACKING_PRESETS, type TrackingPresetId } from '@/services/location';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -73,6 +74,22 @@ export function DataScreen({
   const [rebuilt, setRebuilt] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
+  /**
+   * Asked once, on the device, rather than assumed from the code being present.
+   *
+   * A lazy `useState` initialiser rather than an effect: the answer is a
+   * synchronous `getattr` and does not change while the screen is open, so
+   * there is nothing to subscribe to and setting state from an effect would
+   * only be a render's worth of `…` for no reason — which is also what
+   * `react-hooks/set-state-in-effect` is there to stop. Repeat calls are
+   * idempotent by construction, since the native side reads before it writes.
+   *
+   * See `backupExclusionApplied` for why this is worth a row at all: without
+   * it the claim is unfalsifiable from the phone, and the only other way to
+   * check it needs a Mac.
+   */
+  const [excluded] = useState(() => backupExclusionApplied());
+
   // Counted a day at a time, never held: this is a year of readings at its
   // largest, and the only thing this screen does with them is say how many
   // there are and write them out when asked.
@@ -130,6 +147,11 @@ export function DataScreen({
               `bytes / 1024` labelled kB, which is both wrong and unreadable at
               exactly the size where it starts to matter. */}
           <Row label="  Their size on disk" value={formatBytes(totalBytes(media))} />
+          {/* Says what is true rather than what the code intends. "No" here
+              means the Settings privacy paragraph is currently claiming
+              something this build is not doing, which is a bug and not a
+              setting — there is nothing to tap. */}
+          <Row label="  Kept out of backups" value={excluded ? 'Yes' : 'No — not applied'} />
         </View>
 
         {first && last ? (
