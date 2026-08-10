@@ -280,7 +280,7 @@ be longer, with no signal in between — the same upload processes in three minu
 one day and forty the next.
 
 **Where the truth is.** App Store Connect → My Apps → TestFlight shows the real
-state — *Processing*, *Ready to Submit*, *Invalid Binary*. The TestFlight app on
+state — _Processing_, _Ready to Submit_, _Invalid Binary_. The TestFlight app on
 the phone caches hard: pull to refresh, and force-quit it if that does not help.
 A build can be installable for ten minutes before the phone admits it exists.
 
@@ -290,7 +290,7 @@ A build can be installable for ten minutes before the phone admits it exists.
   emailed — invalid binary, missing icon, a disallowed entitlement. No email
   means processing has not failed.
 - **Export compliance.** The classic silent stall: the build processes fine, then
-  waits at *Missing Compliance* for an answer nobody knows to give.
+  waits at _Missing Compliance_ for an answer nobody knows to give.
   `app.config.ts` sets `ITSAppUsesNonExemptEncryption: false`, so this project
   never sees it — but that key going missing would bring it straight back.
 - **A build number already used.** TestFlight refuses a duplicate for the same
