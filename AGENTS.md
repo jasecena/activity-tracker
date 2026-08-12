@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 662
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 669
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -89,8 +89,12 @@ otherwise apply every merge ever made and offer no way out of any of them.
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
-each stamped with the moment it is about, interleaved into the timeline rather
-than filed under the date. **Retention never deletes one**, which is the rule
+each with an optional title and a body, stamped with the moment it is about and
+interleaved into the timeline rather than filed under the date. **Either field
+alone is a note**: a title says the day ("Moved house") and so does a paragraph
+nobody wanted to name, and requiring both would be the app deciding how somebody
+keeps a diary. Titles arrived after the first notes did, so `normalizeDayNotes`
+defaults a missing one rather than dropping the row. **Retention never deletes one**, which is the rule
 captures already draw: a fix is something the app collected on its own and may
 discard on its own, a note is something you sat down and wrote. So a day can
 outlive its own readings as a sentence about what happened.
@@ -496,6 +500,17 @@ component built for this is gone.
 **The zoom is measured from the start of each gesture, never accumulated.**
 Adding deltas per movement drifts, and it means letting go and repeating the
 same movement from the same place gives a different answer the second time.
+
+**A voice note is recorded from the Day screen, not from Capture.** Saying
+something aloud about a day and writing it down are the same act with different
+hands, and a voice note has no viewfinder — reaching it meant opening a camera
+you were going to ignore and finding a third mode behind it. `useVoiceNote`
+holds what `CaptureScreen` used to, and the two things that were hard-won there
+move with it: the position is read at the **start** and kept in a **ref**
+(`stop` resolves inside a closure created before the reading arrived, so as
+state it is null then and null for ever after), and the screen is held awake on
+**busy** rather than on recording, so the hold does not drop between stopping
+and saving. Capture has two modes now.
 
 **Capture is a viewfinder, not a page.** The preview fills the screen and the
 shutter sits at the bottom under a thumb; there is no header and no list. The

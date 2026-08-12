@@ -36,7 +36,7 @@ it('writes one about today and keeps it', async () => {
   const result = await openDiary();
 
   await act(async () => {
-    result.current.write(T0, 'Walked to the market with Sam');
+    result.current.write(T0, '', 'Walked to the market with Sam');
   });
 
   expect(result.current.notes.map((one) => one.text)).toEqual(['Walked to the market with Sam']);
@@ -47,7 +47,7 @@ it('refuses to write a blank one', async () => {
   const result = await openDiary();
 
   await act(async () => {
-    result.current.write(T0, '   ');
+    result.current.write(T0, '', '   ');
   });
 
   expect(result.current.notes).toEqual([]);
@@ -62,10 +62,10 @@ it('keeps both notes when two are written about the same finished day', async ()
   const result = await openDiary();
 
   await act(async () => {
-    result.current.write(END_OF_DAY, 'first thing');
+    result.current.write(END_OF_DAY, '', 'first thing');
   });
   await act(async () => {
-    result.current.write(END_OF_DAY, 'second thing');
+    result.current.write(END_OF_DAY, '', 'second thing');
   });
 
   expect(result.current.notes.map((one) => one.text)).toEqual(['first thing', 'second thing']);
@@ -75,12 +75,12 @@ it('keeps both notes when two are written about the same finished day', async ()
 it('changes the words without moving the note', async () => {
   const result = await openDiary();
   await act(async () => {
-    result.current.write(T0, 'rain all day');
+    result.current.write(T0, '', 'rain all day');
   });
   const written = result.current.notes[0] as DayNote;
 
   await act(async () => {
-    result.current.edit(written, written.at, 'rain all morning, then sun');
+    result.current.edit(written, written.at, '', 'rain all morning, then sun');
   });
 
   expect(result.current.notes).toHaveLength(1);
@@ -93,11 +93,11 @@ it('changes the words without moving the note', async () => {
 it('deletes a note emptied to nothing', async () => {
   const result = await openDiary();
   await act(async () => {
-    result.current.write(T0, 'never mind');
+    result.current.write(T0, '', 'never mind');
   });
 
   await act(async () => {
-    result.current.edit(result.current.notes[0] as DayNote, T0, '');
+    result.current.edit(result.current.notes[0] as DayNote, T0, '', '');
   });
 
   expect(result.current.notes).toEqual([]);
@@ -136,12 +136,12 @@ it('reads back a note whose id is not one this build would write', async () => {
 it('moves a note to another day when the date is changed', async () => {
   const result = await openDiary();
   await act(async () => {
-    result.current.write(T0, 'this was actually yesterday');
+    result.current.write(T0, '', 'this was actually yesterday');
   });
 
   const moved = T0 - 24 * HOUR;
   await act(async () => {
-    result.current.edit(result.current.notes[0] as DayNote, moved, 'this was actually yesterday');
+    result.current.edit(result.current.notes[0] as DayNote, moved, '', 'this was actually yesterday');
   });
 
   expect(result.current.notes).toHaveLength(1);
@@ -154,11 +154,11 @@ it('moves a note to another day when the date is changed', async () => {
 it('does not nudge a note off its own instant when only the words change', async () => {
   const result = await openDiary();
   await act(async () => {
-    result.current.write(T0, 'first words');
+    result.current.write(T0, '', 'first words');
   });
 
   await act(async () => {
-    result.current.edit(result.current.notes[0] as DayNote, T0, 'second words');
+    result.current.edit(result.current.notes[0] as DayNote, T0, '', 'second words');
   });
 
   expect(result.current.notes[0]?.at).toBe(T0);

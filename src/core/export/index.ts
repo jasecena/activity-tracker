@@ -190,13 +190,14 @@ export function segmentsToCsv(segments: readonly Segment[], places: readonly Pla
  */
 export function notesToCsv(notes: readonly DayNote[], tzOffsetMinutes: number): string {
   return toCsv(
-    ['timestamp', 'epoch_ms', 'day', 'text'],
+    ['timestamp', 'epoch_ms', 'day', 'title', 'text'],
     [...notes]
       .sort((a, b) => a.at - b.at)
       .map((note) => [
         formatIsoWithOffset(note.at, tzOffsetMinutes),
         note.at,
         dayKeyOf(note.at, tzOffsetMinutes),
+        note.title,
         note.text,
       ]),
   );

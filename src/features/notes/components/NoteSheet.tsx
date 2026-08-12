@@ -23,7 +23,7 @@ interface NoteSheetProps {
    * may read a clock — `core` takes `now` as a parameter, always.
    */
   readonly defaultAt: number;
-  readonly onSave: (at: number, text: string) => void;
+  readonly onSave: (at: number, title: string, text: string) => void;
   readonly onForget?: () => void;
   readonly onClose: () => void;
 }
@@ -39,6 +39,7 @@ interface NoteSheetProps {
  * that stops you mid-sentence is not one.
  */
 export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: NoteSheetProps) {
+  const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   /**
    * The instant chosen here, or null for "whatever the caller suggested".
@@ -52,18 +53,24 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
 
   // Opened fresh from the note itself each time, so the fields start at what is
   // stored rather than at whatever was typed into them last.
-  const existing = target?.kind === 'edit' ? target.note.text : '';
-  const text = draft ?? existing;
+  const existing = target?.kind === 'edit' ? target.note : null;
+  const title = draftTitle ?? existing?.title ?? '';
+  const text = draft ?? existing?.text ?? '';
   const at = chosen ?? defaultAt;
 
+  // Either field is enough. A title alone says the day — "Moved house" — and so
+  // does a paragraph nobody wanted to name.
+  const empty = title.trim().length === 0 && text.trim().length === 0;
+
   const close = () => {
+    setDraftTitle(null);
     setDraft(null);
     setChosen(null);
     onClose();
   };
 
   const save = () => {
-    onSave(at, text);
+    onSave(at, title, text);
     close();
   };
 
@@ -122,13 +129,23 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
               </View>
 
               <TextInput
+                value={title}
+                onChangeText={setDraftTitle}
+                placeholder="Title"
+                placeholderTextColor={colors.textMuted}
+                style={styles.titleInput}
+                accessibilityLabel="Note title"
+                autoFocus
+                returnKeyType="next"
+              />
+
+              <TextInput
                 value={text}
                 onChangeText={setDraft}
                 placeholder="What happened, who you were with, what it was like…"
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
                 accessibilityLabel="Note"
-                autoFocus
                 multiline
                 textAlignVertical="top"
                 /* No `returnKeyType: done` and no submit handler: return has to
@@ -137,14 +154,10 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
 
               <Pressable
                 onPress={save}
-                disabled={text.trim().length === 0}
+                disabled={empty}
                 accessibilityRole="button"
                 accessibilityLabel="Save this note"
-                style={({ pressed }) => [
-                  styles.save,
-                  text.trim().length === 0 && styles.saveDisabled,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.save, empty && styles.saveDisabled, pressed && styles.pressed]}
               >
                 <Text style={styles.saveText}>Save</Text>
               </Pressable>
@@ -162,13 +175,6 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
                   <Text style={styles.forgetText}>Delete this note</Text>
                 </Pressable>
               ) : null}
-
-              {/* Worth saying once, where it is relevant: this is the only thing
-                  in the app that a retention limit does not eventually delete. */}
-              <Text style={styles.footnote}>
-                Kept for as long as the app is installed. A limit on how many days of history to keep does not delete
-                what you have written.
-              </Text>
             </>
           ) : null}
         </View>
@@ -189,6 +195,15 @@ const styles = StyleSheet.create({
   },
   title: { ...typography.title, color: colors.textPrimary },
   when: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
+  titleInput: {
+    ...typography.title,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
   input: {
     ...typography.body,
     color: colors.textPrimary,
@@ -210,6 +225,5 @@ const styles = StyleSheet.create({
   saveText: { ...typography.body, fontWeight: '600', color: colors.onAccent },
   forget: { alignItems: 'center', paddingVertical: spacing.sm },
   forgetText: { ...typography.caption, color: colors.danger },
-  footnote: { ...typography.caption, color: colors.textMuted },
   pressed: { opacity: 0.6 },
 });

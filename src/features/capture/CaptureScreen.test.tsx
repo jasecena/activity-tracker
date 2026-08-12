@@ -365,17 +365,6 @@ describe('holding the phone sideways', () => {
     );
   });
 
-  it('leaves a voice note without one, because it has no picture to turn', async () => {
-    const keep = jest.fn(async () => null);
-    await renderCapture(keep);
-
-    await press('Voice');
-    await press('Start voice note');
-    await press('Stop voice note');
-
-    expect(keep).toHaveBeenCalledWith(expect.any(String), 'audio', expect.objectContaining({ orientation: null }));
-  });
-
   it('turns the controls to stay upright, and moves the rail to the edge that is now the top', async () => {
     await renderCapture(async () => null);
 

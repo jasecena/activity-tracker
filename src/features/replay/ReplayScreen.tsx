@@ -17,6 +17,7 @@ import { StatTile } from '@/components/StatTile';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
 
+import type { UseVoiceNote } from '@/features/capture/hooks/useVoiceNote';
 import { useSealedImages } from '@/features/media/hooks/useSealedImages';
 
 import { SPEEDS, useReplay } from './hooks/useReplay';
@@ -57,6 +58,15 @@ interface ReplayScreenProps {
   /** Absent where the timeline is read-only, which is what hides the writing controls. */
   readonly onWriteNote?: (dayKey: string, segments: readonly Segment[]) => void;
   readonly onOpenNote?: (note: DayNote) => void;
+  /**
+   * The voice recorder, or absent where the timeline is read-only.
+   *
+   * It sits beside the note button rather than in Capture, because saying
+   * something aloud about a day and writing it down are the same act with
+   * different hands — and a voice note has no viewfinder to justify opening a
+   * camera for.
+   */
+  readonly voice?: UseVoiceNote;
 }
 
 /**
@@ -95,6 +105,7 @@ export function ReplayScreen({
   notes,
   onWriteNote,
   onOpenNote,
+  voice,
 }: ReplayScreenProps) {
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
@@ -265,6 +276,51 @@ export function ReplayScreen({
           label={`Map of ${title}`}
         />
 
+        {/* Above the player and outside its guard, so a day with no fixes keeps
+            both buttons. That day is the one most worth a note: the app
+            recording nothing is not the same as nothing having happened.
+
+            Icons alone, and large enough to hit without looking. The first
+            version was caption-sized text at the end of a section heading,
+            below the whole map — findable only by somebody who already knew it
+            was there, which is the one thing an entry point must not be. */}
+        <View style={styles.dayActions}>
+          {voice ? (
+            <>
+              {voice.recording ? <Text style={styles.recordingClock}>{formatDuration(voice.elapsedMs)}</Text> : null}
+              <Pressable
+                onPress={voice.toggle}
+                disabled={voice.saving}
+                accessibilityRole="button"
+                accessibilityLabel={voice.recording ? 'Stop the voice note' : 'Record a voice note'}
+                style={({ pressed }) => [
+                  styles.dayAction,
+                  voice.recording && styles.dayActionOn,
+                  voice.saving && styles.dayActionBusy,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name={voice.recording ? 'stop' : 'mic-outline'}
+                  size={22}
+                  color={voice.recording ? colors.onAccent : colors.textPrimary}
+                />
+              </Pressable>
+            </>
+          ) : null}
+
+          {onWriteNote && day ? (
+            <Pressable
+              onPress={() => onWriteNote(day.key, segments)}
+              accessibilityRole="button"
+              accessibilityLabel="Write a note about this day"
+              style={({ pressed }) => [styles.dayAction, pressed && styles.pressed]}
+            >
+              <Ionicons name="create-outline" size={22} color={colors.textPrimary} />
+            </Pressable>
+          ) : null}
+        </View>
+
         {/* The player only exists where there is something to play. A day with
             no fixes gets its stats and its empty timeline and nothing else. */}
         {segments.length > 0 ? (
@@ -376,24 +432,7 @@ export function ReplayScreen({
           </>
         ) : null}
 
-        <View style={styles.timelineHead}>
-          <Text style={styles.sectionLabel}>TIMELINE</Text>
-          {/* Available on a day with nothing in it, and that is the point: the
-              app recording nothing is not the same as nothing having happened,
-              and a day spent somewhere with no signal is exactly the one worth
-              writing a sentence about. */}
-          {onWriteNote && day ? (
-            <Pressable
-              onPress={() => onWriteNote(day.key, segments)}
-              accessibilityRole="button"
-              accessibilityLabel="Write a note about this day"
-              style={({ pressed }) => [styles.addNote, pressed && styles.pressed]}
-            >
-              <Ionicons name="create-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.addNoteText}>Note</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <Text style={styles.sectionLabel}>TIMELINE</Text>
 
         <View style={styles.timeline}>
           {entries.length === 0 ? (
@@ -533,15 +572,27 @@ const styles = StyleSheet.create({
   noticeTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   noticeBody: { ...typography.caption, color: colors.textSecondary },
   sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
-  timelineHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  addNote: {
+  dayActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
-  addNoteText: { ...typography.caption, color: colors.textSecondary },
+  // 44 points, which is the smallest thing iOS asks you to make tappable.
+  dayAction: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dayActionOn: { backgroundColor: colors.danger, borderColor: colors.danger },
+  dayActionBusy: { opacity: 0.5 },
+  recordingClock: { ...typography.clock, color: colors.danger },
   timeline: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
   empty: { ...typography.body, color: colors.textMuted, paddingVertical: spacing.lg, textAlign: 'center' },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },

@@ -163,13 +163,13 @@ describe('CSV quoting', () => {
  * full of commas, quotes and paragraph breaks as a matter of course.
  */
 describe('notesToCsv', () => {
-  const note = (at: number, text: string) => ({ id: `note-${at}`, at, text });
+  const note = (at: number, text: string, title = '') => ({ id: `note-${at}`, at, title, text });
 
   it('writes the instant, the day it belongs to, and the words', () => {
-    const [header, first] = rows(notesToCsv([note(T0, 'Walked to the market')], 0));
+    const [header, first] = rows(notesToCsv([note(T0, 'Walked there with Sam', 'Market day')], 0));
 
-    expect(header).toBe('timestamp,epoch_ms,day,text');
-    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Walked to the market`);
+    expect(header).toBe('timestamp,epoch_ms,day,title,text');
+    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Market day,Walked there with Sam`);
   });
 
   // The day column is the local day, so a note written late in Sydney files
@@ -196,7 +196,7 @@ describe('notesToCsv', () => {
   });
 
   it('writes a header and nothing else for an empty diary', () => {
-    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,text\n');
+    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,title,text\n');
   });
 });
 

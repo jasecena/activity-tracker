@@ -25,8 +25,8 @@ const UTC = 0;
 const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
 const HOUR = 3_600_000;
 
-function note(at: number, text = 'something'): DayNote {
-  return { id: dayNoteId(at), at, text };
+function note(at: number, text = 'something', title = ''): DayNote {
+  return { id: dayNoteId(at), at, title, text };
 }
 
 function stay(startedAt: number, endedAt: number): Segment {
@@ -43,15 +43,19 @@ function stay(startedAt: number, endedAt: number): Segment {
 
 describe('writing one', () => {
   it('keeps the words and derives the id from the instant', () => {
-    expect(noteAt(T0, 'Walked to the market with Sam')).toEqual({
+    expect(noteAt(T0, 'Market day', 'Walked there with Sam')).toEqual({
       id: `note-${T0}`,
       at: T0,
-      text: 'Walked to the market with Sam',
+      title: 'Market day',
+      text: 'Walked there with Sam',
     });
   });
 
   it('trims, because trailing space is not content', () => {
-    expect(noteAt(T0, '  the long way home  ')?.text).toBe('the long way home');
+    const written = noteAt(T0, '  Market day  ', '  the long way home  ');
+
+    expect(written?.title).toBe('Market day');
+    expect(written?.text).toBe('the long way home');
   });
 
   /**
@@ -59,14 +63,24 @@ describe('writing one', () => {
    * in it cannot be read, cannot be tapped accurately and cannot be explained.
    */
   it('refuses to write nothing', () => {
-    expect(noteAt(T0, '')).toBeNull();
-    expect(noteAt(T0, '   \n  ')).toBeNull();
+    expect(noteAt(T0, '', '')).toBeNull();
+    expect(noteAt(T0, '  ', '   \n  ')).toBeNull();
+  });
+
+  /**
+   * Either field on its own is a real entry. "Moved house" says the day; so
+   * does a paragraph nobody wanted to name. Requiring both would be the app
+   * deciding how somebody keeps a diary.
+   */
+  it('accepts a title with no body, and a body with no title', () => {
+    expect(noteAt(T0, 'Moved house', '')?.title).toBe('Moved house');
+    expect(noteAt(T0, '', 'rain all day')?.text).toBe('rain all day');
   });
 
   it('keeps its id when rewritten at the same instant', () => {
     const first = note(T0, 'rain all day');
 
-    const second = noteAt(first.at, 'rain all morning, then sun');
+    const second = noteAt(first.at, '', 'rain all morning, then sun');
 
     expect(second?.id).toBe(first.id);
     expect(second?.text).toBe('rain all morning, then sun');
@@ -78,7 +92,7 @@ describe('writing one', () => {
    * row go rather than the two of them coexisting.
    */
   it('takes a new id when moved to another instant', () => {
-    const moved = noteAt(T0 + 3 * HOUR, 'rain all day');
+    const moved = noteAt(T0 + 3 * HOUR, '', 'rain all day');
 
     expect(moved?.id).toBe(dayNoteId(T0 + 3 * HOUR));
     expect(moved?.id).not.toBe(dayNoteId(T0));
@@ -214,8 +228,24 @@ describe('the days you can open', () => {
 describe('reading the store back', () => {
   it('keeps a note whose id no build ever wrote, rebuilding it from the instant', () => {
     expect(normalizeDayNotes([{ id: 'whatever-this-is', at: T0, text: 'kept' }])).toEqual([
-      { id: dayNoteId(T0), at: T0, text: 'kept' },
+      { id: dayNoteId(T0), at: T0, title: '', text: 'kept' },
     ]);
+  });
+
+  /**
+   * Titles arrived after the first notes did, so an entry written by the build
+   * before this one has no title at all. A missing field, not a broken row —
+   * and the body is the part nothing could reconstruct.
+   */
+  it('reads a note written before titles existed', () => {
+    const [migrated] = normalizeDayNotes([{ id: dayNoteId(T0), at: T0, text: 'written last week' }]);
+
+    expect(migrated?.title).toBe('');
+    expect(migrated?.text).toBe('written last week');
+  });
+
+  it('keeps a note that is a title and nothing else', () => {
+    expect(normalizeDayNotes([{ id: dayNoteId(T0), at: T0, title: 'Moved house', text: '' }])).toHaveLength(1);
   });
 
   it('drops what is not a note at all rather than repairing it', () => {
