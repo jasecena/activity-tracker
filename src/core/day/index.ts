@@ -16,8 +16,6 @@ export {
   noteAt,
   notesForDay,
   whereToWrite,
-  withNotes,
-  type DayEntry,
   type DayNote,
 } from './notes';
 export { summarizeDay, type DaySummary } from './summary';

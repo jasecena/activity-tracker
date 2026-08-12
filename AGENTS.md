@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 669
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 666
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -90,7 +90,10 @@ otherwise apply every merge ever made and offer no way out of any of them.
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
 each with an optional title and a body, stamped with the moment it is about and
-interleaved into the timeline rather than filed under the date. **Either field
+shown in **their own section** on the Day screen, in time order, above the
+timeline. Not rows in it: a timeline is a record of where the phone was minute
+by minute, and a sentence threaded through it arrives as another reading the app
+took. A diary is indexed by the date; the time is a detail within the day. **Either field
 alone is a note**: a title says the day ("Moved house") and so does a paragraph
 nobody wanted to name, and requiring both would be the app deciding how somebody
 keeps a diary. Titles arrived after the first notes did, so `normalizeDayNotes`

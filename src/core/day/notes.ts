@@ -11,12 +11,19 @@ import { dayKeyOf, startOfLocalDay, type DayGroup, type TzOffsetMinutes } from '
  * were with, or that the long way home was on purpose. A note is the part only
  * its author has.
  *
- * **Timestamped and several per day, not one entry per date.** A diary page
- * would have been the smaller model, but the app already knows the shape of a
- * day down to the minute, and a note dropped between the walk and the café
- * reads as part of that day rather than as a paragraph filed under it. It is
- * also the difference between something you write once, in the evening, if you
- * remember — and something you jot as you go.
+ * **Timestamped and several per day, but filed under the day rather than
+ * threaded through it.** Both halves of that matter. The time is kept because
+ * some notes are about a moment — the thing that happened at four o'clock —
+ * and several are allowed because a diary you can only write once a day is one
+ * you write in arrears or not at all.
+ *
+ * What they are *not* is timeline rows. Notes were interleaved between the
+ * stays and journeys for one release and read wrong: a timeline is a record of
+ * where the phone was, minute by minute, and a sentence dropped into it arrived
+ * as another reading the app had taken. The date is what a diary is indexed by;
+ * the time is a detail within the day. So they get their own section, in time
+ * order, above the day the app measured — and `notesForDay` is the whole of
+ * what a day needs to draw them.
  *
  * **Retention never deletes one.** `retentionDays` reaches the day log and the
  * fix archive and stops, and a note is emphatically on the far side of that
@@ -133,36 +140,6 @@ export function notesForDay(
   tzOffsetMinutes: TzOffsetMinutes,
 ): readonly DayNote[] {
   return notes.filter((note) => dayKeyOf(note.at, tzOffsetMinutes) === dayKey).sort((a, b) => a.at - b.at);
-}
-
-/** A row on a day's timeline: something the app recorded, or something you wrote. */
-export type DayEntry =
-  | { readonly kind: 'segment'; readonly at: number; readonly segment: Segment }
-  | { readonly kind: 'note'; readonly at: number; readonly note: DayNote };
-
-/**
- * One list, in time order, of everything a day holds.
- *
- * A note sorts by the instant it is about and a segment by the instant it
- * began. **A segment wins a tie**, deliberately: a note written at the moment a
- * journey starts is a remark about that journey, and reading it above the row it
- * refers to would be backwards.
- *
- * Nothing here is stored. This is the same kind of thing `applyJourneyLabels`
- * does — the notes are kept as their own records, and the combined view is
- * rebuilt whenever it is drawn, so a re-derived day cannot lose one or double
- * one up.
- */
-export function withNotes(segments: readonly Segment[], notes: readonly DayNote[]): readonly DayEntry[] {
-  const entries: DayEntry[] = [
-    ...segments.map((segment): DayEntry => ({ kind: 'segment', at: segment.startedAt, segment })),
-    ...notes.map((note): DayEntry => ({ kind: 'note', at: note.at, note })),
-  ];
-
-  // A stable sort, which `Array.prototype.sort` has been required to be since
-  // ES2019 — so equal instants keep the order they were built in, and that
-  // order puts segments first.
-  return entries.sort((a, b) => a.at - b.at);
 }
 
 /**
