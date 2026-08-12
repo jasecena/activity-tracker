@@ -56,6 +56,12 @@ export const STORAGE_KEYS = {
    * Freezing now writes one key: the day that just ended. Trimming deletes
    * whole keys by their date, so retention costs one read at the boundary
    * rather than a pass over everything.
+   *
+   * What is written is also **compacted**: nothing folds these again, so a
+   * stationary run is stored as its arrival and its departure and the hundreds
+   * of readings between them are gone. See `core/compact`. That is what bounds
+   * the growth here at all — retention only reaches the far end, and a phone
+   * sitting on a desk fills this faster than one out walking.
    */
   fixArchive: `${PREFIX}fix-archive/`,
   /** Places you have named. */

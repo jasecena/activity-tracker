@@ -157,8 +157,9 @@ export function DataScreen({
         {first && last ? (
           <Text style={styles.footnote}>
             Raw fixes cover {formatIsoWithOffset(first.at, tzOffsetMinutes).slice(0, 16).replace('T', ' ')} to{' '}
-            {formatIsoWithOffset(last.at, tzOffsetMinutes).slice(0, 16).replace('T', ' ')}. Older raw fixes are deleted
-            once their day is finished — only the route points and the timeline survive.
+            {formatIsoWithOffset(last.at, tzOffsetMinutes).slice(0, 16).replace('T', ' ')}. Older raw fixes are archived
+            once their day is finished, and thinned as they go: a stretch where you did not move keeps its arrival and
+            its departure, because the hundreds of readings in between all said the same thing.
           </Text>
         ) : (
           <Text style={styles.footnote}>

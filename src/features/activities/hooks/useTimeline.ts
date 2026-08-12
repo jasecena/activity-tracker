@@ -21,8 +21,10 @@ export interface Timeline {
    * The raw fix buffer, as read this refresh.
    *
    * Held so the Data screen can show what actually exists and export it. Note
-   * what it is *not*: all of history. Once a day is frozen its raw fixes are
-   * pruned and only the derived segments survive — see `services/dayLog.ts`.
+   * what it is *not*: all of history. Once a day is frozen its raw fixes leave
+   * for the archive — see `services/dayLog.ts` — and what remains here has had
+   * its stationary runs thinned to a skeleton, which is why a long afternoon at
+   * a desk stops adding rows to it.
    */
   fixes: readonly Fix[];
   now: number;
@@ -90,6 +92,7 @@ export function useTimeline(settings: Settings, labels: readonly JourneyLabel[],
           now: at,
           tzOffsetMinutes: offset,
           retentionDays: settings.retentionDays,
+          segmentation: settings.segmentation,
         }),
       );
 
