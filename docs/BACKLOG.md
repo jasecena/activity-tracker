@@ -532,17 +532,10 @@ carrying the audio and nothing about the note. Reasoning in
 
 **What is left of this item**, and it is the more interesting half:
 
-- **The LLM pass over the text** — three buttons, agreed 13 August 2026: fix the
-  grammar and improve it a little; write a diary for today from the text; and a
-  custom prompt. Text plus prompt to a pay-as-you-go API, the response comes back
-  as a candidate, and it is approved before it overrides. Multiple attempts are
-  expected. Provider undecided between Anthropic and OpenAI — at a few notes a
-  day the price difference is about a dollar a month, so the decision is Persian
-  output quality and should be settled by running real notes through both rather
-  than by a benchmark. Build a seam, not a choice.
-  - **Open question:** "write a diary for today" — one note, or all of today's
-    notes together? One note keeps the button in the sheet; the whole day makes it
-    a Day-screen button whose output is a _new_ note. Not yet answered.
+- **The LLM pass over the text** has moved to **item 17**, where it has room to
+  be argued properly. It is a separate feature: a different service, a different
+  network request, and — unlike transcription — one that _overwrites_ what its
+  owner wrote.
 - **The three layers of text.** What shipped is simpler than what was designed
   below, and deliberately: append-only into the note body, edited by hand. That
   turned out to satisfy the property the three layers existed for — nothing is
@@ -751,6 +744,117 @@ kept on the app's behalf, is a thing that did not exist before — and the reaso
 keeping and a history of measurements was not. Persisting anything reopens that,
 which is why the ring buffer is capped by count and why what goes in it is
 `shape` rather than content. **Decide that before writing code, not after.**
+
+---
+
+## 17. Rewriting a note with an LLM: three buttons and an approval
+
+**Status:** not started, designed in conversation on 13 August 2026, with two
+questions still open — they are at the bottom and both need answering before
+code. This is the second half of what item 15 set out to enable, and it is a
+separate feature rather than a continuation: a different service, a **third**
+network request, and the first thing in this app that _overwrites something its
+owner wrote_.
+
+### The shape, as asked for
+
+Three buttons on a note, all doing the same thing with a different prompt:
+
+1. **Fix the grammar and improve it a little.** Correction, not rewriting.
+2. **Write a diary for today based on the text.** Synthesis.
+3. **A custom prompt**, typed at the time.
+
+Each sends **the note's text plus a prompt** to a pay-as-you-go LLM API. The
+response comes back as a **candidate**, shown for approval, and only replaces the
+text when it is accepted. Several attempts on one note are expected and normal.
+
+### The property that makes this safe, and it is not the same one as transcription
+
+Transcription is safe because it **appends** — `appendTranscript` cannot destroy
+anything, so the button can be pressed carelessly and twice. This one
+**replaces**, which is a different bargain and needs a different guard:
+
+- **The original is kept until the moment it is replaced**, and replacement is a
+  deliberate act. That is what its author asked for and it is the whole safety.
+- **Every attempt runs against the original, never against the last attempt.**
+  Chaining is how quality drifts: pass two "improves" the improvement, pass three
+  improves that, and by the fourth the note is about something else. A retry is a
+  fresh call on the same input, so the attempts are siblings rather than a chain.
+- **Rejecting costs nothing.** The candidate is held in the sheet, like a
+  transcription is; closing without approving leaves the note exactly as it was.
+
+This is also why the three-layers-of-text idea from item 15 may come back here
+even though transcription did not need it. Append-only made layers unnecessary;
+replacement may make them necessary again. Decide when the shape is real, not
+now.
+
+### The two open questions
+
+**1. Which provider — Anthropic or OpenAI?**
+
+Measured 13 August 2026, per ~300 Persian words in and out (~1K tokens each way):
+
+| Model            | Per attempt | 100 notes/month, 2 attempts |
+| ---------------- | ----------- | --------------------------- |
+| GPT-5 Nano       | $0.00045    | $0.09                       |
+| GPT-5 Mini       | $0.0011     | $0.22                       |
+| Claude Haiku 4.5 | $0.006      | $1.20                       |
+
+The spread is **about a dollar a month**, so price is the wrong variable to
+decide on. **Persian output quality is the right one**, and it is empirical: a
+benchmark table cannot answer it and neither can an argument. The
+recommendation is to build a provider seam, run three or four real notes through
+both, keep the winner and delete the loser — the same discipline item 15 applied
+to Scribe ("ten minutes of real audio… the actual voice, the actual room").
+
+It also probably splits by button. Grammar correction is easy and any of these
+will do it; **"write a diary" is generative writing in Persian**, which is where
+a small model reads flat, and that button is what should decide the provider. A
+model-per-button setting costs one string and buys the ability to be cheap where
+cheap is fine.
+
+**2. Does "write a diary for today" read one note, or the whole day?**
+
+This is not a detail — it builds two different features:
+
+- **One note** → the button sits in the note sheet beside the other two, and
+  rewrites that note. Simple, consistent with the rest.
+- **The whole day** → it belongs on the Day screen next to the pen, reads every
+  note of that day, and its output is a **new** note rather than a replacement —
+  at which point it is not really a rewrite button at all and the "keep the
+  original" guard above does not apply to it.
+
+The phrase suggests the second. Unanswered.
+
+### What it costs the app's argument
+
+**A third network request**, and `docs/ARCHITECTURE.md` § 12 goes from two to
+three. The pattern is already established by § 12c and should be copied exactly
+rather than reinvented:
+
+- **An empty key is the only gate**, so a fresh install cannot send anything and
+  clearing the field withdraws the feature.
+- **Nothing automatic.** A press, one note, watched.
+- **The request carries the text and the prompt and nothing else** — not the day,
+  not the position, not the recording, not the other notes (unless the answer to
+  question 2 is "the whole day", in which case that is exactly what changes and
+  the Settings copy has to say so).
+- **The key lives in the vault**, entered in Settings, never in a build.
+- The Settings paragraph reads **eight** ways once there are three switches, at
+  which point `networkNote` stops being a chain of conditionals and needs to
+  compose a list instead. Worth doing when the third arrives, not before.
+
+The honest new disclosure: transcription sends **a recording**; this sends **what
+you wrote**. Those are different sentences and the permission-adjacent copy needs
+both.
+
+### Shape of the code
+
+Same split as everything else. The three prompts and the candidate/approval
+arithmetic are **pure and live in `core`**, testable on Linux; one file in
+`services` makes the request. A provider seam means one interface and a thin
+adapter each, so switching is a setting rather than a rewrite — and the loser
+costs one file to delete once the question above is settled.
 
 ---
 
