@@ -6,7 +6,6 @@ import {
   noteAt,
   notesForDay,
   whereToWrite,
-  withNotes,
   type DayNote,
 } from '../notes';
 import type { Segment } from '../../segments';
@@ -157,27 +156,6 @@ describe('reading a day back', () => {
     const notes = [note(T0 + 2 * HOUR, 'later'), note(T0, 'earlier'), note(T0 + 48 * HOUR, 'another day')];
 
     expect(notesForDay(notes, '2026-01-05', UTC).map((one) => one.text)).toEqual(['earlier', 'later']);
-  });
-
-  it('interleaves what you wrote with what the app recorded', () => {
-    const segments = [stay(T0, T0 + HOUR), stay(T0 + 2 * HOUR, T0 + 3 * HOUR)];
-    const notes = [note(T0 + 90 * 60_000, 'between the two')];
-
-    expect(withNotes(segments, notes).map((entry) => entry.kind)).toEqual(['segment', 'note', 'segment']);
-  });
-
-  /**
-   * A note written at the instant a journey starts is a remark *about* that
-   * journey, so reading it above the row it refers to would be backwards.
-   */
-  it('puts the segment first when a note lands on its start', () => {
-    const entries = withNotes([stay(T0, T0 + HOUR)], [note(T0, 'setting off')]);
-
-    expect(entries.map((entry) => entry.kind)).toEqual(['segment', 'note']);
-  });
-
-  it('is happy with a day that is nothing but notes', () => {
-    expect(withNotes([], [note(T0)]).map((entry) => entry.kind)).toEqual(['note']);
   });
 });
 

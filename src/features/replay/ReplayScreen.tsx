@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { notesForDay, summarizeDay, withNotes, type DayGroup, type DayNote } from '@/core/day';
+import { notesForDay, summarizeDay, type DayGroup, type DayNote } from '@/core/day';
 import { activeCalories } from '@/core/energy';
 import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
@@ -125,7 +125,6 @@ export function ReplayScreen({
     () => (day ? notesForDay(notes ?? [], day.key, tzOffsetMinutes) : []),
     [day, notes, tzOffsetMinutes],
   );
-  const entries = useMemo(() => withNotes(segments, dayNotes), [segments, dayNotes]);
 
   const replay = useReplay(segments);
 
@@ -321,6 +320,23 @@ export function ReplayScreen({
           ) : null}
         </View>
 
+        {/* Its own section rather than rows in the timeline, and directly under
+            the buttons that write one. A timeline is a record of where the phone
+            was, minute by minute; a sentence threaded into it arrived as another
+            reading the app had taken. What a diary is indexed by is the date —
+            the time is a detail within the day, which is why these still sort by
+            it. */}
+        {dayNotes.length > 0 ? (
+          <>
+            <Text style={styles.sectionLabel}>NOTES</Text>
+            <View style={styles.timeline}>
+              {dayNotes.map((note) => (
+                <NoteRow key={note.id} note={note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpenNote} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
         {/* The player only exists where there is something to play. A day with
             no fixes gets its stats and its empty timeline and nothing else. */}
         {segments.length > 0 ? (
@@ -435,22 +451,19 @@ export function ReplayScreen({
         <Text style={styles.sectionLabel}>TIMELINE</Text>
 
         <View style={styles.timeline}>
-          {entries.length === 0 ? (
+          {segments.length === 0 ? (
             <Text style={styles.empty}>
               {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
             </Text>
           ) : (
-            entries.map((entry) =>
-              entry.kind === 'note' ? (
-                <NoteRow key={entry.note.id} note={entry.note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpenNote} />
-              ) : (
-                <SegmentRow
-                  key={entry.segment.id}
-                  segment={entry.segment}
-                  places={places}
-                  tzOffsetMinutes={tzOffsetMinutes}
-                  onOpen={onOpenSegment}
-                  /* Long press rather than a swipe. A row on a list that scrolls
+            segments.map((segment) => (
+              <SegmentRow
+                key={segment.id}
+                segment={segment}
+                places={places}
+                tzOffsetMinutes={tzOffsetMinutes}
+                onOpen={onOpenSegment}
+                /* Long press rather than a swipe. A row on a list that scrolls
                      vertically has to hand a horizontal drag back to the
                      scroller often enough that the gesture is unreliable by
                      nature, and a correction that only sometimes happens is
@@ -458,14 +471,9 @@ export function ReplayScreen({
 
                      Only a journey. A stay has no activity type, so a stay that
                      opened this would be an action leading nowhere. */
-                  onLongPress={
-                    onCorrectMode && entry.segment.kind === 'move'
-                      ? () => onCorrectMode(entry.segment as MoveSegment)
-                      : undefined
-                  }
-                />
-              ),
-            )
+                onLongPress={onCorrectMode && segment.kind === 'move' ? () => onCorrectMode(segment) : undefined}
+              />
+            ))
           )}
         </View>
       </ScrollView>

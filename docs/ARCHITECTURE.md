@@ -13,7 +13,7 @@ from React, React Native, Expo or `src/services`, and ESLint makes that an error
 rather than a convention.
 
 The obvious reason is testability: an app about being in motion is otherwise
-untestable on a CI runner that is bolted to a rack. 669 tests run in about nine
+untestable on a CI runner that is bolted to a rack. 666 tests run in about nine
 seconds on Linux, including property tests over generated fix streams.
 
 The less obvious reason is the persistence design. Because folding is
@@ -530,12 +530,19 @@ arrived a release after the notes did, so a stored entry may have none:
 `normalizeDayNotes` defaults it rather than dropping the row, which is the same
 instinct as everything else here — the body is the part nothing can reconstruct.
 
-**Timestamped, several per day.** A page per date would have been the smaller
-model, but the app already knows the shape of a day to the minute, and a note
-dropped between the walk and the café reads as part of that day rather than as a
-paragraph filed under it. `withNotes` interleaves them at draw time — nothing
-combined is stored, the same way `applyJourneyLabels` re-cuts labels against a
-re-derived day.
+**Timestamped and several per day, but filed under the day rather than threaded
+through it.** The time is kept because some notes are about a moment; several
+are allowed because a diary you can only write once a day is one you write in
+arrears or not at all.
+
+They are **not** timeline rows, and that is the second attempt. Interleaving
+them between the stays and journeys read wrong: a timeline is a record of where
+the phone was, minute by minute, and a sentence dropped into it arrived as
+another reading the app had taken. A diary is indexed by the **date** — the time
+is a detail within the day — so notes get their own section, in time order,
+directly under the buttons that write them and above the day the app measured.
+`notesForDay` is the whole of what a day needs to draw them; nothing combined is
+stored.
 
 **Ids are derived from the instant**, `note-<at>`, because `core` has no entropy
 source. That makes an edit at the same instant an update rather than a duplicate,
