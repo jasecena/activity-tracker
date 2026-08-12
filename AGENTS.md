@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 737
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 782
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -85,6 +85,15 @@ finding the label behind a row by its id. Half a feature is worse than none. The
 merges themselves are dropped on launch — a merge was a label with an empty
 name, so anything nameless goes — because a build with no merge button would
 otherwise apply every merge ever made and offer no way out of any of them.
+
+**A transcript is appended to a note, never written over it.** `appendTranscript`
+puts the text under whatever was there, so a bad transcription costs a paragraph
+deleted by hand and no press of a button can eat something its owner wrote.
+Transcribing twice appends twice, on purpose — a second attempt at a misheard
+name is a normal thing to want. It lands in the sheet's **draft**, so Save is the
+approval rather than a second confirmation, and a note that was only a recording
+gets no separator because that is the ordinary case for the feature rather than
+an edge of it.
 
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
@@ -277,13 +286,38 @@ and an `<Image>` handed ciphertext draws nothing — so treating a non-null
 `thumbFileName` as good enough left every old capture as a blank square in the
 filmstrip, with an index that looked perfectly healthy.
 
-**The app makes exactly one kind of network request, and only when you ask.**
-There is no analytics, no telemetry, no crash reporting and no geocoder — that is
-still why a place has no name until you type one. The one exception is Apple Maps
-imagery, behind `settings.mapsEnabled`, which is **off on a fresh install**. Your
-track is never sent: it is an overlay drawn on the device. With it off, every map
-is the offline canvas in `components/MapCanvas.tsx`, which is also the only file
-that may import `expo-maps`. App Transport Security stays fully enforced.
+**The app makes exactly two kinds of network request, and only when you ask.**
+This revises "exactly one", which held until transcription shipped. There is
+still no analytics, no telemetry, no crash reporting and no geocoder — that is
+still why a place has no name until you type one — and the list is still
+enumerable in a sentence, which is the property worth defending rather than the
+number.
+
+The first is **Apple Maps imagery**, behind `settings.mapsEnabled`, **off on a
+fresh install**. Your track is never sent: it is an overlay drawn on the device.
+With it off, every map is the offline canvas in `components/MapCanvas.tsx`, which
+is also the only file that may import `expo-maps`.
+
+The second is **one voice note to ElevenLabs**, and it is heavier than the first
+because it is a recording of the app's owner rather than a region of a map.
+`services/transcribe.ts` is the only file that knows the endpoint exists. Three
+properties hold it down, and all three are asserted in tests rather than merely
+intended: **an empty `settings.transcriptionKey` is the only gate**, so a fresh
+install cannot transcribe at all and clearing the field withdraws the feature;
+**nothing is automatic**, so a recording is uploaded on a press and never by a
+queue, a launch or a retry; and **the request carries the audio, the model and
+the language and nothing else** — not the note's words, its title, its day or the
+position on it.
+
+App Transport Security stays fully enforced for both.
+
+**Every claim about this is state-dependent now, and that is a trap.** The
+Settings paragraph reads four ways (`networkNote`), and the microphone
+permission string stopped saying "never uploaded" — it was true through v0.5.3
+and false the moment a key could be entered. The v0.4.0 audit found this exact
+failure twice, both times in the direction of claiming more protection than the
+app provided; a third time would be in a string somebody reads once, at a
+permission prompt, while deciding whether to trust the app.
 
 **A capture stores where it was taken, in two places, from one reading.** On
 the item and in the fix stream: the copy on the item is what the media screen
@@ -633,8 +667,9 @@ to Apple, so a printed span has left the sandbox and a held one has not. And
 **nothing is persisted or exported**, the CSV included, because that one goes
 through the share sheet.
 
-No analytics SDK can satisfy any of this, so the one-request rule already
-forbids the thing that would otherwise be reached for. Most of what the
+No analytics SDK can satisfy any of this, and the enumerable-requests rule
+already forbids the thing that would otherwise be reached for — the list of what
+leaves the phone is two entries long and each one is a deliberate press. Most of what the
 remaining audits need ships nothing at all: Instruments, the Hermes sampling
 profiler and the RN performance monitor attach from outside, cost the release
 binary nothing, and never leave the Mac. In-app spans are for what a profiler

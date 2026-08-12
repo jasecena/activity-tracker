@@ -121,6 +121,52 @@ export function dayNoteId(at: number): string {
 }
 
 /**
+ * What sits between what was already written and what was just transcribed.
+ *
+ * An em dash on its own line, deliberately not `---` or any other Markdown: a
+ * note is plain text and nothing renders it, so a marker has to read as a break
+ * to a person rather than to a parser. It is also direction-neutral, which
+ * matters when the text either side of it is Persian.
+ */
+export const TRANSCRIPT_SEPARATOR = '\n\n—\n\n';
+
+/**
+ * Put a transcript at the end of what a note already says.
+ *
+ * **Append, never replace, and that is the whole safety of transcription.** The
+ * recording stays on the note and the text it produced lands underneath
+ * whatever was there — so a bad transcript costs a paragraph you delete by
+ * hand, and no press of a button can ever eat something you wrote. It is the
+ * same conclusion `docs/BACKLOG.md` § 15 reached from the other direction: the
+ * audio is the record and the text is a reading of it, so the reading is never
+ * allowed to overwrite the record or the writing beside it.
+ *
+ * Transcribing twice therefore appends twice, on purpose. A transcript you want
+ * a second attempt at is common — the first one misheard a name, the room was
+ * loud — and the honest way to offer that is to add the new attempt and let you
+ * throw away the one you like less.
+ *
+ * Two edges, both of which happen constantly rather than in theory:
+ *
+ * **A note that is only a recording gets no separator.** That is the ordinary
+ * case for this feature — you talked, you never typed — and a note opening with
+ * a dash above its first line would be the app's punctuation, not yours.
+ *
+ * **A transcript of silence adds nothing at all.** Scribe answers an empty
+ * string for a recording with no speech in it, and appending a separator to
+ * nothing would leave a dash floating under the text with no explanation.
+ */
+export function appendTranscript(text: string, transcript: string): string {
+  const addition = transcript.trim();
+  if (addition.length === 0) return text;
+
+  const body = text.trim();
+  if (body.length === 0) return addition;
+
+  return `${body}${TRANSCRIPT_SEPARATOR}${addition}`;
+}
+
+/**
  * The instant to file a new note under, given the ones already written.
  *
  * Ids are derived from the instant, so two notes sharing one would be a single

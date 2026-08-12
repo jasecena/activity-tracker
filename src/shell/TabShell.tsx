@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { daysWorthOpening, groupByDay, whereToWrite, type DayNote } from '@/core/day';
+import { daysWorthOpening, groupByDay, whereToWrite, type DayNote, type NoteVoice } from '@/core/day';
 import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
@@ -33,6 +33,8 @@ import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
 import { now as readNow } from '@/services/clock';
+import { noteAudioUri } from '@/services/noteAudio';
+import { transcribe } from '@/services/transcribe';
 import { colors, spacing } from '@/theme/tokens';
 
 import { SwipeBackPage } from './SwipeBackPage';
@@ -186,6 +188,30 @@ export function TabShell() {
    * three screens ask the same question.
    */
   const captures = useMemo(() => capturesOnly(media.items), [media.items]);
+
+  /**
+   * Turning a recording into text, or undefined when there is no key.
+   *
+   * Undefined is what hides the button entirely: with no key there is no
+   * feature, and the absence of a key is the only gate there is — see
+   * `settings.transcriptionKey`. Hoisted here because this is the layer that
+   * holds the settings; the sheet never sees the key itself, only a function
+   * that happens to close over it.
+   */
+  const transcriptionKey = settings.settings.transcriptionKey;
+  const transcriptionLanguage = settings.settings.transcriptionLanguage;
+  const onTranscribe = useMemo(
+    () =>
+      transcriptionKey.length === 0
+        ? undefined
+        : async (voice: NoteVoice) =>
+            transcribe({
+              uri: noteAudioUri(voice.fileName) ?? '',
+              apiKey: transcriptionKey,
+              languageCode: transcriptionLanguage,
+            }),
+    [transcriptionKey, transcriptionLanguage],
+  );
 
   // Today is a day like any other to the player, so it is grouped the same way
   // rather than special-cased into the list.
@@ -507,6 +533,7 @@ export function TabShell() {
         }}
         // Only over a note that exists. Deleting is also what emptying the
         // field does, so this is the explicit way rather than the only one.
+        onTranscribe={onTranscribe}
         onForget={writingNote?.kind === 'edit' ? () => notes.forget(writingNote.note.id) : undefined}
         onClose={() => setWritingNote(null)}
       />

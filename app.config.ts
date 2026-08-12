@@ -50,8 +50,21 @@ const ALWAYS_REASON =
  */
 const CAMERA_REASON =
   'Takes the photos and videos you attach to a day in your diary. They stay in this app on this phone, are kept out of backups, and are never uploaded.';
+/**
+ * **This string stopped saying "never uploaded" when transcription shipped.**
+ *
+ * It was true for every release up to v0.5.3 and became false the moment a
+ * voice note could be sent to ElevenLabs — even though that upload needs an API
+ * key, a button press, and one note at a time. A permission string is read once,
+ * at the prompt, by somebody deciding whether to trust the app; "never" with an
+ * asterisk they cannot see is exactly the drift the v0.4.0 audit was about, and
+ * `docs/DEPLOYMENT.md` § 4 says to re-read these before submitting for that
+ * reason.
+ *
+ * What replaces it says the default and names the exception, in that order.
+ */
 const MICROPHONE_REASON =
-  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They stay in this app on this phone, are kept out of backups, and are never uploaded.';
+  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They stay in this app on this phone and are kept out of backups. A voice note is only ever uploaded if you add a transcription key and press Transcribe on that note.';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
