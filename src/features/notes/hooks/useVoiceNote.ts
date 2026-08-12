@@ -14,7 +14,7 @@ export interface UseVoiceNote {
   /** Between the stop and the file being written. Both count as busy. */
   readonly saving: boolean;
   readonly elapsedMs: number;
-  /** Begin. Deliberately separate from `stop`: see `HoldToRecord`. */
+  /** Begin. Deliberately separate from `stop`: see `RecordButton`. */
   readonly start: () => void;
   readonly stop: () => void;
 }
@@ -32,11 +32,15 @@ export interface UseVoiceNote {
  * which is what makes recording and typing genuinely interchangeable rather
  * than two features that happen to sit near each other.
  *
- * `start` and `stop` are separate, where this used to be one `toggle`. The
- * button that drives it is held for a second before it begins and tapped once
- * to end — a single toggle would make an accidental double tap a recording that
- * started and stopped, which is the confusion `HoldToRecord` was built to
- * remove.
+ * `start` and `stop` are separate rather than one `toggle`, and they stayed
+ * that way after the hold was withdrawn: the caller decides which of the two a
+ * press means from state it already renders, so the hook never has to guess
+ * whether a press arriving mid-save was meant to start or to stop.
+ *
+ * **`stop` flips `recording` to false before its first `await`.** The button
+ * reverts in the same tick as the press and the file is written behind it —
+ * a control that waits for a file system before admitting it was pressed is a
+ * control people press twice.
  *
  * Two things survive from the camera screen this came off, and they are the two
  * that were hard-won:

@@ -2,8 +2,6 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { dayNoteId, type DayNote, type NoteVoice } from '@/core/day';
 
-import { HOLD_MS } from '../hold';
-
 import { NoteSheet } from './NoteSheet';
 
 /**
@@ -42,7 +40,7 @@ afterEach(() => {
 it('offers the recorder beside the writing, not on the screen behind it', async () => {
   await render(sheet());
 
-  expect(screen.getByLabelText('Hold to record a voice note')).toBeTruthy();
+  expect(screen.getByLabelText('Record a voice note')).toBeTruthy();
   expect(screen.getByLabelText('Note')).toBeTruthy();
 });
 
@@ -54,10 +52,7 @@ it('saves a recording made here as part of the note', async () => {
   const onSave = jest.fn();
   await render(sheet({ onSave }));
 
-  await fireEvent(screen.getByLabelText('Hold to record a voice note'), 'pressIn');
-  await act(async () => {
-    jest.advanceTimersByTime(HOLD_MS);
-  });
+  await fireEvent.press(screen.getByLabelText('Record a voice note'));
   await act(async () => undefined);
   await fireEvent.press(screen.getByLabelText('Stop recording'));
   await act(async () => undefined);

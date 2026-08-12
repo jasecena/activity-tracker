@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer } from 'expo-audio';
-import { useState } from 'react';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { NoteVoice } from '@/core/day';
@@ -39,7 +38,33 @@ interface VoiceNotePlayerProps {
 export function VoiceNotePlayer({ voice, onForget }: VoiceNotePlayerProps) {
   const uri = noteAudioUri(voice.fileName);
   const player = useAudioPlayer(uri ?? undefined);
-  const [playing, setPlaying] = useState(false);
+  const status = useAudioPlayerStatus(player);
+
+  /**
+   * Whether it is playing is **read from the player**, never mirrored.
+   *
+   * The obvious version holds a `playing` boolean and flips it on every press,
+   * and it is wrong in the one case that matters: a clip that plays to its end
+   * stops on its own, the boolean says otherwise, and the button sits on
+   * "pause" over silence. The next press then pauses something already
+   * stopped, and the one after resumes from the end and finishes instantly —
+   * two presses to get back to the start of a thirty-second note, neither
+   * doing what it says.
+   *
+   * Deriving it means the button cannot disagree with the audio, and there is
+   * no state to keep in step. It is also why there is no effect here: an
+   * effect that copies player state into React state is the same bug written
+   * more slowly, which is what `react-hooks/set-state-in-effect` is for.
+   */
+  const playing = status.playing;
+
+  /**
+   * Sitting at the end, so the next press should start again rather than
+   * resume into silence. Rewinding on the press rather than on the finish
+   * keeps every decision in one place — and there is nothing to do about a
+   * finished clip until somebody asks for it again.
+   */
+  const atEnd = status.duration > 0 && status.currentTime >= status.duration;
 
   if (!uri) {
     return (
@@ -54,9 +79,12 @@ export function VoiceNotePlayer({ voice, onForget }: VoiceNotePlayerProps) {
     <View style={styles.row}>
       <Pressable
         onPress={() => {
-          if (playing) player.pause();
-          else player.play();
-          setPlaying(!playing);
+          if (playing) {
+            player.pause();
+            return;
+          }
+          if (atEnd) void player.seekTo(0);
+          player.play();
         }}
         accessibilityRole="button"
         accessibilityLabel={playing ? 'Pause the recording' : 'Play the recording'}

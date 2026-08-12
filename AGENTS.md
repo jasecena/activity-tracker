@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 782
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 780
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -584,13 +584,31 @@ capture into a note holding the same recording — one at a time, because both
 stores read their list out of the closure they were built in and a loop would
 write five notes over one snapshot.
 
-**Starting is a one-second hold with a ring that fills; stopping is a tap.** The
-recorder sits a thumb's width from the keyboard and Save, so a tap-to-toggle
-makes an accidental double tap into a recording that started and stopped — a
-second of silence attached to a diary entry. `HoldToRecord` decides with a
-single timeout of exactly `HOLD_MS` and draws with a separate interval, so a
-dropped frame cannot lengthen the hold; `hold.ts` exports the arithmetic and it
-is tested directly, per `SwipeBackPage`'s precedent.
+**Tap to start, tap to stop, and the hold-to-record ring was withdrawn after
+being used.** The ring was a one-second hold that filled an arc before recording
+began, built so an accidental double tap could not become a recording that
+started and stopped. It worked, and it was still wrong: it taxed the deliberate
+case every single time to prevent an occasional mistake, and the tax was a
+second of holding still and watching an arc on the one control whose whole job
+is to be pressed the moment you have something to say. No duration tunes that
+away — it is the shape that is wrong.
+
+What prevents the double tap now is the **glyph changing** — a microphone
+becomes a square — so the state survives a glance, a greyscale screen and a
+colourblind reader. Colour moves with it as a second signal and nothing depends
+on it. `RecordButton` is deliberately dumb: it renders the state it is handed
+and calls one of two callbacks.
+
+**Stopping is synchronous to the eye.** `stop` flips `recording` before its
+first `await`, and the file is written behind the change. A control that waits
+for a file system before admitting it was pressed is a control people press
+twice — which is the very thing the hold existed to prevent, arriving through
+the other door. Save is held shut for that fraction of a second instead, because
+the note has no `voice` until the file lands.
+
+**The recorder sits on the right of the row and playback on the left.** The
+right is where the thumb is, and the recorder is the button reached for with
+something to say; the player is only ever reached afterwards.
 
 **The two things that were hard-won on the camera screen survive both moves:**
 the position is read at the **start** and kept in a **ref** (`stop` resolves

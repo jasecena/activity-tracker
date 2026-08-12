@@ -640,19 +640,57 @@ is the same rule as the retired `live` kind (§ 16): a feature that moves takes
 its rows with it, or somebody's recording is still on disk and unreachable from
 anywhere in the app.
 
-**Starting is a one-second hold with a ring that fills; stopping is a tap.** The
-recorder sits a thumb's width from the keyboard and Save, so a tap-to-toggle
-turns an accidental double tap into a recording that started and stopped — a
-second of silence attached to a diary entry, with nothing to explain it. A
-deliberate second cannot be done by accident, and the ring is what makes the
-second bearable: a button that does nothing for a second is broken, a button
-filling a ring is counting down. `HoldToRecord` decides with a **single timeout**
-of exactly `HOLD_MS` and draws with a separate interval, so a dropped frame or a
-batched render cannot quietly lengthen the hold; `hold.ts` exports the
-arithmetic, tested directly on `SwipeBackPage`'s precedent, because "the ring
-read full at three-quarters" is an instruction to let go too early and is
-invisible in a rendered assertion. Stopping stays a tap: the confusion was only
-ever about beginning something you did not mean to.
+### The hold-to-record ring was built, shipped, used, and withdrawn
+
+It is written up here rather than deleted, because withdrawing is a decision.
+
+**What it was.** Starting a recording meant holding the microphone for one
+second while an arc filled around it. `HoldToRecord` decided with a single
+timeout of exactly `HOLD_MS` and drew with a separate interval, so a dropped
+frame could not quietly lengthen the hold; `hold.ts` exported the arithmetic and
+was tested directly on `SwipeBackPage`'s precedent, because "the ring read full
+at three-quarters" is an instruction to let go too early and is invisible in a
+rendered assertion.
+
+**Why it existed.** The recorder sits a thumb's width from the keyboard and
+Save, so a tap-to-toggle turns an accidental double tap into a recording that
+started and stopped — a second of silence attached to a diary entry with nothing
+to explain it. A deliberate second cannot be done by accident.
+
+**Why it went, which is the part worth keeping.** The reasoning was sound and
+the trade was still wrong. It made every deliberate recording pay a second of
+holding still and watching an arc, on the one control in the app whose entire
+job is to be pressed the _moment_ there is something to say — and the thing it
+was protecting against was occasional and recoverable (a one-second clip you
+delete). A guard that taxes the intended path every time to prevent a cheap,
+rare mistake is the wrong shape, and no amount of tuning `HOLD_MS` changes that:
+shorter stops preventing the double tap, longer makes the tax worse.
+
+This is the second control in this app withdrawn for the same reason — see the
+pan-to-zoom wheel (§ 16), which was "never reliably better than tapping a lens,
+and the gesture cost more than the control was worth." A gesture that has to be
+learned, waited through, or held is competing against a tap, and a tap is very
+hard to beat.
+
+**What replaced it.** Tap to start, tap to stop. The double tap is prevented by
+the **glyph changing** rather than by a delay: a microphone becomes a square, so
+the state is legible at a glance, in sunlight, in greyscale and to a colourblind
+reader. Colour moves with it because two signals beat one, but nothing depends
+on colour alone. `RecordButton` renders the state it is handed and calls one of
+two callbacks; there is no timer in it at all.
+
+**Stopping is synchronous to the eye.** `stop` flips `recording` before its
+first `await` and the file is written behind the change, so the button reverts
+in the same tick as the press. A control that waits for a file system before
+admitting it was pressed is a control people press twice — the very failure the
+hold existed to prevent, arriving through the other door. What is held shut for
+that fraction of a second is _Save_, not the recorder: the note has no `voice`
+until the file lands, so a Save inside that window would store the note without
+its recording.
+
+**Layout.** The recorder is on the right of the row, playback on the left. The
+right is where the thumb is, and the recorder is the control reached for with
+something to say; the player is only ever reached afterwards.
 
 `useVoiceNote` carries over the two things that were expensive to learn on the
 camera screen: the position is read at the start and held in a **ref**, since

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -10,7 +11,7 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { useVoiceNote } from '../hooks/useVoiceNote';
 
-import { HoldToRecord } from './HoldToRecord';
+import { RecordButton } from './RecordButton';
 
 interface NoteSheetProps {
   /**
@@ -124,6 +125,14 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
   const [transcribed, setTranscribed] = useState(false);
   const [failure, setFailure] = useState<TranscriptionFailure | null>(null);
   /**
+   * The service's own words about the last failure, shown under the sentence.
+   *
+   * Kept because a diary app has nowhere else to look: no server-side log, no
+   * crash reporter, no telemetry. Session-only — it goes when the sheet closes
+   * and is never written anywhere.
+   */
+  const [failureDetail, setFailureDetail] = useState<string | null>(null);
+  /**
    * Which opening of the sheet we are in, so a request in flight can be
    * abandoned when it closes.
    *
@@ -141,6 +150,7 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
     setTranscribed(false);
     setTranscribing(false);
     setFailure(null);
+    setFailureDetail(null);
     // Anything still out there is answering a question this sheet no longer has.
     generation.current += 1;
     onClose();
@@ -172,6 +182,7 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
     const askedIn = generation.current;
 
     setFailure(null);
+    setFailureDetail(null);
     setTranscribing(true);
     void onTranscribe(voice)
       .then((result) => {
@@ -193,6 +204,7 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
           setTranscribed(true);
         } else {
           setFailure(result.reason);
+          setFailureDetail(result.detail ?? null);
         }
       })
       .finally(() => {
@@ -281,15 +293,13 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
               {/* Under the writing, not beside it. The order is the argument:
                   a note is words, and this is another way to put words in it —
                   a second entry point on the same sheet rather than a second
-                  kind of thing to make. */}
-              <View style={styles.voice}>
-                <HoldToRecord
-                  recording={recorder.recording}
-                  saving={recorder.saving}
-                  onStart={recorder.start}
-                  onStop={recorder.stop}
-                />
+                  kind of thing to make.
 
+                  Within the row, the recorder sits on the **right** and playing
+                  back on the left. The right is where the thumb is, and it is
+                  the button pressed at the moment there is something to say —
+                  the player is only ever reached afterwards, deliberately. */}
+              <View style={styles.voice}>
                 <View style={styles.voiceState}>
                   {recorder.recording ? (
                     <Text style={styles.recordingClock}>{formatDuration(recorder.elapsedMs)}</Text>
@@ -298,9 +308,11 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                   ) : voice ? (
                     <VoiceNotePlayer voice={voice} onForget={() => setDraftVoice({ value: null })} />
                   ) : (
-                    <Text style={styles.hint}>Hold to say it instead</Text>
+                    <Text style={styles.hint}>Or say it instead</Text>
                   )}
                 </View>
+
+                <RecordButton recording={recorder.recording} onStart={recorder.start} onStop={recorder.stop} />
               </View>
 
               {/* Under the recording, because it is a thing you do *to* the
@@ -309,6 +321,11 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                   your voice to a third party, so it is always a press. */}
               {voice && onTranscribe ? (
                 <View style={styles.transcribe}>
+                  {/* A wand, because what it does is not a thing the phone
+                      obviously does — the word stays beside it, since an icon
+                      alone would be a control findable only by somebody who
+                      already knew it was there, which this app has been bitten
+                      by once already. */}
                   <Pressable
                     onPress={runTranscription}
                     disabled={transcribing}
@@ -321,6 +338,7 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                       pressed && styles.pressed,
                     ]}
                   >
+                    <Ionicons name="color-wand-outline" size={18} color={colors.textPrimary} />
                     <Text style={styles.transcribeText}>
                       {transcribing ? 'Transcribing…' : transcribed ? 'Transcribe again' : 'Transcribe'}
                     </Text>
@@ -330,7 +348,13 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                       once something has gone wrong, saying what went wrong
                       matters more than repeating what the button does. */}
                   {failure ? (
-                    <Text style={styles.transcribeError}>{TRANSCRIPTION_MESSAGES[failure]}</Text>
+                    <>
+                      <Text style={styles.transcribeError}>{TRANSCRIPTION_MESSAGES[failure]}</Text>
+                      {/* Exactly what the service said, untranslated. There is no
+                          log to go and read afterwards, so this is the only place
+                          the real cause can appear. */}
+                      {failureDetail ? <Text style={styles.transcribeDetail}>{failureDetail}</Text> : null}
+                    </>
                   ) : (
                     <Text style={styles.hint}>
                       Sends this recording to ElevenLabs. Text is added below what you wrote.
@@ -339,12 +363,20 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                 </View>
               ) : null}
 
+              {/* Held shut while a recording is being written, which is a
+                  fraction of a second and the one moment saving would lose it:
+                  the note has no `voice` until the file lands, so a Save landing
+                  inside that window would store the note without it. */}
               <Pressable
                 onPress={save}
-                disabled={empty}
+                disabled={empty || recorder.saving}
                 accessibilityRole="button"
                 accessibilityLabel="Save this note"
-                style={({ pressed }) => [styles.save, empty && styles.saveDisabled, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.save,
+                  (empty || recorder.saving) && styles.saveDisabled,
+                  pressed && styles.pressed,
+                ]}
               >
                 <Text style={styles.saveText}>Save</Text>
               </Pressable>
@@ -404,6 +436,9 @@ const styles = StyleSheet.create({
   voice: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
   transcribe: { gap: spacing.xs, marginTop: spacing.sm },
   transcribeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     alignSelf: 'flex-start',
     backgroundColor: colors.surfaceRaised,
     borderRadius: radius.sm,
@@ -413,6 +448,7 @@ const styles = StyleSheet.create({
   transcribeBusy: { opacity: 0.5 },
   transcribeText: { ...typography.body, color: colors.textPrimary },
   transcribeError: { ...typography.caption, color: colors.danger },
+  transcribeDetail: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   voiceState: { flex: 1 },
   recordingClock: { ...typography.clock, color: colors.danger },
   hint: { ...typography.caption, color: colors.textMuted },

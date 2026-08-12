@@ -42,7 +42,17 @@ export const useAudioRecorderState = jest.fn(() => ({
   durationMillis: recorder.isRecording ? 1_000 : 0,
 }));
 
-export const useAudioPlayer = jest.fn(() => ({
+export interface MockAudioPlayer {
+  play: jest.Mock;
+  pause: jest.Mock;
+  seekTo: jest.Mock;
+  remove: jest.Mock;
+  playing: boolean;
+  duration: number;
+  currentTime: number;
+}
+
+export const useAudioPlayer = jest.fn((): MockAudioPlayer => ({
   play: jest.fn(),
   pause: jest.fn(),
   seekTo: jest.fn(async () => undefined),
@@ -50,6 +60,19 @@ export const useAudioPlayer = jest.fn(() => ({
   playing: false,
   duration: 0,
   currentTime: 0,
+}));
+
+/**
+ * Playback status. Tests that care about a clip *ending* override this with
+ * `mockReturnValue({ didJustFinish: true, ... })` — there is no real audio to
+ * play out, so finishing is something a test states rather than waits for.
+ */
+export const useAudioPlayerStatus = jest.fn(() => ({
+  playing: false,
+  didJustFinish: false,
+  currentTime: 0,
+  duration: 0,
+  isLoaded: true,
 }));
 
 export const setAudioModeAsync = jest.fn(async () => undefined);
