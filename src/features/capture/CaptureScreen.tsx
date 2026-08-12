@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type CameraType } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -55,13 +54,21 @@ interface CaptureScreenProps {
  */
 const MAX_VIDEO_SECONDS = 60;
 
-type Mode = 'photo' | 'video' | 'voice';
+/**
+ * Two, and the third has moved rather than gone.
+ *
+ * A voice note lives on the Day screen now, beside the button for writing one.
+ * Saying something aloud about a day and typing it are the same act with
+ * different hands, and a voice note has no viewfinder — putting it here meant
+ * opening a camera you were going to ignore and then finding a third mode
+ * behind it. `useVoiceNote` holds what this screen used to.
+ */
+type Mode = 'photo' | 'video';
 
 const MODES: readonly { readonly key: Mode; readonly label: string; readonly icon: keyof typeof Ionicons.glyphMap }[] =
   [
     { key: 'photo', label: 'Photo', icon: 'camera-outline' },
     { key: 'video', label: 'Video', icon: 'videocam-outline' },
-    { key: 'voice', label: 'Voice', icon: 'mic-outline' },
   ];
 
 /**
@@ -152,10 +159,8 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   // about.
   const camera = useRef<CameraView | null>(null);
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-
-  const needsCamera = mode !== 'voice';
-  const needsMicrophone = mode !== 'photo';
+  const needsCamera = true;
+  const needsMicrophone = mode === 'video';
 
   /**
    * A capture stores where it was taken, and Core Location will not say without
@@ -206,15 +211,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     // reported as a wheel reading 3 while the picture looked like 2.8.
   }, [visible, needsCamera, facing, mode]);
 
-  useEffect(() => {
-    if (!visible || !needsMicrophone) return;
-    void (async () => {
-      const granted = await AudioModule.requestRecordingPermissionsAsync();
-      if (!granted.granted) return;
-      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-    })();
-  }, [visible, needsMicrophone]);
-
   /**
    * The screen stays on while a capture is in progress.
    *
@@ -251,8 +247,11 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
   useEffect(() => {
     if (visible || state !== 'recording') return;
     camera.current?.stopRecording();
-    void recorder.stop().then(() => setSince(null));
-  }, [visible, state, recorder]);
+    // Nothing else to do here. `recordAsync` resolves once the hardware has
+    // stopped, and the `store` that follows clears the clock in its `finally` —
+    // which is also why this is not the place to clear it: the app has not
+    // stopped recording until the camera says so.
+  }, [visible, state]);
 
   /**
    * Seal what was captured, showing how far along it is.
@@ -330,29 +329,6 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
     const clip = await camera.current?.recordAsync({ maxDuration: MAX_VIDEO_SECONDS });
     await store(clip?.uri, 'video', null, started.current.at, started.current.orientation);
   }, [orientation, state, store]);
-
-  const toggleVoice = useCallback(async () => {
-    if (state === 'recording') {
-      const startedAt = since ?? readNow();
-      setState('saving');
-      await recorder.stop();
-      // Null, not the phone's orientation: a voice note has no picture, and an
-      // orientation on it would be a fact about nothing.
-      await store(recorder.uri, 'audio', readNow() - startedAt, started.current.at, null);
-      return;
-    }
-
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    setElapsedMs(0);
-    setSince(readNow());
-    setState('recording');
-    // A voice note has no picture, so only the place is worth keeping.
-    started.current = { at: null, orientation: null };
-    void askPosition().then((at) => {
-      started.current = { ...started.current, at };
-    });
-  }, [recorder, since, state, store]);
 
   const missingPermission =
     (needsCamera && cameraPermission?.granted === false) ||
@@ -589,8 +565,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
           <Pressable
             onPress={() => {
               if (mode === 'photo') void takePhoto();
-              else if (mode === 'video') void toggleVideo();
-              else void toggleVoice();
+              else void toggleVideo();
             }}
             // Ignored while sealing. A tap that does nothing visible is what
             // taught the last build's user to keep tapping.
@@ -636,8 +611,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
 function shutterLabel(mode: Mode, state: 'idle' | 'recording' | 'saving'): string {
   if (state === 'saving') return 'Saving';
   if (mode === 'photo') return 'Take photo';
-  if (mode === 'video') return state === 'recording' ? 'Stop video' : 'Start video';
-  return state === 'recording' ? 'Stop voice note' : 'Start voice note';
+  return state === 'recording' ? 'Stop video' : 'Start video';
 }
 
 const styles = StyleSheet.create({

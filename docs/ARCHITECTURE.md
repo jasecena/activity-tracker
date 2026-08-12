@@ -13,7 +13,7 @@ from React, React Native, Expo or `src/services`, and ESLint makes that an error
 rather than a convention.
 
 The obvious reason is testability: an app about being in motion is otherwise
-untestable on a CI runner that is bolted to a rack. 662 tests run in about eight
+untestable on a CI runner that is bolted to a rack. 669 tests run in about nine
 seconds on Linux, including property tests over generated fix streams.
 
 The less obvious reason is the persistence design. Because folding is
@@ -522,6 +522,14 @@ _like_, who you were with, or that the long way home was on purpose. A note is
 the part only its author has, and it is the only record in this app that nothing
 can rebuild.
 
+**A title and a body, and either alone is enough.** A title is what makes a
+diary readable at a glance — "Sam's birthday" over four lines about a birthday —
+but insisting on one turns a jotted line into a form to fill in, and the note you
+do not write because it wanted a heading is worse than an untitled one. Titles
+arrived a release after the notes did, so a stored entry may have none:
+`normalizeDayNotes` defaults it rather than dropping the row, which is the same
+instinct as everything else here — the body is the part nothing can reconstruct.
+
 **Timestamped, several per day.** A page per date would have been the smaller
 model, but the app already knows the shape of a day to the minute, and a note
 dropped between the walk and the café reads as part of that day rather than as a
@@ -558,6 +566,22 @@ rather than drops** wherever it can: an id no build ever wrote is rebuilt from t
 instant, where a malformed fix would simply be discarded. And the diary is the
 **fourth CSV** — an app whose whole argument is that your data is yours cannot be
 the one place your own writing is trapped.
+
+**Both controls sit above the player, and that is the second attempt.** The
+first put writing a note behind caption-sized text at the end of the TIMELINE
+heading, below the whole map — findable only by somebody who already knew it was
+there, which is the one thing an entry point must not be. They are 44-point icon
+buttons now, above the scrubber and **outside** the player's `segments.length`
+guard, so a day with no fixes keeps them: that day is the one most worth writing
+about, because the app recording nothing is not the same as nothing happening.
+
+The voice recorder is the second of the two. It was the camera's third mode, and
+a voice note has no viewfinder — reaching it meant opening a camera you were
+going to ignore. `useVoiceNote` carries over the two things that were expensive
+to learn there: the position is read at the start and held in a **ref**, since
+`stop` resolves inside a closure created before the reading arrived; and the
+screen is held awake on **busy** rather than on recording, so the hold does not
+drop in the window between stopping and saving where the phone would lock.
 
 **A day exists whether or not anything was recorded on it.** `groupByDay` builds
 its list out of segments, so `daysWorthOpening` adds the days that have only a

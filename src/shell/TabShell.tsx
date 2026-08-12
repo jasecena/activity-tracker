@@ -15,6 +15,7 @@ import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
 import { useTimeline } from '@/features/activities/hooks/useTimeline';
 import { CaptureScreen } from '@/features/capture/CaptureScreen';
 import { useMedia } from '@/features/capture/hooks/useMedia';
+import { useVoiceNote } from '@/features/capture/hooks/useVoiceNote';
 import { DataScreen } from '@/features/data/DataScreen';
 import { HistoryScreen } from '@/features/history/HistoryScreen';
 import { MediaGalleryScreen } from '@/features/media/MediaGalleryScreen';
@@ -147,6 +148,9 @@ export function TabShell() {
   const notes = useDayNotes();
   const places = usePlaces();
   const media = useMedia();
+  // Hoisted like the rest: the recorder belongs to the Day screen but the media
+  // store it writes to is shared, and a second copy would be a second recorder.
+  const voice = useVoiceNote(media);
   const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
 
   // A phone that does not move produces no fixes, so an afternoon at a desk
@@ -385,6 +389,7 @@ export function TabShell() {
             notes={notes.notes}
             onWriteNote={(dayKey, segments) => setWritingNote({ kind: 'new', dayKey, segments })}
             onOpenNote={(note) => setWritingNote({ kind: 'edit', note })}
+            voice={voice}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -485,9 +490,9 @@ export function TabShell() {
       <NoteSheet
         target={writingNote}
         defaultAt={noteDefaultAt}
-        onSave={(at, text) => {
-          if (writingNote?.kind === 'new') notes.write(at, text);
-          else if (writingNote) notes.edit(writingNote.note, at, text);
+        onSave={(at, title, text) => {
+          if (writingNote?.kind === 'new') notes.write(at, title, text);
+          else if (writingNote) notes.edit(writingNote.note, at, title, text);
         }}
         // Only over a note that exists. Deleting is also what emptying the
         // field does, so this is the explicit way rather than the only one.

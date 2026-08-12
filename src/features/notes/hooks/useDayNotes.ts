@@ -14,7 +14,7 @@ export interface UseDayNotes {
    * offers a date and a time over the top of it, because when something is
    * written down and when it happened are routinely different.
    */
-  write: (at: number, text: string) => void;
+  write: (at: number, title: string, text: string) => void;
   /**
    * Change one already written: its words, its time, or both.
    *
@@ -22,7 +22,7 @@ export interface UseDayNotes {
    * another date moves it to another day — which is how a note written in the
    * wrong place gets put right. Emptying the text deletes it.
    */
-  edit: (note: DayNote, at: number, text: string) => void;
+  edit: (note: DayNote, at: number, title: string, text: string) => void;
   forget: (id: string) => void;
 }
 
@@ -76,23 +76,23 @@ export function useDayNotes(): UseDayNotes {
   }, []);
 
   const write = useCallback(
-    (at: number, text: string) => {
+    (at: number, title: string, text: string) => {
       // Every note added to a finished day wants the same default instant — the
       // end of its last segment — and an id is derived from that instant, so
       // without this the second note about a Tuesday would replace the first.
       // A minute chosen by hand collides just as easily.
-      const next = noteAt(freeInstant(notes, at), text);
+      const next = noteAt(freeInstant(notes, at), title, text);
       if (next) persist([...notes, next]);
     },
     [notes, persist],
   );
 
   const edit = useCallback(
-    (note: DayNote, at: number, text: string) => {
+    (note: DayNote, at: number, title: string, text: string) => {
       const without = notes.filter((existing) => existing.id !== note.id);
       // Against the others rather than against all of them: a note keeping its
       // own instant must not be nudged off it by its own reflection.
-      const next = noteAt(freeInstant(without, at), text);
+      const next = noteAt(freeInstant(without, at), title, text);
       // Emptying a note is how you delete one, so there is no separate confirm
       // for the case where somebody selected all and pressed backspace.
       persist(next ? [...without, next] : without);

@@ -42,7 +42,17 @@ export interface DayNote {
    * monotonic time has no answer to "which Tuesday".
    */
   readonly at: number;
-  /** Never empty. A note with nothing in it is not stored; see `noteAt`. */
+  /**
+   * What the entry is called, or empty.
+   *
+   * Empty is a real state rather than a missing one. A title is what makes a
+   * diary readable at a glance — "Sam's birthday" over four lines about a
+   * birthday — but insisting on one turns a jotted line into a form to fill in,
+   * and the note you do not write because it wanted a heading is worse than an
+   * untitled one. So it is offered first and required never.
+   */
+  readonly title: string;
+  /** The body. Empty only when there is a title; see `noteAt`. */
   readonly text: string;
 }
 
@@ -69,15 +79,20 @@ export function freeInstant(notes: readonly DayNote[], wanted: number): number {
 /**
  * Write one, or `null` if there is nothing to write.
  *
- * Blank is not an empty note, it is the absence of one. A row holding no text
+ * Blank is not an empty note, it is the absence of one. A row holding nothing
  * is a thing you cannot see, cannot tap accurately and cannot explain, and the
  * store is better off without it — the same reasoning that drops a journey
  * label saying nothing.
+ *
+ * **Either field is enough.** A title with no body is a perfectly good entry —
+ * "Moved house" says the day — and so is a paragraph nobody wanted to name.
+ * Requiring both would be the app deciding how somebody keeps a diary.
  */
-export function noteAt(at: number, text: string): DayNote | null {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return null;
-  return { id: dayNoteId(at), at, text: trimmed };
+export function noteAt(at: number, title: string, text: string): DayNote | null {
+  const heading = title.trim();
+  const body = text.trim();
+  if (heading.length === 0 && body.length === 0) return null;
+  return { id: dayNoteId(at), at, title: heading, text: body };
 }
 
 /**
@@ -182,7 +197,7 @@ export function daysWorthOpening(
   return [...byKey.values()].sort((a, b) => b.startedAt - a.startedAt);
 }
 
-function isNote(candidate: unknown): candidate is DayNote {
+function isNote(candidate: unknown): candidate is Partial<DayNote> {
   if (typeof candidate !== 'object' || candidate === null) return false;
   const { id, at, text } = candidate as Partial<DayNote>;
   if (typeof id !== 'string' || typeof text !== 'string') return false;
@@ -204,7 +219,12 @@ export function normalizeDayNotes(input: unknown): DayNote[] {
   if (!Array.isArray(input)) return [];
   return input
     .filter(isNote)
-    .map((note) => ({ id: dayNoteId(note.at), at: note.at, text: note.text.trim() }))
-    .filter((note) => note.text.length > 0)
+    .flatMap((note) => {
+      // Titles arrived after the first notes did, so a stored entry may have
+      // none — which is a missing field, not a broken row, and the body is the
+      // part that could never be reconstructed. Defaulted rather than dropped.
+      const built = noteAt(note.at ?? 0, typeof note.title === 'string' ? note.title : '', note.text ?? '');
+      return built ? [built] : [];
+    })
     .sort((a, b) => a.at - b.at);
 }

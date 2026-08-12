@@ -35,7 +35,8 @@ export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: 
           <Ionicons name="create-outline" size={13} color={colors.textMuted} />
           <Text style={styles.time}>{formatClockTime(note.at, tzOffsetMinutes)}</Text>
         </View>
-        <Text style={styles.text}>{note.text}</Text>
+        {note.title.length > 0 ? <Text style={styles.noteTitle}>{note.title}</Text> : null}
+        {note.text.length > 0 ? <Text style={styles.text}>{note.text}</Text> : null}
       </View>
     </>
   );
@@ -46,7 +47,7 @@ export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: 
     <Pressable
       onPress={() => onOpen(note)}
       accessibilityRole="button"
-      accessibilityLabel={`Note at ${formatClockTime(note.at, tzOffsetMinutes)}: ${note.text}`}
+      accessibilityLabel={`Note at ${formatClockTime(note.at, tzOffsetMinutes)}: ${note.title || note.text}`}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       {body}
@@ -63,6 +64,7 @@ const styles = StyleSheet.create({
   inner: { flex: 1, gap: spacing.xs },
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   time: { ...typography.caption, color: colors.textMuted },
+  noteTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   text: { ...typography.body, color: colors.textPrimary },
   pressed: { opacity: 0.6 },
 });
