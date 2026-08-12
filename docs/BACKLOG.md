@@ -16,8 +16,11 @@ shell, the day screen with history and replay, places and journey labels, the
 encrypted store, CSV export, the low-battery lens, the Media tab with the Photos
 gestures, capture orientation, and the three-stop zoom on real lens optics.
 
-**No feature in this file has been started.** What the recent releases contain is
-correctness, privacy and pipeline work.
+**Item 9 is built and is the first feature in this file to be.** Everything
+before it in the recent releases was correctness, privacy and pipeline work.
+Stationary runs are compacted on the freeze — endpoints into the archive, a
+skeleton in the live buffer — which closes the half of the storage audit that
+was left open. Nothing else here has been started.
 
 ### The releases behind that
 
@@ -186,6 +189,10 @@ Investigation, not a feature: find where the app actually stutters on the
 phone, with the JS thread as prime suspect. Known candidates, from the
 architecture rather than from measurement (measurement is the task):
 
+- **Compaction, on every timeline refresh.** **Done —** `compact buffer` and
+  `compact archived day` record the number of readings dropped, and only when
+  some were, so the Data screen answers "is this doing anything on a real phone"
+  without waiting for a freeze. A row that never appears is the finding.
 - **The launch path: index normalisation, orphan sweep, thumbnail backfill.**
   **Done —** all three record a span with the count they ran over, so the Data
   screen answers this one without a cable. `sweepOrphans` is the one to watch: it
@@ -229,7 +236,8 @@ spent where the evidence says, not where the code looks guilty.
   reaches the day log and the fix archive and stops, so captures grow forever.
   Kept that on purpose — a fix is collected by the app, a capture is chosen by
   you — but the retention picker now says so, and `formatBytes` keeps the total
-  legible past a gigabyte. Item 9 is the remaining half: bounding the archive.
+  legible past a gigabyte. The remaining half — bounding the archive — is item 9,
+  and is now built.
 - **Privacy** — **done (v0.4.0).** Behaviour was clean: no network calls in
   `src/` at all, no telemetry, `expo-maps` imported in exactly one file and off
   by default, ATS enforced. The claims were not: fixed, plus media excluded from
@@ -266,10 +274,62 @@ import rule in reverse.
 
 ## 9. Compact the stationary fixes
 
-**Status:** not started, and the best-placed item to build next — it is entirely
-`src/core` and `services`, so it is testable on Linux with no device and no Mac.
-It is also the unfinished half of the storage audit: the archive is the growth
-term nothing bounds.
+**Status: built.** `core/compact`, applied from `pruneBuffer`. The storage audit's
+remaining half is closed: the archive is bounded now by something other than
+retention. Reasoning in `docs/ARCHITECTURE.md` § 10.
+
+What shipped is what is described below, with two things worth recording because
+they were decided while building rather than before it.
+
+**A run is measured from its first reading, not the previous one.** Both were
+plausible; only one survives a slow amble. Drifting a few metres at a time leaves
+the circle after a handful of readings and ends the run, where a
+previous-reading test follows the drift across a car park and compacts a walk
+down to its two endpoints.
+
+**The radius has to clear the distance filter, and getting that wrong made the
+whole thing inert.** It shipped first at `pathResolutionM` — 25 m, which is
+exactly the balanced preset's `distanceInterval`. iOS only delivers an update
+once the phone has moved further than the filter from the last one, so
+consecutive readings are already that far apart and every one of them started a
+run of its own. Nothing was ever dropped, and every test passed, because the
+fixtures sample a stationary phone every ten seconds and this app never does —
+its distance filter is the whole battery argument. The archive is
+`minMoveDistanceM` (60 m) now; the buffer keeps 25 m deliberately, because it is
+the half that is folded again. The lesson generalises past this item: a threshold
+in `core` that happens to equal a sampling interval in `services` is a coincidence
+worth checking, and `core` cannot see it.
+
+**"The fold's stay comes out identical" was too strong, and the honest version is
+better.** What holds is that every reading outside a run survives, both ends of
+every run survive, and no spacing is created that was not already there — a
+reading is kept as soon as the _next_ one would put the gap past the hold. What
+does not hold is byte-identical segments: jitter inside the radius can accumulate
+enough path length to have been emitted as a phantom move, and compaction takes
+that with it. 60 m of wandering inside a 25 m circle is a desk, so the timeline is
+better off — but it is a change, not a no-op, and the tests say what they actually
+check.
+
+**What it does not do: reach a day already archived.** `pruneBuffer` only writes
+the key of a day that has readings leaving the buffer, and once a day is frozen
+nothing prunes into it again — so everything archived by an earlier build stays
+exactly the size it was, and only days frozen from here on are thinned. Deliberate
+for now, and the shape it wants when it is wanted: a `compactArchive()` walking
+archived day keys oldest-first, **a handful of days per launch**, with a stored
+marker of how far it has got. One day at a time is not optional — reading and
+rewriting a year of sealed days in one pass on the thread that draws the screen
+is the 120 MB failure the per-day key design exists to avoid, self-inflicted at
+launch. Compaction is idempotent, so a lost or stale marker costs a repeat and
+never damage.
+
+The original write-up follows, since the reasoning is what made it buildable.
+
+---
+
+**Status when written:** not started, and the best-placed item to build next — it
+is entirely `src/core` and `services`, so it is testable on Linux with no device
+and no Mac. It is also the unfinished half of the storage audit: the archive is
+the growth term nothing bounds.
 
 An afternoon at a desk is hundreds of readings at the same spot at zero speed,
 and they say one thing between them: _here, from then until then_. Keeping the
@@ -355,12 +415,14 @@ sit the cursor at the place through the gap rather than saying "No signal"
 as measured stillness anywhere the distinction could matter — calories already
 count movement only, so they are safe by construction.
 
-**Interaction with item 9**, worth settling before either is built: compaction
+**Interaction with item 9, which is now built and therefore first.** Compaction
 makes stationary runs sparser, and an assumed stay reads a gap. Compact too
 aggressively in the live buffer and an ordinary afternoon at a desk starts
 looking like a gap whose ends agree — inferred rather than measured, for time
-that was measured perfectly well. The `gapMs` skeleton rule already prevents
-this; whichever is built second must have a test that says so.
+that was measured perfectly well. The skeleton rule prevents it: no spacing is
+created that was not already there, and the hold is `gapMs / 3`. This item is the
+one that has to prove it, so it needs a test that compacts a long stationary run
+and asserts no assumed stay comes out of it.
 
 ## 11. Rotating a video
 

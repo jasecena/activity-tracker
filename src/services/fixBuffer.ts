@@ -1,7 +1,11 @@
+import { archiveCompaction, compactFixes, liveCompaction, type CompactionConfig } from '@/core/compact';
 import { dayKeyOf, type TzOffsetMinutes } from '@/core/day';
 import type { Fix } from '@/core/geo';
+import type { SegmentConfig } from '@/core/segments';
 
+import { monotonicNow } from './clock';
 import { archiveKeyFor, archivedDayKeys, readJson, removeKeys, STORAGE_KEYS, writeJson } from './storage';
+import { record } from './timing';
 
 /**
  * The raw fix buffer: everything Core Location has handed over that has not yet
@@ -84,7 +88,28 @@ export async function appendFixes(fixes: readonly Fix[]): Promise<void> {
 }
 
 /**
- * Drop everything older than `before`, keeping it for the export.
+ * Compact, and say how many readings went — but only when some did.
+ *
+ * The count is what makes the span worth having: `compact buffer (312 fixes)`
+ * is the answer to "is this doing anything on a real phone", which is otherwise
+ * a question you cannot ask until the next freeze. It is a shape and not a
+ * content — how many readings, not where any of them were.
+ *
+ * **Recorded only when something was dropped**, because the caller runs every
+ * twenty seconds and a span per no-op would fill the 120-entry cap in forty
+ * minutes with rows saying nothing happened. An instrument must cost less than
+ * what it measures.
+ */
+function measureCompaction(name: string, fixes: readonly Fix[], config: CompactionConfig): readonly Fix[] {
+  const began = monotonicNow();
+  const compacted = compactFixes(fixes, config);
+  if (compacted !== fixes) record(name, monotonicNow() - began, fixes.length - compacted.length, 'fixes');
+  return compacted;
+}
+
+/**
+ * Drop everything older than `before`, keeping it for the export — and thin the
+ * stationary runs on both sides of the cut.
  *
  * Called when a day is frozen: the fold never needs those readings again,
  * because the day's segments are its record. They used to be deleted outright,
@@ -93,12 +118,24 @@ export async function appendFixes(fixes: readonly Fix[]): Promise<void> {
  * **One key per day is written, never the whole archive.** A single blob meant
  * every freeze read a year, sorted it and wrote it back — sealed, as hex, on
  * the thread that draws the screen. See `STORAGE_KEYS.fixArchive`.
+ *
+ * **Compaction happens here because this is the pass that already visits every
+ * fix**, and because the freeze is the app maintaining itself rather than a
+ * chore it hands its owner — the same house style as the battery lens and the
+ * archive trimmed on the log's own cutoff. The two halves get the two shapes
+ * `core/compact` offers, and the difference is not cosmetic: what leaves for the
+ * archive is never folded again and keeps only its endpoints, while what stays
+ * in the buffer is today, is folded on every refresh, and keeps a skeleton
+ * dense enough that `gapMs` never sees a hole. See `compactFixes`.
  */
-export async function pruneBuffer(before: number, tzOffsetMinutes: TzOffsetMinutes): Promise<void> {
+export async function pruneBuffer(
+  before: number,
+  tzOffsetMinutes: TzOffsetMinutes,
+  segmentation: SegmentConfig,
+): Promise<void> {
   await serialise(async () => {
     const existing = await readBuffer();
     const kept = existing.filter((fix) => fix.at >= before);
-    if (kept.length === existing.length) return;
 
     const byDay = new Map<string, Fix[]>();
     for (const fix of existing) {
@@ -116,10 +153,21 @@ export async function pruneBuffer(before: number, tzOffsetMinutes: TzOffsetMinut
       const stored = normalizeFixes(await readJson<unknown>(archiveKeyFor(dayKey)));
       const seen = new Set(stored.map((fix) => fix.at));
       const merged = [...stored, ...leaving.filter((fix) => !seen.has(fix.at))].sort((a, b) => a.at - b.at);
-      await writeJson(archiveKeyFor(dayKey), merged);
+      // Compacted after the merge rather than before it, so a day frozen in two
+      // halves comes out as one run and not as two with a seam down the middle.
+      const filed = measureCompaction('compact archived day', merged, archiveCompaction(segmentation));
+      await writeJson(archiveKeyFor(dayKey), filed);
     }
 
-    await writeJson(STORAGE_KEYS.fixBuffer, kept);
+    // The live half runs on every call, not only on the calls that prune: a day
+    // spent at a desk with the app open fills the buffer whether or not
+    // midnight has passed since the last one. `compactFixes` returns its input
+    // untouched when there was nothing to drop, which is what keeps that from
+    // being a write every twenty seconds.
+    const thinned = measureCompaction('compact buffer', kept, liveCompaction(segmentation));
+    if (thinned !== kept || kept.length !== existing.length) {
+      await writeJson(STORAGE_KEYS.fixBuffer, thinned);
+    }
   });
 }
 

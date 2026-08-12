@@ -13,7 +13,7 @@ from React, React Native, Expo or `src/services`, and ESLint makes that an error
 rather than a convention.
 
 The obvious reason is testability: an app about being in motion is otherwise
-untestable on a CI runner that is bolted to a rack. 572 tests run in about three
+untestable on a CI runner that is bolted to a rack. 622 tests run in about eight
 seconds on Linux, including property tests over generated fix streams.
 
 The less obvious reason is the persistence design. Because folding is
@@ -414,6 +414,103 @@ behind.
 
 **Nothing reads the archive to build a timeline**, and adding a caller that does
 would undo the reason freezing exists.
+
+### Compacting the stationary runs
+
+An afternoon at a desk is hundreds of readings at one spot at zero speed, and
+between them they say one thing: _here, from then until then_. The arrival and
+the departure say it just as well. Everything else is the non-necessary data this
+app should not be hoarding — and the fix archive is the one store nothing else
+bounds, since retention only reaches its far end while a phone that never moves
+fills it as fast as one out walking.
+
+`core/compact` is where that arithmetic lives, and it is pure: readings in,
+fewer readings out, thresholds as parameters. It only ever **removes**. Nothing
+is rewritten, averaged or invented, which is what keeps "raw fixes" an honest
+name for what the export produces.
+
+**The trap it is built around.** The timeline is re-derived from the buffer, and
+_a gap is a hole, never a straight line_ (§ 2): no fix for `gapMs` closes whatever
+is open and the day simply stops. Delete the middle of a three-hour stay and the
+fold sees two lonely readings an hour apart — the stay becomes a hole, and the
+cleanup has eaten an afternoon. **Naive deletion is not a smaller buffer, it is a
+different day.**
+
+So there are two shapes, decided by where the readings are going:
+
+- **Into the archive: endpoints only, in a 60 m circle.** Nothing folds these
+  again — a frozen day's segments are its record — so there is nobody downstream
+  to disturb. This is the half that does the work.
+- **Staying in the buffer: a skeleton, in a 25 m circle.** Today is re-folded on
+  every refresh, so a run keeps one reading every `gapMs / 3` — a third of the
+  tolerance left spare so a coarser preset or a delayed reading cannot eat the
+  margin.
+
+A run is the readings within `stillRadiusM` of **the first of them**, never of
+the previous one. That is the difference between a desk and a slow amble: drift
+of a few metres at a time leaves the circle after a few readings and ends the
+run, where a previous-reading test would follow it across a car park and compact
+a walk to its endpoints.
+
+### Why the two radii differ, and why 25 m was wrong for the archive
+
+The radius has to be **wider than the tracking preset's distance filter**, and
+this is arithmetic rather than taste. iOS delivers a location update only once
+the phone has moved further than the filter from the last one it delivered, so
+consecutive readings in the buffer are already that far apart by construction. A
+radius at or under the filter means every reading starts a new run, no run ever
+holds a third, and compaction cannot drop anything at all.
+
+Both halves shipped first at `pathResolutionM`, which is 25 m, which is exactly
+the balanced preset's filter. The feature did nothing whatsoever on a phone while
+every test in `core/compact` passed — the fixtures sample a stationary phone
+every ten seconds, which is a thing this app never does. The only readings that
+genuinely cluster are the ten-minute heartbeats (§ 8), which bypass the filter by
+asking directly.
+
+The archive now uses `minMoveDistanceM`, 60 m, which clears the balanced preset's
+25 m and the detailed preset's 10 m. The saver preset filters at 100 m and stays
+out of reach, which is right: a stream sampled every 100 m has nothing redundant
+in it.
+
+The buffer keeps the tight 25 m **deliberately**, because it is the half that
+gets folded again, and a wide circle costs something there. It absorbs the first
+readings of a departure, and it under-counts movement _confined_ to the circle —
+pacing a garden or a shop floor comes out with less distance than it had. Neither
+matters where nothing folds again; both matter for today. What the buffer is
+bounding is a single day, which midnight bounds anyway, so the timid setting is
+the right trade and the archive is where the saving lives.
+
+Two properties hold whatever the input, and they are what make this safe to run
+over a buffer that will be folded again. **Every reading outside a run survives**,
+along with the first and last of every run — so the arrival, the departure and
+every step of an actual journey are byte-for-byte what they were. And **no
+spacing is created that was not already there**: a reading is kept as soon as the
+_next_ one would put the gap past the hold, which bounds the spacing at the hold
+rather than at twice it. A hole wider than that in a compacted stream is the
+phone's, not ours.
+
+What it does **not** promise is a byte-identical fold, and the honest version is
+worth writing down: jitter inside the radius can accumulate enough path length to
+have been emitted as a phantom move — 60 m of wandering inside a 25 m circle is a
+desk — so a timeline can come out slightly cleaner than it did. Stays keep their
+ids, because a run's first reading is always kept and an id is derived from
+`startedAt`.
+
+It records a span, `compact buffer` or `compact archived day`, with the number of
+readings dropped — **only when some were**. The caller runs every twenty seconds,
+and a span per no-op would fill the 120-entry cap in forty minutes with rows
+saying nothing happened. The count is what makes it worth having: whether this is
+doing anything on a real phone is otherwise unanswerable until the next freeze.
+
+**The trigger is the freeze, automatically**, which is the same house style as the
+battery lens and the archive trimmed on the log's own cutoff: the app coarsens and
+maintains itself rather than handing its owner a Clean Up button. It runs in
+`pruneBuffer` because that is the pass that already visits every fix. The live
+half runs on **every** call and not only on the ones that prune, because a day
+spent at a desk with the app open fills the buffer whether or not midnight has
+passed since the last freeze; `compactFixes` returns its input untouched when
+there was nothing to drop, so that is not a write every twenty seconds.
 
 ---
 

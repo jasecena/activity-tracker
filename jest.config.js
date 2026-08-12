@@ -69,6 +69,7 @@ module.exports = {
   // Every core domain is gated, not just the segmenter: `src/core` is the part
   // that has to be correct, and it is the part that is cheap to test.
   coverageThreshold: {
+    './src/core/compact/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/geo/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/segments/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/day/': { branches: 90, functions: 100, lines: 95, statements: 95 },

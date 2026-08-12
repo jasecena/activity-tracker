@@ -10,9 +10,12 @@ import { averageSpeedMps, type Segment } from '../segments';
  * things and flattening them into a single table would lose the distinction:
  *
  * - **fixes** — raw readings, exactly as Core Location gave them, including the
- *   accuracy circle and the platform's own speed estimate. Only exists for the
- *   current window: once a day is frozen, its raw fixes are dropped and only
- *   the derived segments survive.
+ *   accuracy circle and the platform's own speed estimate. All of history, from
+ *   the buffer and the archive together — but thinner behind you than in front:
+ *   freezing a day compacts its stationary runs down to an arrival and a
+ *   departure, so an afternoon at a desk exports as two rows rather than a
+ *   thousand. Nothing here is invented and nothing is rewritten; compaction only
+ *   ever removes, which is what keeps "raw" an honest word for this file.
  * - **points** — every route point the app kept, for all of history. Thinned to
  *   `pathResolutionM`, so roughly one every 25 m, each with the derived speed at
  *   that moment.

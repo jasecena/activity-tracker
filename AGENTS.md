@@ -11,7 +11,7 @@ imports — ESLint enforces this. The `core` Jest project compiles it with nothi
 but `@babel/preset-typescript`, so any new dependency there breaks the suite.
 That is intentional: it is how a location app is testable on a Linux runner that
 is not, and never will be, moving. Every core domain (`geo`, `segments`, `day`,
-`format`, `places`, `energy`, `replay`, `media`, `power`, `export`) has its own coverage gate. `core` also reads no
+`format`, `places`, `energy`, `replay`, `media`, `power`, `export`, `compact`) has its own coverage gate. `core` also reads no
 clock, no timezone and no entropy source: ids are derived from the data, "what
 time is it" is a parameter, and so is the UTC offset.
 
@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 601
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 622
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -111,6 +111,33 @@ account for.
 **A gap is a hole, never a straight line.** No fix for `gapMs` closes whatever is
 open and the timeline simply stops until the next one. Interpolating across two
 hours indoors turns a building into a four-kilometre walk through it.
+
+**Stationary runs are compacted, and the two halves get different shapes.**
+`core/compact` throws away readings that say nothing the readings beside them do
+not. It only ever removes: nothing is rewritten or invented, which is what keeps
+the raw export honest. What leaves for the archive keeps **only its two ends**,
+in a **60 m** circle, because nothing folds those again. What stays in the buffer
+keeps a **skeleton**, one reading per `gapMs / 3`, in a **25 m** circle, because
+today is re-derived on every refresh and the rule above is unforgiving: delete
+the middle of a three-hour stay and the fold sees two lonely fixes an hour apart,
+so the stay becomes a hole and the cleanup has eaten an afternoon. Naive deletion
+is not a smaller buffer, it is a different day. A run is measured from its
+**first** fix, never the previous one, or metre-at-a-time drift is followed
+across a car park. The trigger is the freeze, automatically — this app coarsens
+and maintains itself rather than handing its owner a Clean Up button.
+
+**The radius must exceed the tracking preset's distance filter, and this cost a
+release to learn.** iOS delivers a location update only once the phone has moved
+further than the filter from the last one, so consecutive fixes are already that
+far apart: a radius at or under it means every fix starts a new run, no run holds
+a third, and compaction is arithmetically incapable of dropping anything. Both
+halves shipped at `pathResolutionM` — 25 m, exactly the balanced preset's filter
+— and did nothing on a phone while every test passed, because the fixtures sample
+a stationary phone every ten seconds and this app never does. The archive is
+`minMoveDistanceM` (60 m) now. The buffer keeps 25 m on purpose: a wide circle
+absorbs the start of a departure and under-counts movement confined inside it,
+which costs nothing where nothing folds again and costs today's timeline where it
+does.
 
 **Distance is apportioned when a segment is split, never recomputed.**
 Recomputing each half from its own thinned path loses whatever the thinning
@@ -555,7 +582,7 @@ which is why exporting "all raw fixes" produced a file containing today and
 nothing else.
 
 `pruneBuffer` writes them under `fix-archive/<YYYY-MM-DD>`, one key for the day
-that just ended. **Never one blob**: a single entry means every freeze reads the
+that just ended, compacted on the way in. **Never one blob**: a single entry means every freeze reads the
 whole archive, sorts it and writes it back, sealed as hex — 337 KB on day one
 and 120 MB a year later, on the thread that draws the screen. That is the same
 shape as the failure that made the media gallery unusable, and it degrades

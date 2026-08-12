@@ -1,5 +1,5 @@
 import { applyRetention, mergeIntoLog, planFreeze, startOfLocalDay } from '@/core/day';
-import type { Segment } from '@/core/segments';
+import type { Segment, SegmentConfig } from '@/core/segments';
 
 import { pruneBuffer, trimArchive } from './fixBuffer';
 import { readJson, STORAGE_KEYS, writeJson } from './storage';
@@ -38,6 +38,15 @@ export interface FreezeOptions {
   readonly tzOffsetMinutes: number;
   /** Null keeps everything, which is the default. */
   readonly retentionDays: number | null;
+  /**
+   * The same thresholds the fold ran with.
+   *
+   * Wanted for the compaction the prune does, and it has to be the live config
+   * rather than the defaults: the skeleton left in the buffer is sized against
+   * `gapMs`, so a build reading one number and a fold reading another is how
+   * compaction would come to manufacture the hole it exists to avoid.
+   */
+  readonly segmentation: SegmentConfig;
 }
 
 /**
@@ -55,6 +64,7 @@ export async function freezeFinishedDays({
   now,
   tzOffsetMinutes,
   retentionDays,
+  segmentation,
 }: FreezeOptions): Promise<Segment[]> {
   const boundary = startOfLocalDay(now, tzOffsetMinutes);
   const { frozen, keepFixesFrom } = planFreeze(derived, boundary);
@@ -67,7 +77,7 @@ export async function freezeFinishedDays({
   if (kept !== existing) {
     await writeJson(STORAGE_KEYS.dayLog, kept);
   }
-  await pruneBuffer(keepFixesFrom, tzOffsetMinutes);
+  await pruneBuffer(keepFixesFrom, tzOffsetMinutes, segmentation);
   // The same cutoff as the log, so "keep 30 days" means one thing rather than
   // two — an archive outliving the days it describes would be a store of
   // coordinates for a period the app claims to have forgotten.
