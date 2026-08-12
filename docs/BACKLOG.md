@@ -664,6 +664,96 @@ authors lean on BERTScore for Persian.
 
 ---
 
+## 16. Somewhere to look when it breaks: a diagnostic log
+
+**Status:** not started, asked for 13 August 2026, and the motivating incident is
+in the git history. Transcription failed on a device with `Network request
+failed` and there was **nothing to look at** — no server-side log, no crash
+report, no telemetry, no console anybody could reach. The fix that shipped was to
+print the service's raw answer on the screen, which works for one feature and
+does not generalise: it only exists where somebody thought to add it, only
+survives while the sheet is open, and says nothing at all about a crash.
+
+This is the first item in this file that pushes on **§ 14, "What is deliberately
+absent"** — no analytics, no telemetry, no crash reporting. So, as with item 15
+and the network rule, the reasoning has to be better than "it would be useful".
+
+### What is actually needed, which is narrower than "logging"
+
+Three separate questions get bundled into one word, and only two of them are
+worth building:
+
+1. **What happened just now, on this phone?** The real need. A failure with no
+   explanation and no way to get one is the whole problem, and it is entirely
+   answerable on-device.
+2. **What happened last Tuesday, on this phone?** Weaker, and where retention
+   questions start. A diary that keeps a log of its owner's activity _for the
+   app's benefit_ is a second record of them, which is exactly what
+   `services/timing.ts` was written to prevent becoming.
+3. **What happened on somebody else's phone?** Not applicable. There is one
+   user, no fleet, and no support inbox. This is what crash-reporting SDKs are
+   for, and it is the question this app does not have.
+
+### The line that must not be crossed, restated from what already exists
+
+`services/timing.ts` already solved a smaller version of this and its three
+rules carry over unchanged:
+
+- **A span name says a shape, never a content.** `fold (4200 fixes)` is a
+  measurement; `stay at Home 2h` is a diary entry. A log entry saying
+  `transcribe failed: HTTP 401` is a shape. One saying which note, at what time,
+  in what place, is not.
+- **Nothing goes to `console`.** That is the vector that actually exists: device
+  logs are readable through Console.app and are swept into a sysdiagnose, which
+  is a bundle its owner deliberately sends to Apple. A printed line has left the
+  sandbox; a held one has not.
+- **Nothing is persisted or exported** — which is the one this item has to
+  revisit, because "what happened just now" survives a relaunch only if
+  something is written down.
+
+And the one-request rule (§ 12) forbids the obvious answer outright: **no
+third-party SDK.** Sentry, Crashlytics, Bugsnag and every peer are excluded
+before the comparison starts — each is a network path this app does not have,
+carrying a payload nobody enumerated, from an SDK that also links into the
+binary. That is not a close call.
+
+### The shape it would probably take
+
+- **Extend `services/timing.ts` from durations to events.** It already holds a
+  capped, in-memory, session-only list and already renders on the Data screen.
+  An `event(name, detail)` beside `record(name, ms)` is a small change.
+- **Persist the last N entries, and only those.** A ring buffer written on
+  suspend, read on launch, so "it failed and then I reopened the app" is
+  answerable. Capped by count, not by age, so it cannot grow into a history.
+  Sealed by the vault like everything else.
+- **A screen that shows it, and a share-sheet export.** The Data screen already
+  has the shape. Export is deliberate, manual, and goes through the share sheet
+  — not a network request, and the same path the four CSVs use.
+- **Crash reporting is the hard half, and mostly unbuildable here.** A JS error
+  can be caught by an error boundary and written as a breadcrumb before the app
+  goes. A **native** crash cannot be caught from JavaScript at all — the process
+  is gone — so the honest version is a launch-time check for "did the last
+  session end without a clean shutdown marker", which gives a count and a
+  timestamp and no stack trace. Whether that is worth having is a real question,
+  not a rhetorical one.
+
+### What it costs the app's argument
+
+Less than item 15 did, if it stays on-device: **nothing leaves the phone**, so
+§ 12's list of two requests is untouched, the privacy manifest is untouched, and
+the Settings paragraph is untouched. The claim that changes is § 14's — "no
+crash reporting" becomes "no crash reporting _sent anywhere_", which is a
+weaker sentence and has to be written honestly rather than quietly.
+
+The real cost is the second record. A log of what its owner did with the app,
+kept on the app's behalf, is a thing that did not exist before — and the reason
+`timing.ts` is memory-only is that its author decided a measurement was worth
+keeping and a history of measurements was not. Persisting anything reopens that,
+which is why the ring buffer is capped by count and why what goes in it is
+`shape` rather than content. **Decide that before writing code, not after.**
+
+---
+
 Turned up while building the diary, not done:
 
 - **Searching it.** Reading a note back means walking to its day. That is fine

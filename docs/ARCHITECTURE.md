@@ -1208,6 +1208,13 @@ over a year of visits.
 
 ## 14. What is deliberately absent
 
+> **One of these is now an open question rather than a settled absence.** No
+> crash reporting and no telemetry still hold — nothing is collected and nothing
+> is sent — but `docs/BACKLOG.md` § 16 asks for somewhere to look when something
+> breaks, after a transcription failed on a device with nothing to diagnose it
+> from. Anything built there stays on the phone or it does not get built; what
+> would change is the wording of the absence, not the network posture.
+
 **Core Motion activity classification.** `CMMotionActivityManager` has no Expo
 binding and needs a custom native module. Mode is inferred from speed alone,
 which is why a slow cycle and a fast walk are hard to tell apart — and why a
