@@ -252,7 +252,7 @@ describe('transcribing the recording', () => {
 
   /** A failed attempt must not quietly eat the words that were already there. */
   it('leaves the writing untouched when it fails', async () => {
-    const onTranscribe = jest.fn(async () => ({ ok: false as const, reason: 'offline' as const }));
+    const onTranscribe = jest.fn(async () => ({ ok: false as const, reason: 'unreachable' as const }));
     const onSave = jest.fn();
     await render(sheet({ target: spoken, onTranscribe, onSave }));
 

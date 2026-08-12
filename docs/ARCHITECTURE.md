@@ -791,8 +791,16 @@ and being offline when a recording ends. Making it a **button** deletes that
 requirement rather than solving it: the person is looking at the screen when the
 request goes, so a failure is a sentence under the button instead of a retry
 policy. There is no queue, no launch-time drain and no scheduled retry. A
-`timeout` and an `offline` are different messages because they are different
+`timeout` and an `unreachable` are different messages because they are different
 things to do about it.
+
+**No failure message claims what did or did not leave the phone.** The first
+version of this said "No connection — nothing was sent", which `fetch` cannot
+know: a thrown request may have left the device and lost its reply. In an app
+that argues about exactly this, an unverifiable privacy claim in an error string
+is the same mistake as a permission string saying "never uploaded" — smaller,
+and the same shape. The messages state the outcome, which is knowable: no text
+was added.
 
 **The request carries the audio, the model and the language.** Not the note's
 words, not its title, not its day, not the position stored on it. That is

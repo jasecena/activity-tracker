@@ -1,4 +1,4 @@
-import { transcribe } from '../transcribe';
+import { filePart, transcribe } from '../transcribe';
 
 /**
  * The one thing in this app that sends a recording of its owner somewhere.
@@ -173,12 +173,48 @@ describe('what comes back', () => {
     });
   });
 
-  it('reads a request that never arrived as offline', async () => {
-    fetchMock.mockRejectedValue(new Error('Network request failed'));
+  /**
+   * React Native reports everything its networking layer could not finish as
+   * this one message, so it is the honest boundary of what can be told apart —
+   * and why the reason is `unreachable` rather than `offline`.
+   */
+  it('reads a request that could not be completed as unreachable', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Network request failed'));
 
     expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({
       ok: false,
-      reason: 'offline',
+      reason: 'unreachable',
     });
+  });
+
+  it('does not call anything else unreachable', async () => {
+    fetchMock.mockRejectedValue(new TypeError('undefined is not a function'));
+
+    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({
+      ok: false,
+      reason: 'failed',
+    });
+  });
+
+  /**
+   * The live service answers a spent key with 401 `quota_exceeded` rather than
+   * 402 or 429 — measured against the real endpoint, not assumed.
+   */
+  it('reads a spent quota as a key problem, which is what 401 means here', async () => {
+    answers({ detail: { code: 'quota_exceeded' } }, 401);
+
+    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({
+      ok: false,
+      reason: 'unauthorized',
+    });
+  });
+
+  /**
+   * `audio/m4a` is not a registered media type; `audio/mp4` is what an `.m4a`
+   * container actually is. Asserted on the part directly because the test
+   * environment's `FormData` stringifies it on the way in.
+   */
+  it('describes the file as a registered media type', () => {
+    expect(filePart(URI)).toEqual({ uri: URI, name: 'note.m4a', type: 'audio/mp4' });
   });
 });
