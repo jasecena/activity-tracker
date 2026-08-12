@@ -16,6 +16,13 @@ shell, the day screen with history and replay, places and journey labels, the
 encrypted store, CSV export, the low-battery lens, the Media tab with the Photos
 gestures, capture orientation, and the three-stop zoom on real lens optics.
 
+**The diary shipped in v0.6.0, and it was never an item in this file** — it was
+asked for directly and built the same day. Notes on a day, several per day, each
+with a date and time you can change, interleaved into the timeline. Reasoning in
+`docs/ARCHITECTURE.md` § 10a; the thing to know before touching it is that it is
+the only store here that nothing can reconstruct, which is why retention never
+reaches it and why its trust boundary repairs rather than drops.
+
 **Item 9 is built and is the first feature in this file to be.** Everything
 before it in the recent releases was correctness, privacy and pipeline work.
 Stationary runs are compacted on the freeze — endpoints into the archive, a
@@ -502,6 +509,14 @@ complaining about an entry that no longer applies. That is the signal to remove
 it, not a date in a calendar.
 
 ---
+
+Turned up while building the diary, not done:
+
+- **Searching it.** Reading a note back means walking to its day. That is fine
+  for a week and not for a year, and it is the reason the browsable list was
+  offered and declined at the time — worth revisiting once there is enough
+  written to want it.
+- **Notes in the GPX and the day summary.** The CSV has them; nothing else does.
 
 Parked separately, designs already written: photo library import (reviewed,
 never automatic — see the session notes), and a real Live Photo via

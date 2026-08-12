@@ -13,7 +13,7 @@ from React, React Native, Expo or `src/services`, and ESLint makes that an error
 rather than a convention.
 
 The obvious reason is testability: an app about being in motion is otherwise
-untestable on a CI runner that is bolted to a rack. 622 tests run in about eight
+untestable on a CI runner that is bolted to a rack. 662 tests run in about eight
 seconds on Linux, including property tests over generated fix streams.
 
 The less obvious reason is the persistence design. Because folding is
@@ -511,6 +511,59 @@ half runs on **every** call and not only on the ones that prune, because a day
 spent at a desk with the app open fills the buffer whether or not midnight has
 passed since the last freeze; `compactFixes` returns its input untouched when
 there was nothing to drop, so that is not a write every twenty seconds.
+
+---
+
+## 10a. The diary: the one thing that is not derived
+
+`core/day/notes.ts`. Everything else on a timeline is the fold's reading of a fix
+stream — where you were, how fast, how far. None of it can say what the day was
+_like_, who you were with, or that the long way home was on purpose. A note is
+the part only its author has, and it is the only record in this app that nothing
+can rebuild.
+
+**Timestamped, several per day.** A page per date would have been the smaller
+model, but the app already knows the shape of a day to the minute, and a note
+dropped between the walk and the café reads as part of that day rather than as a
+paragraph filed under it. `withNotes` interleaves them at draw time — nothing
+combined is stored, the same way `applyJourneyLabels` re-cuts labels against a
+re-derived day.
+
+**Ids are derived from the instant**, `note-<at>`, because `core` has no entropy
+source. That makes an edit at the same instant an update rather than a duplicate,
+and it makes two notes at one instant a single note that ate the other — so
+`freeInstant` nudges a collision forward a millisecond. Not hypothetical: every
+note added to a finished day wants the same default instant, the end of its last
+segment.
+
+**The instant is chosen, with a default.** `whereToWrite` answers now when the
+day on screen is today, and the end of the day when it is over — an evening's
+reflection goes after the last thing that happened. Noon is the fallback for a
+day that recorded nothing, because midnight reads as the day before. Over the top
+of that, the sheet offers the system date and time pickers in their compact iOS
+style: two small fields, not a wheel owning a third of the screen. The default is
+right often enough that they are usually there to be ignored, and when it is
+wrong the fix is one tap. Changing the date moves the note to another day, which
+is how one written in the wrong place gets put right.
+
+**Retention never deletes one**, and this is the same line captures already draw
+(§ 10): a fix is something the app collected on its own and may discard on its
+own; a note is something you sat down and wrote, and deleting that on a timer is
+not the app's call. A day can therefore outlive its own readings as a sentence
+about what happened, which is the right way round — the readings were the
+disposable half all along. The retention picker says so.
+
+Two more consequences of being unreconstructable. `normalizeDayNotes` **repairs
+rather than drops** wherever it can: an id no build ever wrote is rebuilt from the
+instant, where a malformed fix would simply be discarded. And the diary is the
+**fourth CSV** — an app whose whole argument is that your data is yours cannot be
+the one place your own writing is trapped.
+
+**A day exists whether or not anything was recorded on it.** `groupByDay` builds
+its list out of segments, so `daysWorthOpening` adds the days that have only a
+note, and today. Without it a day with no readings has no arrow, no page and
+nowhere to write, which fails on a fresh install and on a day spent somewhere
+with no signal — the two days most worth a sentence rather than a measurement.
 
 ---
 

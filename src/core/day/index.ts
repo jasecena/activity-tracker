@@ -8,4 +8,16 @@
  */
 export { dayKeyOf, groupByDay, startOfLocalDay, type DayGroup, type TzOffsetMinutes } from './day';
 export { applyRetention, mergeIntoLog, planFreeze, type FreezePlan } from './freeze';
+export {
+  dayNoteId,
+  daysWorthOpening,
+  freeInstant,
+  normalizeDayNotes,
+  noteAt,
+  notesForDay,
+  whereToWrite,
+  withNotes,
+  type DayEntry,
+  type DayNote,
+} from './notes';
 export { summarizeDay, type DaySummary } from './summary';

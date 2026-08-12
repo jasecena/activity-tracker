@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { exportFilename, fixesToCsv, pointsToCsv, segmentsToCsv } from '@/core/export';
+import type { DayNote } from '@/core/day';
+import { exportFilename, fixesToCsv, notesToCsv, pointsToCsv, segmentsToCsv } from '@/core/export';
 import { formatBytes, formatDistance, formatIsoWithOffset } from '@/core/format';
 import type { Fix, RejectionReason } from '@/core/geo';
 import { totalBytes, type MediaItem } from '@/core/media';
@@ -20,6 +21,8 @@ interface DataScreenProps {
   readonly segments: readonly Segment[];
   readonly places: readonly Place[];
   readonly media: readonly MediaItem[];
+  /** The diary. Counted and exportable here like every other store. */
+  readonly notes: readonly DayNote[];
   readonly rejected: Readonly<Record<RejectionReason, number>> | null;
   readonly preset: TrackingPresetId;
   readonly now: number;
@@ -63,6 +66,7 @@ export function DataScreen({
   segments,
   places,
   media,
+  notes,
   rejected,
   preset,
   now,
@@ -147,6 +151,7 @@ export function DataScreen({
               `bytes / 1024` labelled kB, which is both wrong and unreadable at
               exactly the size where it starts to matter. */}
           <Row label="  Their size on disk" value={formatBytes(totalBytes(media))} />
+          <Row label="Diary notes" value={`${notes.length}`} />
           {/* Says what is true rather than what the code intends. "No" here
               means the Settings privacy paragraph is currently claiming
               something this build is not doing, which is a bug and not a
@@ -278,6 +283,22 @@ export function DataScreen({
             <Text style={[styles.actionText, segments.length === 0 && styles.disabled]}>Timeline (CSV)</Text>
             <Text style={styles.actionDetail}>
               One row per stop and journey, with distance, duration, average and top speed, and the place name.
+            </Text>
+          </Pressable>
+
+          {/* The one export of the four whose contents this app did not
+              produce and could not produce again. */}
+          <Pressable
+            onPress={() => run('notes', () => notesToCsv(notes, tzOffsetMinutes))}
+            disabled={busy !== null || notes.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Export diary as CSV"
+            style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          >
+            <Text style={[styles.actionText, notes.length === 0 && styles.disabled]}>Diary (CSV)</Text>
+            <Text style={styles.actionDetail}>
+              Everything you have written, with the day and time it belongs to. The only one of these the app did not
+              write itself.
             </Text>
           </Pressable>
         </View>

@@ -1,3 +1,4 @@
+import { dayKeyOf, type DayNote } from '../day';
 import { formatIsoWithOffset } from '../format';
 import type { Fix } from '../geo';
 import { matchPlace, type Place } from '../places';
@@ -6,7 +7,7 @@ import { averageSpeedMps, type Segment } from '../segments';
 /**
  * CSV, for getting your own data out.
  *
- * Three files rather than one, because the app holds three genuinely different
+ * Four files rather than one, because the app holds four genuinely different
  * things and flattening them into a single table would lose the distinction:
  *
  * - **fixes** — raw readings, exactly as Core Location gave them, including the
@@ -20,6 +21,8 @@ import { averageSpeedMps, type Segment } from '../segments';
  *   `pathResolutionM`, so roughly one every 25 m, each with the derived speed at
  *   that moment.
  * - **segments** — the timeline itself, one row per stay or journey.
+ * - **notes** — your diary. The only one of the four the app did not produce
+ *   and could not produce again.
  *
  * All pure string building, in `core`, so the exact bytes are asserted in a test
  * rather than eyeballed in a spreadsheet after the fact.
@@ -168,6 +171,34 @@ export function segmentsToCsv(segments: readonly Segment[], places: readonly Pla
       'place',
     ],
     rows,
+  );
+}
+
+/**
+ * The diary, one row per note.
+ *
+ * A fourth file, and the one with the strongest claim to exist. The other three
+ * are the app's own readings, which it could produce again tomorrow; this is the
+ * only thing here that its owner wrote and that nothing can reconstruct. An app
+ * whose argument is that your data is yours cannot be the one place a sentence
+ * about your own Tuesday is trapped.
+ *
+ * `text` goes through the same quoting as everything else, which matters more
+ * here than anywhere: a note is free text and will contain commas, quotes and
+ * newlines as a matter of course. RFC 4180 handles all three, and a spreadsheet
+ * reads a quoted newline as part of the cell rather than as a new row.
+ */
+export function notesToCsv(notes: readonly DayNote[], tzOffsetMinutes: number): string {
+  return toCsv(
+    ['timestamp', 'epoch_ms', 'day', 'text'],
+    [...notes]
+      .sort((a, b) => a.at - b.at)
+      .map((note) => [
+        formatIsoWithOffset(note.at, tzOffsetMinutes),
+        note.at,
+        dayKeyOf(note.at, tzOffsetMinutes),
+        note.text,
+      ]),
   );
 }
 

@@ -220,9 +220,9 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
             are also the only store with no bound on them, so the sentence has
             to be here rather than inferred from the Data screen's total. */}
         <Text style={styles.footnote}>
-          This covers the recorded days and the raw fixes behind them. Photos, video and voice notes are never deleted
-          on a timer — they stay until you forget them, however old the day they belong to. Their total is on the Data
-          screen.
+          This covers the recorded days and the raw fixes behind them. Photos, video, voice notes and anything you have
+          written in your diary are never deleted on a timer — they stay until you delete them, however old the day they
+          belong to. So a day can outlive its own readings as a sentence about what happened.
         </Text>
 
         <Text style={styles.sectionLabel}>DATA</Text>
