@@ -21,6 +21,8 @@ function answers(body: unknown, status = 200): void {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
+    // Read on the failure path, for the detail line shown on screen.
+    text: async () => JSON.stringify(body),
   });
 }
 
@@ -161,7 +163,37 @@ describe('what comes back', () => {
   ])('reads HTTP %i as %s', async (status, reason) => {
     answers({ detail: 'nope' }, status);
 
-    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({ ok: false, reason });
+    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toMatchObject({ ok: false, reason });
+  });
+
+  /**
+   * There is no server-side log, no crash reporter and no telemetry in this app,
+   * so what the service said is only ever visible if it is put on the screen.
+   */
+  it('carries the service’s own words for the screen', async () => {
+    answers({ detail: { code: 'quota_exceeded', message: 'You have 0 credits remaining' } }, 401);
+
+    const result = await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' });
+
+    expect(result).toMatchObject({ ok: false, reason: 'unauthorized' });
+    expect((result as { detail: string }).detail).toContain('HTTP 401');
+    expect((result as { detail: string }).detail).toContain('quota_exceeded');
+  });
+
+  it('says what threw, when something threw', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+
+    const result = await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' });
+
+    expect((result as { detail: string }).detail).toContain('TypeError: Network request failed');
+  });
+
+  it('does not let a huge error body take over the sheet', async () => {
+    answers('x'.repeat(5000), 500);
+
+    const result = await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' });
+
+    expect((result as { detail: string }).detail.length).toBeLessThan(500);
   });
 
   it('does not trust a 200 that is not a transcript', async () => {
@@ -181,7 +213,7 @@ describe('what comes back', () => {
   it('reads a request that could not be completed as unreachable', async () => {
     fetchMock.mockRejectedValue(new TypeError('Network request failed'));
 
-    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({
+    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toMatchObject({
       ok: false,
       reason: 'unreachable',
     });
@@ -190,7 +222,7 @@ describe('what comes back', () => {
   it('does not call anything else unreachable', async () => {
     fetchMock.mockRejectedValue(new TypeError('undefined is not a function'));
 
-    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({
+    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toMatchObject({
       ok: false,
       reason: 'failed',
     });
@@ -203,7 +235,7 @@ describe('what comes back', () => {
   it('reads a spent quota as a key problem, which is what 401 means here', async () => {
     answers({ detail: { code: 'quota_exceeded' } }, 401);
 
-    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toEqual({
+    expect(await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' })).toMatchObject({
       ok: false,
       reason: 'unauthorized',
     });

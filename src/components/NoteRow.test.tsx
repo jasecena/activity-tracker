@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import { dayNoteId, type DayNote } from '@/core/day';
 
@@ -71,4 +72,66 @@ it('names a note that is only a recording', async () => {
   await render(<NoteRow note={note({ text: '', voice: VOICE })} tzOffsetMinutes={UTC} onOpen={jest.fn()} />);
 
   expect(screen.getByLabelText('Note at 08:30: a recording')).toBeTruthy();
+});
+
+/**
+ * A clip that has played out rewinds and offers to play again. Without it the
+ * button sits on "pause" over silence, and getting back to the start costs two
+ * presses that each do something other than what they say.
+ */
+describe('a recording that has played to the end', () => {
+  const atEnd = { playing: false, didJustFinish: true, currentTime: 90, duration: 90, isLoaded: true };
+
+  function playerWith(overrides: Partial<Record<string, unknown>> = {}) {
+    const player = { play: jest.fn(), pause: jest.fn(), seekTo: jest.fn(), remove: jest.fn(), ...overrides };
+    (useAudioPlayer as jest.Mock).mockReturnValue(player);
+    return player;
+  }
+
+  /**
+   * The button has to say Play again once the audio has stopped on its own.
+   * Mirroring a boolean instead of reading the player is what leaves it stuck
+   * on Pause over silence.
+   */
+  it('offers play again rather than pause over silence', async () => {
+    playerWith();
+    (useAudioPlayerStatus as jest.Mock).mockReturnValue(atEnd);
+
+    await render(<NoteRow note={note({ voice: VOICE })} tzOffsetMinutes={UTC} />);
+
+    expect(screen.getByLabelText('Play the recording')).toBeTruthy();
+  });
+
+  it('rewinds to the start when pressed, instead of resuming into silence', async () => {
+    const player = playerWith();
+    (useAudioPlayerStatus as jest.Mock).mockReturnValue(atEnd);
+
+    await render(<NoteRow note={note({ voice: VOICE })} tzOffsetMinutes={UTC} />);
+    await fireEvent.press(screen.getByLabelText('Play the recording'));
+
+    expect(player.seekTo).toHaveBeenCalledWith(0);
+    expect(player.play).toHaveBeenCalled();
+  });
+
+  it('does not rewind a clip that has not finished', async () => {
+    const player = playerWith();
+    (useAudioPlayerStatus as jest.Mock).mockReturnValue({ ...atEnd, currentTime: 10, didJustFinish: false });
+
+    await render(<NoteRow note={note({ voice: VOICE })} tzOffsetMinutes={UTC} />);
+    await fireEvent.press(screen.getByLabelText('Play the recording'));
+
+    expect(player.seekTo).not.toHaveBeenCalled();
+    expect(player.play).toHaveBeenCalled();
+  });
+
+  it('pauses rather than restarting while it is playing', async () => {
+    const player = playerWith();
+    (useAudioPlayerStatus as jest.Mock).mockReturnValue({ ...atEnd, playing: true, currentTime: 10 });
+
+    await render(<NoteRow note={note({ voice: VOICE })} tzOffsetMinutes={UTC} />);
+    await fireEvent.press(screen.getByLabelText('Pause the recording'));
+
+    expect(player.pause).toHaveBeenCalled();
+    expect(player.play).not.toHaveBeenCalled();
+  });
 });

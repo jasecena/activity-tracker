@@ -82,7 +82,26 @@ export type TranscriptionFailure =
 
 export type TranscriptionResult =
   | { readonly ok: true; readonly text: string; readonly languageCode: string }
-  | { readonly ok: false; readonly reason: TranscriptionFailure };
+  | {
+      readonly ok: false;
+      readonly reason: TranscriptionFailure;
+      /**
+       * The service's own words, for the screen and nowhere else.
+       *
+       * A status line and whatever the response body said, or the thrown
+       * error's name and message — raw, untranslated, and deliberately shown to
+       * the person holding the phone. The generic sentences above are for the
+       * ordinary case; this is for the case where the ordinary sentence is not
+       * enough to act on, which is precisely when a diary app has nothing else
+       * to offer: there is no server-side log, no crash reporter and no
+       * telemetry to look this up in afterwards.
+       *
+       * **On the screen, never in a log and never stored.** `console` output is
+       * swept into a sysdiagnose and leaves the sandbox; a rendered string does
+       * not. It is held for the life of the sheet and thrown away with it.
+       */
+      readonly detail?: string;
+    };
 
 export interface TranscriptionRequest {
   /** A file URI for the recording — `noteAudioUri`, not a note or an id. */
@@ -110,6 +129,15 @@ export function filePart(uri: string): Blob {
   // service both read. The file itself is unchanged — an `.m4a` from
   // `expo-audio` is an MPEG-4 audio container, which is what this says.
   return { uri, name: 'note.m4a', type: 'audio/mp4' } as unknown as Blob;
+}
+
+/** How much of the service's answer to put on screen before it stops being readable. */
+const DETAIL_LIMIT = 400;
+
+function detailOf(prefix: string, body: string): string {
+  const trimmed = body.trim();
+  const shown = trimmed.length > DETAIL_LIMIT ? `${trimmed.slice(0, DETAIL_LIMIT)}…` : trimmed;
+  return shown.length > 0 ? `${prefix} — ${shown}` : prefix;
 }
 
 function failureFor(status: number): TranscriptionFailure {
@@ -176,7 +204,14 @@ export async function transcribe({ uri, apiKey, languageCode }: TranscriptionReq
       signal: abort.signal,
     });
 
-    if (!response.ok) return { ok: false, reason: failureFor(response.status) };
+    if (!response.ok) {
+      // Read the body for the detail line. `text` rather than `json` because a
+      // failure is exactly when the body might not be JSON at all — a proxy's
+      // HTML error page, an empty response — and a parse error here would
+      // become a misleading "something else went wrong entirely".
+      const body = await response.text().catch(() => '');
+      return { ok: false, reason: failureFor(response.status), detail: detailOf(`HTTP ${response.status}`, body) };
+    }
 
     const body: unknown = await response.json();
     if (typeof body !== 'object' || body === null) return { ok: false, reason: 'failed' };
@@ -198,7 +233,8 @@ export async function transcribe({ uri, apiKey, languageCode }: TranscriptionReq
     // carry a key or a content reaches a console, because device logs are
     // swept into a sysdiagnose.
     console.warn('Could not transcribe the recording');
-    return { ok: false, reason: failureFromThrow(error, abort.signal.aborted) };
+    const named = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    return { ok: false, reason: failureFromThrow(error, abort.signal.aborted), detail: detailOf('threw', named) };
   } finally {
     clearTimeout(timer);
     void releaseScreenAwake();
