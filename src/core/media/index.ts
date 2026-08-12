@@ -1,8 +1,10 @@
 import { dayKeyOf, type TzOffsetMinutes } from '../day';
 import type { LatLon } from '../geo';
 import { positionAt, type Position, type Track } from '../replay';
+import { isStoredFileName } from './fileName';
 import { isCaptureOrientation, type CaptureOrientation } from './orientation';
 
+export { isStoredFileName } from './fileName';
 export {
   CAMERA_WRITES_UPRIGHT_PIXELS,
   displayRotationFor,
@@ -151,34 +153,6 @@ function readableKind(candidate: unknown): MediaKind | null {
   return isMediaKind(candidate) ? candidate : null;
 }
 
-/**
- * Every name this app has ever written: `m-<instant>` with an extension, plus
- * `.thumb`, `.thumb.<n>` and the retired `.avm`. Deliberately narrower than
- * "what a filesystem accepts".
- */
-const STORED_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-/**
- * A stored name must be a *name*, not a path.
- *
- * The index names files that `services/mediaStore.ts` then opens, and in one
- * case deletes, by joining the name onto the media directory. A name carrying
- * `../` walks out of that directory; percent-encoding does the same thing one
- * decode later. iOS bounds the damage — the URL is standardised and checked
- * against what the app is allowed to touch — but "the platform stops it going
- * anywhere too interesting" is not the same as this app having checked, and
- * `normalizeMedia` is the function that claims to be the trust boundary here.
- *
- * It matters more later than now. Today an index entry can only be planted by
- * something that already holds the device key, which is game over anyway. The
- * S3 restore in `docs/BACKLOG.md` § 12 is the path that makes an index arrive
- * from somewhere other than this phone, and this is much cheaper to require
- * before that exists than to retrofit after.
- */
-function isStoredFileName(candidate: unknown): candidate is string {
-  return typeof candidate === 'string' && candidate.length > 0 && STORED_FILE_NAME.test(candidate);
-}
-
 function isMediaItem(candidate: unknown): candidate is MediaItem {
   if (typeof candidate !== 'object' || candidate === null) return false;
   const { id, kind, capturedAt, fileName } = candidate as Partial<MediaItem>;
@@ -219,6 +193,25 @@ export function normalizeMedia(input: unknown): MediaItem[] {
       orientation: isCaptureOrientation(item.orientation) ? item.orientation : null,
     }))
     .sort((a, b) => a.capturedAt - b.capturedAt);
+}
+
+/**
+ * The captures — everything the gallery, the map and the day's filmstrip show.
+ *
+ * **A voice note is not one of them, and this is what says so.** It was: a
+ * recording used to be filed here beside the photographs, listed in the Media
+ * tab, pinned on the map. It is a diary entry now — `core/day/notes.ts` — and
+ * lives on the note it belongs to, so the gallery must not draw it as well.
+ * Two places showing one thing is two things to keep in step and one of them
+ * always slightly wrong, which is the reasoning that retired `MediaScreen`.
+ *
+ * The kind survives in the index rather than being deleted, because a library
+ * written by an earlier build still has audio rows in it until
+ * `useAdoptVoiceCaptures` has moved them across. This filter is what makes that
+ * window invisible instead of showing a recording that is about to move.
+ */
+export function capturesOnly(items: readonly MediaItem[]): readonly MediaItem[] {
+  return items.filter((item) => item.kind !== 'audio');
 }
 
 export interface MediaDay {

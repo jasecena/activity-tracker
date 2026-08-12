@@ -6,6 +6,8 @@ import type { DayNote } from '@/core/day';
 import { formatClockTime } from '@/core/format';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
+import { VoiceNotePlayer } from './VoiceNotePlayer';
+
 interface NoteRowProps {
   readonly note: DayNote;
   readonly tzOffsetMinutes: number;
@@ -27,31 +29,65 @@ interface NoteRowProps {
  * each — not the sort of thing a timeline needs protecting from.
  */
 export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: NoteRowProps) {
-  const body = (
+  const head = (
+    <View style={styles.head}>
+      {/* The icon says which hand wrote it. Nothing else about the row
+          changes: a recording is the same entry, said. */}
+      <Ionicons name={note.voice ? 'mic-outline' : 'create-outline'} size={13} color={colors.textMuted} />
+      <Text style={styles.time}>{formatClockTime(note.at, tzOffsetMinutes)}</Text>
+    </View>
+  );
+
+  const written = (
     <>
-      <View style={styles.accent} />
-      <View style={styles.inner}>
-        <View style={styles.head}>
-          <Ionicons name="create-outline" size={13} color={colors.textMuted} />
-          <Text style={styles.time}>{formatClockTime(note.at, tzOffsetMinutes)}</Text>
-        </View>
-        {note.title.length > 0 ? <Text style={styles.noteTitle}>{note.title}</Text> : null}
-        {note.text.length > 0 ? <Text style={styles.text}>{note.text}</Text> : null}
-      </View>
+      {note.title.length > 0 ? <Text style={styles.noteTitle}>{note.title}</Text> : null}
+      {note.text.length > 0 ? <Text style={styles.text}>{note.text}</Text> : null}
     </>
   );
 
-  if (!onOpen) return <View style={styles.row}>{body}</View>;
+  /**
+   * The words open the sheet; the player does not.
+   *
+   * A play button inside a row that is itself a button would be one tap doing
+   * two things, and the one it would do is whichever the platform decided. So
+   * the recording sits *outside* the pressable, under the writing — playing is
+   * a press on the pill, editing is a press on anything else.
+   */
+  const player = note.voice ? (
+    <View style={styles.player}>
+      <VoiceNotePlayer voice={note.voice} />
+    </View>
+  ) : null;
+
+  if (!onOpen) {
+    return (
+      <View style={styles.row}>
+        <View style={styles.accent} />
+        <View style={styles.inner}>
+          {head}
+          {written}
+          {player}
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <Pressable
-      onPress={() => onOpen(note)}
-      accessibilityRole="button"
-      accessibilityLabel={`Note at ${formatClockTime(note.at, tzOffsetMinutes)}: ${note.title || note.text}`}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
-      {body}
-    </Pressable>
+    <View style={styles.row}>
+      <View style={styles.accent} />
+      <View style={styles.inner}>
+        <Pressable
+          onPress={() => onOpen(note)}
+          accessibilityRole="button"
+          accessibilityLabel={`Note at ${formatClockTime(note.at, tzOffsetMinutes)}: ${note.title || note.text || 'a recording'}`}
+          style={({ pressed }) => [styles.words, pressed && styles.pressed]}
+        >
+          {head}
+          {written}
+        </Pressable>
+        {player}
+      </View>
+    </View>
   );
 });
 
@@ -62,6 +98,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', paddingVertical: spacing.sm, gap: spacing.sm },
   accent: { width: 3, borderRadius: radius.sm, backgroundColor: colors.stay },
   inner: { flex: 1, gap: spacing.xs },
+  words: { gap: spacing.xs },
+  player: { marginTop: spacing.xs },
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   time: { ...typography.caption, color: colors.textMuted },
   noteTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },

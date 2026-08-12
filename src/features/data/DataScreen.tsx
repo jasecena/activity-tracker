@@ -118,6 +118,10 @@ export function DataScreen({
   const points = moves.reduce((sum, segment) => sum + (segment.kind === 'move' ? segment.path.length : 0), 0);
   const droppedTotal = rejected ? Object.values(rejected).reduce((a, b) => a + b, 0) : 0;
 
+  // The diary's own bytes. A recording is a note, so it is counted with the
+  // notes — and it is the only part of a note that has a size at all.
+  const voiceBytes = notes.reduce((sum, note) => sum + (note.voice?.byteLength ?? 0), 0);
+
   const first = fixes[0];
   const last = fixes[fixes.length - 1];
 
@@ -145,13 +149,19 @@ export function DataScreen({
           <Row label="Journeys" value={`${moves.length}`} />
           <Row label="Stops" value={`${stays.length}`} />
           <Row label="Named places" value={`${places.length}`} />
-          <Row label="Photos, video and voice notes" value={`${media.length}`} />
+          <Row label="Photos and video" value={`${media.length}`} />
           {/* The only store in the app with nothing bounding it, so this is the
               one figure that has to stay readable into the gigabytes. It was
               `bytes / 1024` labelled kB, which is both wrong and unreadable at
               exactly the size where it starts to matter. */}
           <Row label="  Their size on disk" value={formatBytes(totalBytes(media))} />
           <Row label="Diary notes" value={`${notes.length}`} />
+          {/* Counted with the diary rather than with the captures, because a
+              voice note is a note: it is written on a day, it goes in the
+              diary CSV, and retention never deletes it. Only the bytes are
+              shown for it — how many notes were spoken rather than typed is a
+              fact about a diary, not about storage. */}
+          <Row label="  Recordings on those notes" value={formatBytes(voiceBytes)} />
           {/* Says what is true rather than what the code intends. "No" here
               means the Settings privacy paragraph is currently claiming
               something this build is not doing, which is a bug and not a

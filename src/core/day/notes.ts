@@ -1,6 +1,50 @@
+import type { LatLon } from '../geo';
+import { isStoredFileName } from '../media/fileName';
 import type { Segment } from '../segments';
 
 import { dayKeyOf, startOfLocalDay, type DayGroup, type TzOffsetMinutes } from './day';
+
+/**
+ * A recording attached to a note: the same entry, said rather than typed.
+ *
+ * **A voice note is a note.** It used to be a capture — filed beside the photos
+ * and the video, opened from the Media tab, counted as something the camera
+ * produced. That was filing it by the hardware it came out of rather than by
+ * what it is. Saying something about a day and writing it down are the same act
+ * with different hands, and the transcription in `docs/BACKLOG.md` § 15 makes
+ * that literal: the text it produces belongs *on the note*, beside whatever was
+ * typed, not on a row in a gallery.
+ *
+ * So the recording is a field of `DayNote` rather than a record of its own. It
+ * inherits everything the diary already decided — retention never deletes one,
+ * the trust boundary repairs rather than drops, it is in the CSV — and none of
+ * it has to be decided a second time.
+ *
+ * The bytes are not here. `services/noteAudio.ts` owns the file, exactly as
+ * `services/mediaStore.ts` owns a capture's; this is the name of it and the
+ * facts a screen needs before deciding whether to open it.
+ */
+export interface NoteVoice {
+  /**
+   * `voice-<startedAt>.m4a` in the diary's audio directory. Derived from the
+   * instant the recording began, like every other id in this app, so a file
+   * interrupted between being written and being referenced says what it was.
+   */
+  readonly fileName: string;
+  /** How long it runs, in ms. What the play button says before it is pressed. */
+  readonly durationMs: number;
+  /** Size on disk. What the Data screen counts. */
+  readonly byteLength: number;
+  /**
+   * Where you were when you **started** talking, or null if the platform would
+   * not say.
+   *
+   * The start rather than the end, for the reason `useVoiceNote` keeps it in a
+   * ref: a minute of talking while walking otherwise gets stamped wherever you
+   * finished, which is the one place it definitely was not begun.
+   */
+  readonly at: LatLon | null;
+}
 
 /**
  * What you wrote down about a day.
@@ -59,8 +103,17 @@ export interface DayNote {
    * untitled one. So it is offered first and required never.
    */
   readonly title: string;
-  /** The body. Empty only when there is a title; see `noteAt`. */
+  /** The body. Empty when the note is a title or a recording; see `noteAt`. */
   readonly text: string;
+  /**
+   * What was said aloud, or null.
+   *
+   * A third way of writing the same entry rather than a different kind of row.
+   * A note may be a recording and nothing else — talking is how you write
+   * something down while walking — and it may be a recording *and* a
+   * paragraph, which is what happens the moment you go back and add to it.
+   */
+  readonly voice: NoteVoice | null;
 }
 
 export function dayNoteId(at: number): string {
@@ -91,15 +144,16 @@ export function freeInstant(notes: readonly DayNote[], wanted: number): number {
  * store is better off without it — the same reasoning that drops a journey
  * label saying nothing.
  *
- * **Either field is enough.** A title with no body is a perfectly good entry —
- * "Moved house" says the day — and so is a paragraph nobody wanted to name.
- * Requiring both would be the app deciding how somebody keeps a diary.
+ * **Any one field is enough.** A title with no body is a perfectly good entry —
+ * "Moved house" says the day — and so is a paragraph nobody wanted to name, and
+ * so is thirty seconds of talking with neither. Requiring more would be the app
+ * deciding how somebody keeps a diary.
  */
-export function noteAt(at: number, title: string, text: string): DayNote | null {
+export function noteAt(at: number, title: string, text: string, voice: NoteVoice | null = null): DayNote | null {
   const heading = title.trim();
   const body = text.trim();
-  if (heading.length === 0 && body.length === 0) return null;
-  return { id: dayNoteId(at), at, title: heading, text: body };
+  if (heading.length === 0 && body.length === 0 && voice === null) return null;
+  return { id: dayNoteId(at), at, title: heading, text: body, voice };
 }
 
 /**
@@ -176,9 +230,37 @@ export function daysWorthOpening(
 
 function isNote(candidate: unknown): candidate is Partial<DayNote> {
   if (typeof candidate !== 'object' || candidate === null) return false;
-  const { id, at, text } = candidate as Partial<DayNote>;
-  if (typeof id !== 'string' || typeof text !== 'string') return false;
+  const { id, at } = candidate as Partial<DayNote>;
+  if (typeof id !== 'string') return false;
   return typeof at === 'number' && Number.isFinite(at);
+}
+
+function isLatLon(candidate: unknown): candidate is LatLon {
+  if (typeof candidate !== 'object' || candidate === null) return false;
+  const { lat, lon } = candidate as Partial<LatLon>;
+  return typeof lat === 'number' && Number.isFinite(lat) && typeof lon === 'number' && Number.isFinite(lon);
+}
+
+/**
+ * A stored recording, or null.
+ *
+ * The file name is the one field with no repair available: a name that is not a
+ * name points at nothing this app wrote, and the service would join it onto a
+ * directory. Everything else is a fact *about* the recording — how long, how
+ * large, where — and a note whose recording has lost its duration is still a
+ * recording you can play, so those default rather than discarding it.
+ */
+function readVoice(candidate: unknown): NoteVoice | null {
+  if (typeof candidate !== 'object' || candidate === null) return null;
+  const { fileName, durationMs, byteLength, at } = candidate as Partial<NoteVoice>;
+  if (!isStoredFileName(fileName)) return null;
+
+  return {
+    fileName,
+    durationMs: typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : 0,
+    byteLength: typeof byteLength === 'number' && Number.isFinite(byteLength) && byteLength >= 0 ? byteLength : 0,
+    at: isLatLon(at) ? { lat: at.lat, lon: at.lon } : null,
+  };
 }
 
 /**
@@ -188,20 +270,41 @@ function isNote(candidate: unknown): candidate is Partial<DayNote> {
  * but the bar for "unrecognisable" is deliberately low here, and lower than it
  * is for a fix or a segment. A malformed reading can be thrown away because
  * thousands more are coming; a note is the one thing in this store that nobody
- * and nothing can reconstruct. So a note with a text and a finite instant is
- * kept even if its id is something no build ever wrote, and the id is rebuilt
- * from the instant rather than the row being discarded over it.
+ * and nothing can reconstruct. So a note with a finite instant is kept even if
+ * its id is something no build ever wrote, and the id is rebuilt from the
+ * instant rather than the row being discarded over it.
+ *
+ * The same reasoning is why nothing here requires a *text*. Titles arrived
+ * after the first notes did and recordings after those, so an entry may hold
+ * any one of the three; insisting on the field that happened to come first
+ * would discard the two that came later. `noteAt` is the only thing that
+ * decides a row says nothing, and it says so only when all three are empty.
  */
 export function normalizeDayNotes(input: unknown): DayNote[] {
   if (!Array.isArray(input)) return [];
   return input
     .filter(isNote)
     .flatMap((note) => {
-      // Titles arrived after the first notes did, so a stored entry may have
-      // none — which is a missing field, not a broken row, and the body is the
-      // part that could never be reconstructed. Defaulted rather than dropped.
-      const built = noteAt(note.at ?? 0, typeof note.title === 'string' ? note.title : '', note.text ?? '');
+      const built = noteAt(
+        note.at ?? 0,
+        typeof note.title === 'string' ? note.title : '',
+        typeof note.text === 'string' ? note.text : '',
+        readVoice(note.voice),
+      );
       return built ? [built] : [];
     })
     .sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Every audio file the diary owns — what a sweep must be told to keep.
+ *
+ * The same shape as `filesOf` over the media index, and it exists for the same
+ * reason: a recording made and then abandoned (the sheet closed without saving,
+ * a note re-recorded before it was written) leaves a file nothing points at,
+ * and a directory nobody sweeps only ever grows. Built here so no caller has to
+ * remember what a note can own.
+ */
+export function voiceFilesOf(notes: readonly DayNote[]): readonly string[] {
+  return notes.flatMap((note) => (note.voice ? [note.voice.fileName] : []));
 }

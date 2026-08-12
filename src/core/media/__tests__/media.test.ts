@@ -2,6 +2,7 @@ import { EARTH_RADIUS_M, type PathPoint } from '../../geo';
 import { buildTrack } from '../../replay';
 import type { MoveSegment } from '../../segments';
 import {
+  capturesOnly,
   groupMediaByDay,
   capturedAtFromMediaId,
   mediaForDay,
@@ -184,6 +185,25 @@ describe('normalizeMedia', () => {
 
     expect(result?.thumbFileName).toBeNull();
     expect(result?.fileName).toBe(item(T0).fileName);
+  });
+});
+
+/**
+ * A voice note is a diary entry, not a capture: it lives on the note it belongs
+ * to, and the gallery must not draw it as well. The kind survives in the index
+ * only until `useAdoptVoiceCaptures` has moved the rows an earlier build wrote.
+ */
+describe('capturesOnly', () => {
+  it('leaves out a voice note, because that is a note rather than a capture', () => {
+    const items = [item(T0), item(T0 + MINUTE, { kind: 'audio' }), item(T0 + 2 * MINUTE, { kind: 'video' })];
+
+    expect(capturesOnly(items).map((one) => one.kind)).toEqual(['photo', 'video']);
+  });
+
+  it('keeps every photograph and clip untouched', () => {
+    const items = [item(T0), item(T0 + MINUTE, { kind: 'video' })];
+
+    expect(capturesOnly(items)).toEqual(items);
   });
 });
 

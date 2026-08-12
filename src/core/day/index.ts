@@ -15,7 +15,9 @@ export {
   normalizeDayNotes,
   noteAt,
   notesForDay,
+  voiceFilesOf,
   whereToWrite,
   type DayNote,
+  type NoteVoice,
 } from './notes';
 export { summarizeDay, type DaySummary } from './summary';

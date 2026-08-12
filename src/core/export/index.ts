@@ -187,10 +187,17 @@ export function segmentsToCsv(segments: readonly Segment[], places: readonly Pla
  * here than anywhere: a note is free text and will contain commas, quotes and
  * newlines as a matter of course. RFC 4180 handles all three, and a spreadsheet
  * reads a quoted newline as part of the cell rather than as a new row.
+ *
+ * **A recording gets named rather than skipped.** The audio itself cannot go in
+ * a CSV, but an entry that was spoken instead of typed would otherwise export as
+ * a blank row with a time on it — which reads as a day nothing was written
+ * about, and is the opposite of true. The file name is the one that sits in the
+ * app's own directory, so a row says both that something was said and which
+ * file to go and find. Empty on a note that was typed, which is most of them.
  */
 export function notesToCsv(notes: readonly DayNote[], tzOffsetMinutes: number): string {
   return toCsv(
-    ['timestamp', 'epoch_ms', 'day', 'title', 'text'],
+    ['timestamp', 'epoch_ms', 'day', 'title', 'text', 'voice_file', 'voice_seconds'],
     [...notes]
       .sort((a, b) => a.at - b.at)
       .map((note) => [
@@ -199,6 +206,8 @@ export function notesToCsv(notes: readonly DayNote[], tzOffsetMinutes: number): 
         dayKeyOf(note.at, tzOffsetMinutes),
         note.title,
         note.text,
+        note.voice?.fileName ?? '',
+        note.voice ? Math.round(note.voice.durationMs / 1000) : '',
       ]),
   );
 }

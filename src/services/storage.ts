@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { monotonicNow } from './clock';
 import { eraseAllMedia } from './mediaStore';
+import { eraseAllNoteAudio } from './noteAudio';
 import { record } from './timing';
 import { destroyKey, open, seal } from './vault';
 
@@ -209,24 +210,26 @@ export async function writeJson(key: StorageKey, value: unknown): Promise<void> 
  *
  * **The plaintext goes first, then the key, then the rows the key protected.**
  * Ordering can only ever protect what is not already protected, and since
- * captures stopped being sealed, media is the only thing here that a crash
- * halfway through could leave readable. Destroying the key does nothing to a
- * JPEG.
+ * captures stopped being sealed, the files on disk are the only thing here that
+ * a crash halfway through could leave readable. Destroying the key does nothing
+ * to a JPEG, and nothing to the diary's recordings either — which is why both
+ * directories go before it and not after.
  *
  * That reverses the rule that used to stand here — key first, so that dying
  * halfway left ciphertext — which was correct while media was sealed under the
  * same key and stopped being correct when it wasn't. Between the two calls, the
  * old order left a directory of photographs.
  *
- * `eraseAllMedia` is **synchronous**, which is what makes this worth the
- * reordering rather than merely tidier: it runs to completion before the first
- * `await` below, so there is no suspension point inside it and no window at all
- * where the app can be killed mid-delete. The key and the rows keep their own
+ * Both deletions are **synchronous**, which is what makes this worth the
+ * reordering rather than merely tidier: they run to completion before the first
+ * `await` below, so there is no suspension point inside them and no window at
+ * all where the app can be killed mid-delete. The key and the rows keep their own
  * order relative to each other, for the original reason — clearing rows first
  * and dying before the key is gone leaves a key protecting nothing.
  */
 export async function eraseEverything(): Promise<void> {
   eraseAllMedia();
+  eraseAllNoteAudio();
 
   await destroyKey();
 

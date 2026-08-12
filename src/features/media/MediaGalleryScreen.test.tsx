@@ -29,7 +29,7 @@ function media(
     capturedAt,
     durationMs: kind === 'photo' ? null : 4_000,
     fileName: `${capturedAt}.avm`,
-    thumbFileName: kind === 'audio' ? null : `${capturedAt}.thumb.avm`,
+    thumbFileName: `${capturedAt}.thumb.avm`,
     byteLength: 1_024,
     at: null,
     note: '',
@@ -175,10 +175,11 @@ describe('MediaGalleryScreen', () => {
     expect(opened).toHaveBeenCalledTimes(1);
   });
 
-  // Audio has no thumbnail and never will. Asking for one on every scroll would
-  // be a decrypt of nothing, repeated forever.
-  it('never asks for a thumbnail a voice note does not have', async () => {
-    await render(gallery([media(1, 'audio')]));
+  // A capture taken before thumbnails existed has none until the launch
+  // backfill gives it one. Asking on every scroll would be a read of nothing,
+  // repeated forever.
+  it('never asks for a thumbnail a capture does not have', async () => {
+    await render(gallery([{ ...media(1), thumbFileName: null }]));
 
     await act(async () => {});
     expect(thumbnails).not.toHaveBeenCalled();

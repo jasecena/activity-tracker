@@ -210,6 +210,20 @@ function mediaDirectory(): Directory {
 }
 
 /**
+ * Where a stored file actually is, or null if it is not there.
+ *
+ * The one way out of this directory, and it exists for one caller:
+ * `services/noteAudio.ts` moving a voice note recorded while voice notes were
+ * still captures. The alternative was giving the diary its own idea of where
+ * the media directory is, which is two answers to a question that must only
+ * ever have one.
+ */
+export function mediaFileUri(fileName: string): string | null {
+  const file = new File(mediaDirectory(), fileName);
+  return file.exists ? file.uri : null;
+}
+
+/**
  * Whether captures really are being kept out of backups.
  *
  * **This exists because the claim is otherwise unfalsifiable from the phone.**
