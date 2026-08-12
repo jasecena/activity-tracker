@@ -49,7 +49,9 @@ const TRANSCRIPTION_MESSAGES: Readonly<Record<TranscriptionFailure, string>> = {
   'no-audio': 'The recording’s file is missing.',
   unauthorized: 'The key was refused. Check it in Settings.',
   'rate-limited': 'Out of credit, or too many requests. Try later.',
-  offline: 'No connection — nothing was sent.',
+  // Not "nothing was sent" — see `TranscriptionFailure`. The outcome is what
+  // is known; whether the bytes left the device is not.
+  unreachable: 'Could not reach ElevenLabs. No text was added.',
   timeout: 'The service did not answer. Try again.',
   silent: 'Nothing was said in this recording.',
   failed: 'Transcribing did not work. Try again.',

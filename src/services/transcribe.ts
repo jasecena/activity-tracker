@@ -61,8 +61,18 @@ export type TranscriptionFailure =
   | 'unauthorized'
   /** Out of credit, or too many requests. */
   | 'rate-limited'
-  /** The request never reached the service. */
-  | 'offline'
+  /**
+   * The request could not be completed against the service.
+   *
+   * Deliberately **not** called `offline`, and its message deliberately does not
+   * say "nothing was sent": a thrown `fetch` cannot distinguish a request that
+   * never left the device from one that left and whose reply was lost. In an app
+   * whose whole argument is what does and does not leave the phone, printing an
+   * unverifiable claim about that is the same class of error as the permission
+   * string that used to say "never uploaded". The message states the outcome —
+   * no text was added — which is the part that is actually known.
+   */
+  | 'unreachable'
   /** It reached the service and nothing came back in time. */
   | 'timeout'
   /** It worked, and there was no speech in the recording. */
@@ -88,15 +98,43 @@ export interface TranscriptionRequest {
  * RN accepts `{ uri, name, type }` where the DOM types demand a `Blob`, and
  * this is the documented idiom rather than a trick — but the cast has to be
  * written down somewhere, so it is written down here.
+ *
+ * Exported only so its shape can be asserted: the `FormData` in the test
+ * environment stringifies a part to `[object Object]`, so a test that goes
+ * through `append` can prove which *keys* are sent but not what the file part
+ * says about itself.
  */
-function filePart(uri: string): Blob {
-  return { uri, name: 'note.m4a', type: 'audio/m4a' } as unknown as Blob;
+export function filePart(uri: string): Blob {
+  // `audio/mp4`, not `audio/m4a`: the latter is not a registered media type, and
+  // the part's Content-Type is what the platform's multipart encoder and the
+  // service both read. The file itself is unchanged — an `.m4a` from
+  // `expo-audio` is an MPEG-4 audio container, which is what this says.
+  return { uri, name: 'note.m4a', type: 'audio/mp4' } as unknown as Blob;
 }
 
 function failureFor(status: number): TranscriptionFailure {
+  // 401 covers two different things here and the message says so: a key the
+  // service rejects, and a key whose quota is spent — the live service answers
+  // `quota_exceeded` with a 401 rather than a 402 or 429.
   if (status === 401 || status === 403) return 'unauthorized';
   if (status === 429) return 'rate-limited';
   return 'failed';
+}
+
+/**
+ * What a thrown `fetch` means, as far as it can honestly be told apart.
+ *
+ * React Native reports everything its networking layer could not complete — no
+ * route, a refused connection, a file it could not read into the multipart body
+ * — as one `TypeError: Network request failed`. So this separates "the request
+ * did not complete" from "something else went wrong entirely" and claims
+ * nothing more. The error is matched on its message rather than logged, because
+ * a fetch error can carry the request URL and device logs leave the sandbox.
+ */
+function failureFromThrow(error: unknown, aborted: boolean): TranscriptionFailure {
+  if (aborted) return 'timeout';
+  const message = error instanceof Error ? error.message : '';
+  return message.includes('Network request failed') ? 'unreachable' : 'failed';
 }
 
 /**
@@ -153,14 +191,14 @@ export async function transcribe({ uri, apiKey, languageCode }: TranscriptionReq
     if (spoken.length === 0) return { ok: false, reason: 'silent' };
 
     return { ok: true, text: spoken, languageCode: typeof code === 'string' ? code : languageCode };
-  } catch {
+  } catch (error) {
     // The error itself is deliberately not logged. A fetch error can carry the
     // request URL and, on some platforms, headers with it — and
     // `services/timing.ts` already draws the line that nothing which could
     // carry a key or a content reaches a console, because device logs are
     // swept into a sysdiagnose.
     console.warn('Could not transcribe the recording');
-    return { ok: false, reason: abort.signal.aborted ? 'timeout' : 'offline' };
+    return { ok: false, reason: failureFromThrow(error, abort.signal.aborted) };
   } finally {
     clearTimeout(timer);
     void releaseScreenAwake();
