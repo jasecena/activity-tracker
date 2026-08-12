@@ -16,10 +16,11 @@ shell, the day screen with history and replay, places and journey labels, the
 encrypted store, CSV export, the low-battery lens, the Media tab with the Photos
 gestures, capture orientation, and the three-stop zoom on real lens optics.
 
-**The diary shipped in v0.6.0, and it was never an item in this file** — it was
+**The diary shipped in v0.5.1, and it was never an item in this file** — it was
 asked for directly and built the same day. Notes on a day, several per day, each
-with a date and time you can change, interleaved into the timeline. Reasoning in
-`docs/ARCHITECTURE.md` § 10a; the thing to know before touching it is that it is
+with a title, and a date and time you can change; v0.5.2 moved them out of the
+timeline into a section of their own and put the voice recorder beside the pen.
+Reasoning in `docs/ARCHITECTURE.md` § 10a; the thing to know before touching it is that it is
 the only store here that nothing can reconstruct, which is why retention never
 reaches it and why its trust boundary repairs rather than drops.
 
@@ -508,6 +509,114 @@ rather than a chore: when `image-size` publishes a fix, `audit-ci` starts
 complaining about an entry that no longer applies. That is the signal to remove
 it, not a date in a calendar.
 
+## 15. Transcribing a voice note
+
+**Status:** not started, and designed rather than sketched — the service is
+chosen, the numbers behind the choice are below, and the decisions that would
+otherwise be made twice have been made once. It is the second item in this file
+that widens the one-network-request rule, and unlike item 12 it does so for
+something the app could live without, so the reasoning has to be better rather
+than merely present.
+
+A voice note is currently a file you can play and nothing else. Transcribed, it
+becomes something you can skim, search, and eventually hand to an LLM to write a
+day up from — which is the point. **The audio stays the record**; the text is a
+reading of it, in the same sense that a `JourneyLabel` is a reading of a journey
+rather than a replacement for the fixes underneath.
+
+### The service: ElevenLabs Scribe v2
+
+Chosen on Persian accuracy alone, which is the requirement that matters:
+
+| Benchmark                     | Scribe v2 | For comparison                      |
+| ----------------------------- | --------- | ----------------------------------- |
+| FLEURS Persian                | **3.1%**  | beats Gemini and Whisper on Persian |
+| Common Voice Persian          | 5.5%      |                                     |
+| Persian–English code-switched | 13.2%     | lowest of any system tested         |
+| Overall (all languages)       | 2.3%      | Gemini 3 Pro 2.9%, Whisper behind   |
+
+The alternative worth naming is Whisper, hosted on Groq at roughly a tenth the
+price. It was the first choice and it is the wrong one here: a Persian
+**fine-tuned** Whisper reaches about 13–14% WER on clean Persian, so Scribe is
+some four times better out of the box than the best Whisper option is after
+work. At this volume the price difference is cents a month, so it buys nothing.
+
+**Persian only, and the language is pinned rather than detected.** Declaring the
+language stops the model hedging and is most of the distance between the 13.2%
+and 3.1% figures. The cost is that an English word spoken mid-sentence comes back
+transliterated into Persian script rather than as English — accepted, because the
+recordings this is for are entirely Persian. The multilingual mode is the same
+service and one parameter away if that changes.
+
+**Store the language code with each transcript**, and make it a setting rather
+than a constant. That is the whole cost of being able to switch services or
+languages later without a migration, and it is close to free now.
+
+### Shape
+
+**Not live.** Record, hand off, carry on; the text arrives later and you can edit
+it when it does. Batch is both cheaper and more accurate than streaming, so
+nothing is given up.
+
+**Segment timestamps are enough.** Word-level is available and unneeded — the
+transcript gets reviewed by hand.
+
+**Three layers of text, and the raw one is kept.** What the service heard, what
+an LLM cleaned up, and what you corrected are three different things. Keeping the
+first means a bad LLM pass is recoverable and a re-transcribe can never silently
+eat a correction. The grammar pass is a later step and a cheap one —
+`claude-haiku-4-5` is ample for it, at fractions of a cent per note.
+
+**The queue is the engineering, not the API call.** "Upload in the background and
+come back" has to survive suspension mid-upload, being offline when the recording
+ends, and the request failing outright. That is the same shape the fix buffer
+already solves by writing first and deriving later, and it is where this feature
+will break if it breaks.
+
+**Diarization is decoupled and deferred.** Who spoke when can come from a second
+pass whose speaker segments are mapped onto the transcript by time — but Scribe
+carries diarization in the same model, so the second system may never be needed.
+Worth knowing before it is built: diarization degrades on **overlapping** speech
+specifically, so turn-taking is close to its best case. And separating voices is
+not identifying them — naming a speaker per recording needs nothing stored, while
+recognising the same voice across recordings means holding a voiceprint of
+somebody who has agreed to nothing. Those are different features and only the
+first is wanted.
+
+### What it costs the app's argument
+
+**This is a second network request, and it is heavier than the first.** Apple
+Maps sends the region you are looking at. This sends **your voice** to a third
+party. `docs/ARCHITECTURE.md` § 12 is rewritten with it rather than around it: a
+setting, off by default, exactly as `mapsEnabled` is, and Settings says plainly
+what is uploaded and to whom.
+
+The key lives in the vault under the keychain key, never in the repository —
+`.gitignore` and gitleaks already cover the pattern. One file, `services/`, is
+the only thing that talks to the service; `core` stays pure. A transcript is
+something you said, so retention never deletes one, on the same rule as a note.
+
+**No right-to-left handling and no styling**, deliberately. The interface is
+English and the note content is Persian; the text renders readably as plain text
+and is stored as plain UTF-8, which is also what makes it portable to the S3
+sync (item 12) and to anything downstream. Revisit only if it is ever read by
+somebody other than its author.
+
+**When search is built** (the note under this list), Persian needs normalising on
+both the stored text and the query: Arabic characters routinely stand in for
+Persian ones — ک/ك and ی/ي — and zero-width non-joiners are invisible and break
+string matching. It belongs in `core`, pure and tested. Skipped, search fails in
+a way that is genuinely hard to diagnose.
+
+### Before committing to it
+
+Ten minutes of real audio through the free tier — the actual voice, the actual
+room, the actual phone. FLEURS and Common Voice are clean read speech and will
+flatter it. Judge whether the meaning survived rather than counting token
+mismatches: WER penalises Persian unfairly, because transliteration variance
+marks semantically correct transcriptions wrong, which is why the benchmark
+authors lean on BERTScore for Persian.
+
 ---
 
 Turned up while building the diary, not done:
@@ -517,6 +626,8 @@ Turned up while building the diary, not done:
   offered and declined at the time — worth revisiting once there is enough
   written to want it.
 - **Notes in the GPX and the day summary.** The CSV has them; nothing else does.
+- **Searching Persian** needs character normalisation before it will work at all
+  — see item 15.
 
 Parked separately, designs already written: photo library import (reviewed,
 never automatic — see the session notes), and a real Live Photo via
