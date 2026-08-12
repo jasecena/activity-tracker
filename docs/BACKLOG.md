@@ -749,9 +749,10 @@ which is why the ring buffer is capped by count and why what goes in it is
 
 ## 17. Rewriting a note with an LLM: three buttons and an approval
 
-**Status:** not started, designed in conversation on 13 August 2026, with two
-questions still open — they are at the bottom and both need answering before
-code. This is the second half of what item 15 set out to enable, and it is a
+**Status:** not started, designed in conversation on 13 August 2026. **Both open
+questions were answered the same day** and are recorded below with the reasoning
+rather than as bare decisions: the provider is Anthropic, and the diary button
+reads one note. This is the second half of what item 15 set out to enable, and it is a
 separate feature rather than a continuation: a different service, a **third**
 network request, and the first thing in this app that _overwrites something its
 owner wrote_.
@@ -788,43 +789,54 @@ even though transcription did not need it. Append-only made layers unnecessary;
 replacement may make them necessary again. Decide when the shape is real, not
 now.
 
-### The two open questions
+### Decided: Anthropic, `claude-haiku-4-5`
 
-**1. Which provider — Anthropic or OpenAI?**
+The stated criteria were **price and limiting what is retained**, and they point
+opposite ways, so the tiebreak is written down here rather than left implicit.
 
-Measured 13 August 2026, per ~300 Persian words in and out (~1K tokens each way):
+Price, measured 13 August 2026, per ~300 Persian words in and out (~1K tokens
+each way):
 
-| Model            | Per attempt | 100 notes/month, 2 attempts |
-| ---------------- | ----------- | --------------------------- |
-| GPT-5 Nano       | $0.00045    | $0.09                       |
-| GPT-5 Mini       | $0.0011     | $0.22                       |
-| Claude Haiku 4.5 | $0.006      | $1.20                       |
+| Model                | Per attempt | 100 notes/month, 2 attempts |
+| -------------------- | ----------- | --------------------------- |
+| GPT-5 Nano           | $0.00045    | $0.09                       |
+| GPT-5 Mini           | $0.0011     | $0.22                       |
+| **Claude Haiku 4.5** | $0.006      | **$1.20**                   |
 
-The spread is **about a dollar a month**, so price is the wrong variable to
-decide on. **Persian output quality is the right one**, and it is empirical: a
-benchmark table cannot answer it and neither can an argument. The
-recommendation is to build a provider seam, run three or four real notes through
-both, keep the winner and delete the loser — the same discipline item 15 applied
-to Scribe ("ten minutes of real audio… the actual voice, the actual room").
+Retention, as published on the same day:
 
-It also probably splits by button. Grammar correction is easy and any of these
-will do it; **"write a diary" is generative writing in Persian**, which is where
-a small model reads flat, and that button is what should decide the provider. A
-model-per-button setting costs one string and buys the ability to be cheap where
-cheap is fine.
+| Provider      | Default retention | Trains on it | Zero-retention for a solo developer |
+| ------------- | ----------------- | ------------ | ----------------------------------- |
+| **Anthropic** | **7 days**        | No           | Enterprise agreement only           |
+| OpenAI        | 30 days           | No           | Enterprise agreement only           |
 
-**2. Does "write a diary for today" read one note, or the whole day?**
+**OpenAI is cheaper by about a dollar a month; Anthropic keeps the text a
+quarter as long.** Neither will give an individual on pay-as-you-go a
+zero-retention agreement, so the honest comparison is 7 days against 30 — of the
+most personal text in the app, since a diary entry is exactly the thing this
+whole repository is arranged around not leaking.
 
-This is not a detail — it builds two different features:
+A dollar a month does not buy its way past that. It is the same shape as the
+argument item 15 already made for Scribe over a tenth-price Whisper: at this
+volume the cheaper option buys nothing worth having.
 
-- **One note** → the button sits in the note sheet beside the other two, and
-  rewrites that note. Simple, consistent with the rest.
-- **The whole day** → it belongs on the Day screen next to the pen, reads every
-  note of that day, and its output is a **new** note rather than a replacement —
-  at which point it is not really a rewrite button at all and the "keep the
-  original" guard above does not apply to it.
+**Unresolved inside the decision:** Haiku is the smallest Claude model, and
+"write a diary" is generative Persian writing — where a small model reads
+flattest. Keep the model a **setting per button**, so that button alone can move
+to `claude-sonnet-5` if the output disappoints. That is a one-string change and
+does not reopen the provider question.
 
-The phrase suggests the second. Unanswered.
+### Decided: the diary button reads **one note**
+
+So all three buttons live in the note sheet, all three operate on the note in
+front of you, and all three follow the same rule — candidate, approval,
+replacement, original kept until then. There is no Day-screen button and no
+button that produces a _new_ note, which keeps the guard above applying
+uniformly instead of to two of the three.
+
+It also keeps the request small and the disclosure simple: one note's text goes
+out, not a day's worth of them, which is the sentence Settings has to be able to
+say.
 
 ### What it costs the app's argument
 
@@ -835,10 +847,10 @@ rather than reinvented:
 - **An empty key is the only gate**, so a fresh install cannot send anything and
   clearing the field withdraws the feature.
 - **Nothing automatic.** A press, one note, watched.
-- **The request carries the text and the prompt and nothing else** — not the day,
-  not the position, not the recording, not the other notes (unless the answer to
-  question 2 is "the whole day", in which case that is exactly what changes and
-  the Settings copy has to say so).
+- **The request carries one note's text and the prompt and nothing else** — not
+  the day, not the position, not the recording, and not the other notes. That is
+  a consequence of the one-note decision above and is the sentence Settings gets
+  to say.
 - **The key lives in the vault**, entered in Settings, never in a build.
 - The Settings paragraph reads **eight** ways once there are three switches, at
   which point `networkNote` stops being a chain of conditionals and needs to
