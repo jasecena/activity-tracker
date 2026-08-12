@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -374,11 +373,7 @@ export function MediaGalleryScreen({
                         {uri ? (
                           <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
                         ) : (
-                          <Ionicons
-                            name={item.kind === 'audio' ? 'mic-outline' : 'image-outline'}
-                            size={18}
-                            color={colors.textMuted}
-                          />
+                          <Ionicons name="image-outline" size={18} color={colors.textMuted} />
                         )}
                         {item.kind === 'video' ? (
                           <View style={styles.thumbBadge}>
@@ -440,11 +435,7 @@ export function MediaGalleryScreen({
                   resizeMode="cover"
                 />
               ) : (
-                <Ionicons
-                  name={item.kind === 'audio' ? 'mic-outline' : 'image-outline'}
-                  size={18}
-                  color={colors.textMuted}
-                />
+                <Ionicons name="image-outline" size={18} color={colors.textMuted} />
               )}
 
               {/* A video's poster frame is a photograph until something says
@@ -690,12 +681,12 @@ function Playing({
       </Turned>
     );
   }
-  if (item.kind === 'video') {
-    return (
-      <VideoPlaying uri={uri} orientation={item.orientation} durationMs={item.durationMs} onScrubbing={onScrubbing} />
-    );
-  }
-  return <AudioPlaying uri={uri} durationMs={item.durationMs} />;
+  // Video is the only thing left: `capturesOnly` keeps voice notes out of this
+  // screen entirely, because a recording is a diary entry and belongs on its
+  // day rather than in a gallery of pictures.
+  return (
+    <VideoPlaying uri={uri} orientation={item.orientation} durationMs={item.durationMs} onScrubbing={onScrubbing} />
+  );
 }
 
 /**
@@ -751,27 +742,6 @@ function VideoPlaying({
         <ClipControls player={player} durationMs={durationMs} onScrubbing={onScrubbing} />
       </View>
     </>
-  );
-}
-
-function AudioPlaying({ uri, durationMs }: { readonly uri: string; readonly durationMs: number | null }) {
-  const player = useAudioPlayer(uri);
-  const [playing, setPlaying] = useState(false);
-
-  return (
-    <Pressable
-      onPress={() => {
-        if (playing) player.pause();
-        else player.play();
-        setPlaying(!playing);
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={playing ? 'Pause voice note' : 'Play voice note'}
-      style={({ pressed }) => [styles.audio, pressed && styles.pressed]}
-    >
-      <Ionicons name={playing ? 'pause-circle' : 'play-circle'} size={72} color={colors.textPrimary} />
-      <Text style={styles.audioText}>{durationMs === null ? 'Voice note' : formatDuration(durationMs)}</Text>
-    </Pressable>
   );
 }
 
@@ -873,8 +843,6 @@ const styles = StyleSheet.create({
   },
   openingText: { ...typography.caption, color: colors.textPrimary },
   failed: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', padding: spacing.lg },
-  audio: { alignItems: 'center', gap: spacing.sm },
-  audioText: { ...typography.body, color: colors.textSecondary },
   strip: {
     gap: STRIP_GAP,
     paddingHorizontal: spacing.md,

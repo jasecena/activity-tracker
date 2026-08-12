@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { freeInstant, normalizeDayNotes, noteAt, type DayNote } from '@/core/day';
+import { freeInstant, normalizeDayNotes, noteAt, voiceFilesOf, type DayNote, type NoteVoice } from '@/core/day';
+import { deleteNoteAudio, sweepNoteAudio } from '@/services/noteAudio';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
 export interface UseDayNotes {
@@ -13,16 +14,19 @@ export interface UseDayNotes {
    * default — now, or the end of the day being looked back on — and the sheet
    * offers a date and a time over the top of it, because when something is
    * written down and when it happened are routinely different.
+   *
+   * The recording, when there is one, is already on disk: the sheet records
+   * first and saves after, so this stores a name rather than bytes.
    */
-  write: (at: number, title: string, text: string) => void;
+  write: (at: number, title: string, text: string, voice?: NoteVoice | null) => void;
   /**
    * Change one already written: its words, its time, or both.
    *
    * Moving it is a real edit rather than a second note, and moving it to
    * another date moves it to another day — which is how a note written in the
-   * wrong place gets put right. Emptying the text deletes it.
+   * wrong place gets put right. Emptying it entirely deletes it.
    */
-  edit: (note: DayNote, at: number, title: string, text: string) => void;
+  edit: (note: DayNote, at: number, title: string, text: string, voice?: NoteVoice | null) => void;
   forget: (id: string) => void;
 }
 
@@ -61,6 +65,15 @@ export function useDayNotes(): UseDayNotes {
       const stored = normalizeDayNotes(await readJson<unknown>(STORAGE_KEYS.dayNotes));
       if (!live) return;
       if (!touched.current) setNotes(stored);
+
+      // **Before `setReady`, and only against a diary nothing has touched.** A
+      // recording is written the moment you stop talking and referenced only
+      // when the note is saved, so a sheet closed without saving leaves bytes
+      // nothing points at — invisible, undeletable, and permanent otherwise.
+      // Sweeping against a stale list is the opposite failure and a much worse
+      // one, which is what both guards are for: an empty list means "the diary
+      // has not loaded", not "there are no notes".
+      if (!touched.current) sweepNoteAudio(voiceFilesOf(stored));
       setReady(true);
     })();
     return () => {
@@ -76,31 +89,45 @@ export function useDayNotes(): UseDayNotes {
   }, []);
 
   const write = useCallback(
-    (at: number, title: string, text: string) => {
+    (at: number, title: string, text: string, voice: NoteVoice | null = null) => {
       // Every note added to a finished day wants the same default instant — the
       // end of its last segment — and an id is derived from that instant, so
       // without this the second note about a Tuesday would replace the first.
       // A minute chosen by hand collides just as easily.
-      const next = noteAt(freeInstant(notes, at), title, text);
+      const next = noteAt(freeInstant(notes, at), title, text, voice);
       if (next) persist([...notes, next]);
     },
     [notes, persist],
   );
 
   const edit = useCallback(
-    (note: DayNote, at: number, title: string, text: string) => {
+    (note: DayNote, at: number, title: string, text: string, voice: NoteVoice | null = null) => {
       const without = notes.filter((existing) => existing.id !== note.id);
       // Against the others rather than against all of them: a note keeping its
       // own instant must not be nudged off it by its own reflection.
-      const next = noteAt(freeInstant(without, at), title, text);
+      const next = noteAt(freeInstant(without, at), title, text, voice);
       // Emptying a note is how you delete one, so there is no separate confirm
       // for the case where somebody selected all and pressed backspace.
       persist(next ? [...without, next] : without);
+
+      // A recording that has been replaced or deleted here. The sweep would
+      // reach it on the next launch anyway; taking it now is what keeps the
+      // Data screen's total honest and stops a deleted recording occupying the
+      // phone until something restarts.
+      const before = note.voice?.fileName;
+      if (before && before !== next?.voice?.fileName) deleteNoteAudio(before);
     },
     [notes, persist],
   );
 
-  const forget = useCallback((id: string) => persist(notes.filter((note) => note.id !== id)), [notes, persist]);
+  const forget = useCallback(
+    (id: string) => {
+      const doomed = notes.find((note) => note.id === id);
+      if (doomed?.voice) deleteNoteAudio(doomed.voice.fileName);
+      persist(notes.filter((note) => note.id !== id));
+    },
+    [notes, persist],
+  );
 
   return { ready, notes, write, edit, forget };
 }

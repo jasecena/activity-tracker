@@ -20,9 +20,14 @@ gestures, capture orientation, and the three-stop zoom on real lens optics.
 asked for directly and built the same day. Notes on a day, several per day, each
 with a title, and a date and time you can change; v0.5.2 moved them out of the
 timeline into a section of their own and put the voice recorder beside the pen.
-Reasoning in `docs/ARCHITECTURE.md` § 10a; the thing to know before touching it is that it is
-the only store here that nothing can reconstruct, which is why retention never
-reaches it and why its trust boundary repairs rather than drops.
+v0.5.3 finished that thought: **a voice note is a note**, not a capture. The
+recording is a field of `DayNote`, the recorder lives inside the note sheet
+behind a one-second hold, the bytes sit in the diary's own directory, and
+recordings made while a voice note was a capture are adopted into notes on
+launch. Reasoning in `docs/ARCHITECTURE.md` § 10a; the thing to know before
+touching it is that it is the only store here that nothing can reconstruct, which
+is why retention never reaches it and why its trust boundary repairs rather than
+drops.
 
 **Item 9 is built and is the first feature in this file to be.** Everything
 before it in the recent releases was correctness, privacy and pipeline work.
@@ -518,11 +523,18 @@ that widens the one-network-request rule, and unlike item 12 it does so for
 something the app could live without, so the reasoning has to be better rather
 than merely present.
 
-A voice note is currently a file you can play and nothing else. Transcribed, it
-becomes something you can skim, search, and eventually hand to an LLM to write a
-day up from — which is the point. **The audio stays the record**; the text is a
+A voice note is currently a recording you can play and nothing else. Transcribed,
+it becomes something you can skim, search, and eventually hand to an LLM to write
+a day up from — which is the point. **The audio stays the record**; the text is a
 reading of it, in the same sense that a `JourneyLabel` is a reading of a journey
 rather than a replacement for the fixes underneath.
+
+**Most of the shape of this is already settled**, because v0.5.3 made a voice note
+a field of `DayNote` rather than a capture of its own. A transcript is another
+field beside it — the raw text, the cleaned-up text and the corrected text on the
+note that holds the recording — so there is no join, no second store, and no
+question about which day it belongs to. What is left is genuinely the queue and
+the request.
 
 ### The service: ElevenLabs Scribe v2
 

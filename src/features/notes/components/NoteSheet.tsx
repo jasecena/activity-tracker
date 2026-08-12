@@ -1,9 +1,15 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { DayNote } from '@/core/day';
+import type { DayNote, NoteVoice } from '@/core/day';
+import { formatDuration } from '@/core/format';
+import { VoiceNotePlayer } from '@/components/VoiceNotePlayer';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
+
+import { useVoiceNote } from '../hooks/useVoiceNote';
+
+import { HoldToRecord } from './HoldToRecord';
 
 interface NoteSheetProps {
   /**
@@ -23,13 +29,13 @@ interface NoteSheetProps {
    * may read a clock — `core` takes `now` as a parameter, always.
    */
   readonly defaultAt: number;
-  readonly onSave: (at: number, title: string, text: string) => void;
+  readonly onSave: (at: number, title: string, text: string, voice: NoteVoice | null) => void;
   readonly onForget?: () => void;
   readonly onClose: () => void;
 }
 
 /**
- * Writing something down about a day.
+ * Writing something down about a day — or saying it.
  *
  * A sheet rather than a page, following `JourneyLabelSheet`: this is one field
  * over the thing it is about, and pushing a screen for it would put the day out
@@ -37,10 +43,29 @@ interface NoteSheetProps {
  *
  * The field is multiline and grows, and there is no character limit. A diary
  * that stops you mid-sentence is not one.
+ *
+ * **The recorder lives here, under the fields.** It used to sit next to the pen
+ * on the Day screen — two buttons side by side, so writing and talking looked
+ * like two features you chose between before you had said anything. They are
+ * one: the same entry, at the same instant, on the same day, with a title if it
+ * wants one. Putting the microphone inside the sheet makes that literal —
+ * record, then type under it, or type and then add a sentence aloud, and it is
+ * still one note. It is also what item 15 in `docs/BACKLOG.md` needs to be
+ * true: a transcript belongs *on the note*, beside what was typed, and that is
+ * only a simple thing to build if the recording was never a row of its own.
  */
 export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: NoteSheetProps) {
   const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
+  /**
+   * The recording made or removed here, or null for "whatever the note has".
+   *
+   * Wrapped, because the value inside is itself nullable and the two nulls mean
+   * different things: no draft at all, versus a draft that deliberately has no
+   * recording — which is how deleting one is expressed without saving the note
+   * to express it.
+   */
+  const [draftVoice, setDraftVoice] = useState<{ readonly value: NoteVoice | null } | null>(null);
   /**
    * The instant chosen here, or null for "whatever the caller suggested".
    *
@@ -57,22 +82,38 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
   const title = draftTitle ?? existing?.title ?? '';
   const text = draft ?? existing?.text ?? '';
   const at = chosen ?? defaultAt;
+  const voice = draftVoice ? draftVoice.value : (existing?.voice ?? null);
 
-  // Either field is enough. A title alone says the day — "Moved house" — and so
-  // does a paragraph nobody wanted to name.
-  const empty = title.trim().length === 0 && text.trim().length === 0;
+  // Any one of the three is enough. A title alone says the day — "Moved house"
+  // — and so does a paragraph nobody wanted to name, and so does half a minute
+  // of talking with neither.
+  const empty = title.trim().length === 0 && text.trim().length === 0 && voice === null;
 
   const close = () => {
     setDraftTitle(null);
     setDraft(null);
     setChosen(null);
+    setDraftVoice(null);
     onClose();
   };
 
   const save = () => {
-    onSave(at, title, text);
+    onSave(at, title, text, voice);
     close();
   };
+
+  /**
+   * Held in a callback so the recorder's `stop` reaches the sheet that is open
+   * now rather than the render that started the recording.
+   *
+   * A recording made and then abandoned — this sheet closed without saving —
+   * leaves a file no note refers to. That is deliberate rather than a leak:
+   * `sweepNoteAudio` collects it on the next launch, which is the same bargain
+   * the media store makes, and the alternative is deleting bytes somebody may
+   * be about to keep.
+   */
+  const recorded = useCallback((made: NoteVoice) => setDraftVoice({ value: made }), []);
+  const recorder = useVoiceNote(recorded);
 
   /**
    * Take the date from one picker and the time from the other.
@@ -152,6 +193,31 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
                    put in a paragraph break. A diary entry is not a search box. */
               />
 
+              {/* Under the writing, not beside it. The order is the argument:
+                  a note is words, and this is another way to put words in it —
+                  a second entry point on the same sheet rather than a second
+                  kind of thing to make. */}
+              <View style={styles.voice}>
+                <HoldToRecord
+                  recording={recorder.recording}
+                  saving={recorder.saving}
+                  onStart={recorder.start}
+                  onStop={recorder.stop}
+                />
+
+                <View style={styles.voiceState}>
+                  {recorder.recording ? (
+                    <Text style={styles.recordingClock}>{formatDuration(recorder.elapsedMs)}</Text>
+                  ) : recorder.saving ? (
+                    <Text style={styles.hint}>Saving…</Text>
+                  ) : voice ? (
+                    <VoiceNotePlayer voice={voice} onForget={() => setDraftVoice({ value: null })} />
+                  ) : (
+                    <Text style={styles.hint}>Hold to say it instead</Text>
+                  )}
+                </View>
+              </View>
+
               <Pressable
                 onPress={save}
                 disabled={empty}
@@ -214,6 +280,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     minHeight: 120,
   },
+  voice: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  voiceState: { flex: 1 },
+  recordingClock: { ...typography.clock, color: colors.danger },
+  hint: { ...typography.caption, color: colors.textMuted },
   save: {
     backgroundColor: colors.move,
     borderRadius: radius.sm,

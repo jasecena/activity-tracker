@@ -522,13 +522,19 @@ _like_, who you were with, or that the long way home was on purpose. A note is
 the part only its author has, and it is the only record in this app that nothing
 can rebuild.
 
-**A title and a body, and either alone is enough.** A title is what makes a
-diary readable at a glance — "Sam's birthday" over four lines about a birthday —
-but insisting on one turns a jotted line into a form to fill in, and the note you
-do not write because it wanted a heading is worse than an untitled one. Titles
-arrived a release after the notes did, so a stored entry may have none:
-`normalizeDayNotes` defaults it rather than dropping the row, which is the same
-instinct as everything else here — the body is the part nothing can reconstruct.
+**A title, a body and a recording, and any one alone is enough.** A title is what
+makes a diary readable at a glance — "Sam's birthday" over four lines about a
+birthday — but insisting on one turns a jotted line into a form to fill in, and
+the note you do not write because it wanted a heading is worse than an untitled
+one. The same holds for a recording with nothing typed: it is how you write
+something down while walking.
+
+The three arrived in three releases — body, then title, then recording — which is
+why `normalizeDayNotes` requires **none** of them in particular. Insisting on the
+field that happened to come first would discard every entry made of the ones that
+came later, and the reason to be careful is the same reason this record exists:
+nothing can rebuild it. `noteAt` is the only thing that decides a row says
+nothing, and it says so only when all three are empty.
 
 **Timestamped and several per day, but filed under the day rather than threaded
 through it.** The time is kept because some notes are about a moment; several
@@ -570,25 +576,92 @@ disposable half all along. The retention picker says so.
 
 Two more consequences of being unreconstructable. `normalizeDayNotes` **repairs
 rather than drops** wherever it can: an id no build ever wrote is rebuilt from the
-instant, where a malformed fix would simply be discarded. And the diary is the
-**fourth CSV** — an app whose whole argument is that your data is yours cannot be
-the one place your own writing is trapped.
+instant, and a recording that has lost its duration is still a recording you can
+play, where a malformed fix would simply be discarded. The one field with no
+repair available is the recording's **file name** — `services/noteAudio.ts` joins
+it onto a directory, so `isStoredFileName` checks it is a name and not a path,
+the same check the media index makes and for the same reason (§ 12b). And the
+diary is the **fourth CSV** — an app whose whole argument is that your data is
+yours cannot be the one place your own writing is trapped. A spoken entry exports
+the name and length of its recording rather than a blank row with a time on it:
+the audio cannot go in a CSV, but a row saying nothing would read as a day nobody
+wrote about, which is the opposite of true.
 
-**Both controls sit above the player, and that is the second attempt.** The
-first put writing a note behind caption-sized text at the end of the TIMELINE
-heading, below the whole map — findable only by somebody who already knew it was
-there, which is the one thing an entry point must not be. They are 44-point icon
-buttons now, above the scrubber and **outside** the player's `segments.length`
-guard, so a day with no fixes keeps them: that day is the one most worth writing
-about, because the app recording nothing is not the same as nothing happening.
+**One control sits above the player, and that is the third attempt.** The first
+put writing a note behind caption-sized text at the end of the TIMELINE heading,
+below the whole map — findable only by somebody who already knew it was there,
+which is the one thing an entry point must not be. The second put a microphone
+beside it. There is a single 44-point icon button now, above the scrubber and
+**outside** the player's `segments.length` guard, so a day with no fixes keeps
+it: that day is the one most worth writing about, because the app recording
+nothing is not the same as nothing happening.
 
-The voice recorder is the second of the two. It was the camera's third mode, and
-a voice note has no viewfinder — reaching it meant opening a camera you were
-going to ignore. `useVoiceNote` carries over the two things that were expensive
-to learn there: the position is read at the start and held in a **ref**, since
+### A voice note is a note, and the recorder is inside the sheet
+
+The microphone has now been in three places, and each move was the same
+correction applied one level deeper. It was the camera's third mode — but a voice
+note has no viewfinder, so reaching it meant opening a camera you were going to
+ignore. It moved beside the pen on the Day screen — but two buttons side by side
+say that writing and talking are two things you choose between _before_ you have
+said anything. They are not: they are the same entry, at the same instant, on the
+same day, with a title if it wants one. So `voice` is a **field of `DayNote`**
+and the recorder lives under the fields in `NoteSheet`. Record, then type under
+it, or type and then add a sentence aloud, and it is still one note.
+
+The test of that is item 15 in `docs/BACKLOG.md`. A transcript is a reading _of_
+a recording and belongs on the note beside what was typed — trivial when the
+recording is a field of the note, and a join across two stores when it is a row
+of its own.
+
+**The bytes go to `services/noteAudio.ts`, in `Documents/note-audio`.** Not the
+media directory, and not for tidiness: `sweepOrphans` deletes any file there the
+media index has never heard of, on launch, as soon as that index settles. A
+recording referenced only from the notes is by definition such a file, so a
+launch where the notes loaded second would silently delete every voice note its
+owner had made. Two stores, two directories, two sweeps — the race stops
+existing rather than being timed correctly. Everything else matches § 12b: plain
+files, `NSURLIsExcludedFromBackupKey` reapplied on every write, deleted before
+the key in `eraseEverything`.
+
+`sweepNoteAudio` is the diary's own, and it runs only against a diary that has
+**loaded**: an empty list means "not read yet", not "no notes". It exists because
+a recording is written the moment you stop talking and referenced only when the
+note is saved, so a sheet closed in between leaves bytes nothing points at. That
+is deliberate — deleting them at close would delete bytes somebody may be about
+to keep.
+
+**Nothing shows a recording in the Media tab.** `capturesOnly` is what the
+gallery, the map and the Data screen mean by a capture. Hiding a row is not the
+same as moving it, though, so `useAdoptVoiceCaptures` turns every voice note an
+earlier build filed as a capture into a note holding the same recording — one at
+a time, because both stores read their list out of the closure they were built
+in, and a loop would write five notes over one snapshot and keep the last. This
+is the same rule as the retired `live` kind (§ 16): a feature that moves takes
+its rows with it, or somebody's recording is still on disk and unreachable from
+anywhere in the app.
+
+**Starting is a one-second hold with a ring that fills; stopping is a tap.** The
+recorder sits a thumb's width from the keyboard and Save, so a tap-to-toggle
+turns an accidental double tap into a recording that started and stopped — a
+second of silence attached to a diary entry, with nothing to explain it. A
+deliberate second cannot be done by accident, and the ring is what makes the
+second bearable: a button that does nothing for a second is broken, a button
+filling a ring is counting down. `HoldToRecord` decides with a **single timeout**
+of exactly `HOLD_MS` and draws with a separate interval, so a dropped frame or a
+batched render cannot quietly lengthen the hold; `hold.ts` exports the
+arithmetic, tested directly on `SwipeBackPage`'s precedent, because "the ring
+read full at three-quarters" is an instruction to let go too early and is
+invisible in a rendered assertion. Stopping stays a tap: the confusion was only
+ever about beginning something you did not mean to.
+
+`useVoiceNote` carries over the two things that were expensive to learn on the
+camera screen: the position is read at the start and held in a **ref**, since
 `stop` resolves inside a closure created before the reading arrived; and the
 screen is held awake on **busy** rather than on recording, so the hold does not
-drop in the window between stopping and saving where the phone would lock.
+drop in the window between stopping and saving where the phone would lock. The
+position is stored twice from one reading, exactly as a capture stores it (§ 12b)
+— on the note, where it survives the fixes being pruned, and in the fix stream,
+so a note spoken during a stationary afternoon leaves a mark on the day.
 
 **A day exists whether or not anything was recorded on it.** `groupByDay` builds
 its list out of segments, so `daysWorthOpening` adds the days that have only a
@@ -710,10 +783,12 @@ activity.
 
 ## 12b. Capture stores a position twice, and the same one both times
 
-Photos, video and voice notes take one reading at the shutter and write it to
-**two** places: onto the item as `at`, and into the fix buffer as an ordinary
-fix. One reading, so the two can never disagree — the pin on the photo and the
-route drawn under it are literally the same coordinate.
+Photos and video take one reading at the shutter and write it to **two** places:
+onto the item as `at`, and into the fix buffer as an ordinary fix. One reading, so
+the two can never disagree — the pin on the photo and the route drawn under it
+are literally the same coordinate. A voice note does exactly this too, onto the
+note rather than onto a capture (§ 10a), which is the point: where it was said is
+a fact about the recording wherever the recording is filed.
 
 This reverses an earlier decision, which was that a capture stores a time and
 nothing else and its position is derived on read from the day's own track. The
@@ -796,6 +871,11 @@ native module: `modules/file-backup`, one Swift function, in the mould
 the migration, since a library written by an earlier build has an unflagged
 directory and there is no launch step to fix it. The native side reads before
 it writes, so the repetition costs one `getattr`.
+
+`services/noteAudio.ts` does all of the above for the diary's recordings, in
+`Documents/note-audio`. Every decision here applies to it unchanged; what it does
+not share is the _index_, which is why it is a second directory rather than a
+second caller of this one (§ 10a).
 
 **What this does not do is survive the phone.** A capture excluded from backup
 is gone with a lost or replaced device, and until the S3 sync in

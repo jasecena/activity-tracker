@@ -17,7 +17,6 @@ import { StatTile } from '@/components/StatTile';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
 
-import type { UseVoiceNote } from '@/features/capture/hooks/useVoiceNote';
 import { useSealedImages } from '@/features/media/hooks/useSealedImages';
 
 import { SPEEDS, useReplay } from './hooks/useReplay';
@@ -58,15 +57,6 @@ interface ReplayScreenProps {
   /** Absent where the timeline is read-only, which is what hides the writing controls. */
   readonly onWriteNote?: (dayKey: string, segments: readonly Segment[]) => void;
   readonly onOpenNote?: (note: DayNote) => void;
-  /**
-   * The voice recorder, or absent where the timeline is read-only.
-   *
-   * It sits beside the note button rather than in Capture, because saying
-   * something aloud about a day and writing it down are the same act with
-   * different hands — and a voice note has no viewfinder to justify opening a
-   * camera for.
-   */
-  readonly voice?: UseVoiceNote;
 }
 
 /**
@@ -105,7 +95,6 @@ export function ReplayScreen({
   notes,
   onWriteNote,
   onOpenNote,
-  voice,
 }: ReplayScreenProps) {
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
@@ -276,38 +265,21 @@ export function ReplayScreen({
         />
 
         {/* Above the player and outside its guard, so a day with no fixes keeps
-            both buttons. That day is the one most worth a note: the app
-            recording nothing is not the same as nothing having happened.
+            the button. That day is the one most worth a note: the app recording
+            nothing is not the same as nothing having happened.
 
-            Icons alone, and large enough to hit without looking. The first
+            One button, where there were two. The microphone used to sit beside
+            the pen, which said that writing and talking were different things
+            you chose between before you had said anything — they are the same
+            entry, so the recorder moved *inside* the sheet, under the fields.
+            Choosing which hand to use is a decision for after the sheet is
+            open, not before.
+
+            An icon alone, and large enough to hit without looking. The first
             version was caption-sized text at the end of a section heading,
             below the whole map — findable only by somebody who already knew it
             was there, which is the one thing an entry point must not be. */}
         <View style={styles.dayActions}>
-          {voice ? (
-            <>
-              {voice.recording ? <Text style={styles.recordingClock}>{formatDuration(voice.elapsedMs)}</Text> : null}
-              <Pressable
-                onPress={voice.toggle}
-                disabled={voice.saving}
-                accessibilityRole="button"
-                accessibilityLabel={voice.recording ? 'Stop the voice note' : 'Record a voice note'}
-                style={({ pressed }) => [
-                  styles.dayAction,
-                  voice.recording && styles.dayActionOn,
-                  voice.saving && styles.dayActionBusy,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons
-                  name={voice.recording ? 'stop' : 'mic-outline'}
-                  size={22}
-                  color={voice.recording ? colors.onAccent : colors.textPrimary}
-                />
-              </Pressable>
-            </>
-          ) : null}
-
           {onWriteNote && day ? (
             <Pressable
               onPress={() => onWriteNote(day.key, segments)}
@@ -430,11 +402,7 @@ export function ReplayScreen({
                     {uri ? (
                       <Image source={{ uri }} style={styles.captureImage} resizeMode="cover" />
                     ) : (
-                      <Ionicons
-                        name={placed.item.kind === 'audio' ? 'mic-outline' : 'image-outline'}
-                        size={16}
-                        color={colors.textMuted}
-                      />
+                      <Ionicons name="image-outline" size={16} color={colors.textMuted} />
                     )}
                     {placed.item.kind === 'video' ? (
                       <View style={styles.captureBadge}>
@@ -598,9 +566,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  dayActionOn: { backgroundColor: colors.danger, borderColor: colors.danger },
-  dayActionBusy: { opacity: 0.5 },
-  recordingClock: { ...typography.clock, color: colors.danger },
   timeline: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
   empty: { ...typography.body, color: colors.textMuted, paddingVertical: spacing.lg, textAlign: 'center' },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },

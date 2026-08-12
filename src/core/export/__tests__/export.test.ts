@@ -163,13 +163,13 @@ describe('CSV quoting', () => {
  * full of commas, quotes and paragraph breaks as a matter of course.
  */
 describe('notesToCsv', () => {
-  const note = (at: number, text: string, title = '') => ({ id: `note-${at}`, at, title, text });
+  const note = (at: number, text: string, title = '') => ({ id: `note-${at}`, at, title, text, voice: null });
 
   it('writes the instant, the day it belongs to, and the words', () => {
     const [header, first] = rows(notesToCsv([note(T0, 'Walked there with Sam', 'Market day')], 0));
 
-    expect(header).toBe('timestamp,epoch_ms,day,title,text');
-    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Market day,Walked there with Sam`);
+    expect(header).toBe('timestamp,epoch_ms,day,title,text,voice_file,voice_seconds');
+    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Market day,Walked there with Sam,,`);
   });
 
   // The day column is the local day, so a note written late in Sydney files
@@ -196,7 +196,21 @@ describe('notesToCsv', () => {
   });
 
   it('writes a header and nothing else for an empty diary', () => {
-    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,title,text\n');
+    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,title,text,voice_file,voice_seconds\n');
+  });
+
+  /**
+   * An entry that was spoken rather than typed would otherwise export as a
+   * blank row with a time on it — which reads as a day nobody wrote about, and
+   * is the opposite of true. The audio cannot go in a CSV; its name can.
+   */
+  it('names the recording behind a note that was spoken', () => {
+    const spoken = {
+      ...note(T0, ''),
+      voice: { fileName: 'voice-99.m4a', durationMs: 42_400, byteLength: 96_000, at: null },
+    };
+
+    expect(rows(notesToCsv([spoken], 0))[1]).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,,,voice-99.m4a,42`);
   });
 });
 

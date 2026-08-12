@@ -1,9 +1,15 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
-import { dayNoteId, type DayNote } from '@/core/day';
+import { dayNoteId, type DayNote, type NoteVoice } from '@/core/day';
+import { deleteNoteAudio, sweepNoteAudio } from '@/services/noteAudio';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
 import { useDayNotes } from './useDayNotes';
+
+jest.mock('@/services/noteAudio', () => ({
+  deleteNoteAudio: jest.fn(),
+  sweepNoteAudio: jest.fn(() => 0),
+}));
 
 /**
  * The diary is the one store in this app that nothing can rebuild, so what is
@@ -22,7 +28,12 @@ const END_OF_DAY = T0 + 9 * HOUR;
 
 // The hook reads no clock — the instant is chosen in the sheet and passed in —
 // so there is nothing here to freeze.
+function voice(startedAt: number): NoteVoice {
+  return { fileName: `voice-${startedAt}.m4a`, durationMs: 30_000, byteLength: 48_000, at: null };
+}
+
 beforeEach(async () => {
+  jest.clearAllMocks();
   await writeJson(STORAGE_KEYS.dayNotes, []);
 });
 
@@ -173,4 +184,100 @@ it('keeps them in time order however they arrive', async () => {
   const result = await openDiary();
 
   expect(result.current.notes.map((one) => one.text)).toEqual(['first', 'second']);
+});
+
+/**
+ * A recording is a note, which is what these are about: it saves with the
+ * words, it survives without them, and its bytes go when the note that owns
+ * them does.
+ */
+describe('a note that was spoken', () => {
+  it('writes one with a recording and nothing typed', async () => {
+    const result = await openDiary();
+
+    await act(async () => {
+      result.current.write(T0, '', '', voice(T0));
+    });
+
+    expect(result.current.notes).toHaveLength(1);
+    expect(result.current.notes[0]?.voice?.fileName).toBe(`voice-${T0}.m4a`);
+  });
+
+  it('keeps the recording when words are typed under it afterwards', async () => {
+    const result = await openDiary();
+    await act(async () => {
+      result.current.write(T0, '', '', voice(T0));
+    });
+    const spoken = result.current.notes[0] as DayNote;
+
+    await act(async () => {
+      result.current.edit(spoken, spoken.at, 'Market day', 'and what I said', spoken.voice);
+    });
+
+    expect(result.current.notes).toHaveLength(1);
+    expect(result.current.notes[0]?.voice?.fileName).toBe(`voice-${T0}.m4a`);
+    expect(result.current.notes[0]?.title).toBe('Market day');
+  });
+
+  /**
+   * The bytes are on disk the moment you stop talking, so deleting a recording
+   * here has to take the file too — otherwise a deleted recording occupies the
+   * phone until something restarts and the sweep notices.
+   */
+  it('deletes the bytes when the recording is removed from the note', async () => {
+    const result = await openDiary();
+    await act(async () => {
+      result.current.write(T0, 'Market day', '', voice(T0));
+    });
+    const spoken = result.current.notes[0] as DayNote;
+
+    await act(async () => {
+      result.current.edit(spoken, spoken.at, 'Market day', '', null);
+    });
+
+    expect(deleteNoteAudio).toHaveBeenCalledWith(`voice-${T0}.m4a`);
+    expect(result.current.notes[0]?.voice).toBeNull();
+  });
+
+  it('deletes the bytes when the note itself is forgotten', async () => {
+    const result = await openDiary();
+    await act(async () => {
+      result.current.write(T0, '', '', voice(T0));
+    });
+
+    await act(async () => {
+      result.current.forget(result.current.notes[0]!.id);
+    });
+
+    expect(deleteNoteAudio).toHaveBeenCalledWith(`voice-${T0}.m4a`);
+    expect(result.current.notes).toEqual([]);
+  });
+
+  it('leaves the bytes alone when only the words are edited', async () => {
+    const result = await openDiary();
+    await act(async () => {
+      result.current.write(T0, '', 'first words', voice(T0));
+    });
+    const spoken = result.current.notes[0] as DayNote;
+
+    await act(async () => {
+      result.current.edit(spoken, spoken.at, '', 'second words', spoken.voice);
+    });
+
+    expect(deleteNoteAudio).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A recording is written when you stop talking and referenced when the note
+   * is saved, so a sheet closed in between leaves bytes nothing points at.
+   * Sweeping against a *loaded* diary is the whole safety of this: an empty
+   * list means "not loaded yet", not "no notes".
+   */
+  it('sweeps recordings no note refers to, against what was actually loaded', async () => {
+    await writeJson(STORAGE_KEYS.dayNotes, [{ id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0) }]);
+
+    await openDiary();
+
+    expect(sweepNoteAudio).toHaveBeenCalledWith([`voice-${T0}.m4a`]);
+  });
 });

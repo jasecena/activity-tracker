@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 666
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 737
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -89,25 +89,32 @@ otherwise apply every merge ever made and offer no way out of any of them.
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
-each with an optional title and a body, stamped with the moment it is about and
-shown in **their own section** on the Day screen, in time order, above the
-timeline. Not rows in it: a timeline is a record of where the phone was minute
-by minute, and a sentence threaded through it arrives as another reading the app
-took. A diary is indexed by the date; the time is a detail within the day. **Either field
-alone is a note**: a title says the day ("Moved house") and so does a paragraph
-nobody wanted to name, and requiring both would be the app deciding how somebody
-keeps a diary. Titles arrived after the first notes did, so `normalizeDayNotes`
-defaults a missing one rather than dropping the row. **Retention never deletes one**, which is the rule
+each with an optional title, a body and a recording, stamped with the moment it
+is about and shown in **their own section** on the Day screen, in time order,
+above the timeline. Not rows in it: a timeline is a record of where the phone was
+minute by minute, and a sentence threaded through it arrives as another reading
+the app took. A diary is indexed by the date; the time is a detail within the day.
+**Any one of the three alone is a note**: a title says the day ("Moved house"), so
+does a paragraph nobody wanted to name, and so does half a minute of talking with
+neither — requiring more would be the app deciding how somebody keeps a diary.
+Titles arrived after the first notes did and recordings after those, which is why
+`normalizeDayNotes` requires none of them in particular: insisting on the field
+that happened to come first would discard every entry made of the ones that came
+later. **Retention never deletes one**, which is the rule
 captures already draw: a fix is something the app collected on its own and may
 discard on its own, a note is something you sat down and wrote. So a day can
 outlive its own readings as a sentence about what happened.
 
 Two consequences follow from it being unreconstructable. `normalizeDayNotes`
 **repairs rather than drops** wherever it can — an id no build ever wrote is
-rebuilt from the instant, because a malformed fix can go when thousands more are
-coming and a sentence about a Tuesday cannot. And it is the fourth CSV: an app
-whose argument is that your data is yours cannot be the one place your own
-writing is trapped.
+rebuilt from the instant, and a recording that has lost its duration is still a
+recording you can play, because a malformed fix can go when thousands more are
+coming and a sentence about a Tuesday cannot. The one field with no repair
+available is the recording's **file name**, which a service joins onto a
+directory: `isStoredFileName` is the same check the media index uses. And it is
+the fourth CSV: an app whose argument is that your data is yours cannot be the
+one place your own writing is trapped — which is why a spoken entry exports the
+name and length of its recording rather than a blank row with a time on it.
 
 The instant is **chosen, with a default**. `whereToWrite` answers now for today
 and the end of the day for one already over; the sheet offers a compact date and
@@ -212,8 +219,11 @@ in the keychain, marked `THIS_DEVICE_ONLY` so it enters no backup. It is
 while the phone is locked in a pocket and a key unreadable then would leave a
 hole in every day. "Erase everything" destroys the key.
 
-**Media is the exception, and this revises what used to stand here.** Photos,
-video and voice notes are stored as ordinary files under `Documents/media`.
+**Media is the exception, and this revises what used to stand here.** Photos and
+video are stored as ordinary files under `Documents/media`; a voice note is a
+note now, so its file sits in `Documents/note-audio` under the same rules —
+plain, backup-excluded, swept by its own store. Two directories, because
+`sweepOrphans` deletes anything in the media one its index has never heard of.
 They used to be sealed into a chunked container of their own under the same
 key, and the reasoning was consistent — but iOS already encrypts the container
 with a key derived from the passcode, so the second pass bought very little
@@ -225,7 +235,8 @@ What that layer really protected was a **backup**: the key is
 `THIS_DEVICE_ONLY`, so a restored backup held ciphertext. That was given up for
 one release and has been bought back without the cipher — `Documents/media`
 carries `NSURLIsExcludedFromBackupKey`, so the files are never copied into a
-backup at all. Not being there beats being there unreadable, and it costs
+backup at all — and so does `Documents/note-audio`. Not being there beats being
+there unreadable, and it costs
 nothing on the read path, which was the entire complaint against the container.
 Encryption still belongs at the boundary where data actually leaves the phone —
 the sync that is coming — and the bytes get sealed on the way out.
@@ -241,10 +252,11 @@ the same property everything the vault covers already has, and is what makes
 the S3 sync the backlog item that matters most.
 
 **Erase everything deletes the plaintext first, then the key, then the rows.**
-Ordering can only protect what is not already protected, and media is now the
-only thing a crash halfway through could leave readable — destroying the key
-does nothing to a JPEG. `eraseAllMedia` is synchronous, so it completes before
-the first `await` and there is no window at all. This reverses the rule that
+Ordering can only protect what is not already protected, and the files on disk
+are now the only thing a crash halfway through could leave readable — destroying
+the key does nothing to a JPEG, and nothing to a voice note either.
+`eraseAllMedia` and `eraseAllNoteAudio` are both synchronous, so they complete
+before the first `await` and there is no window at all. This reverses the rule that
 used to stand: key first, so dying halfway left ciphertext. That was right while
 media was sealed under the same key and wrong the moment it wasn't.
 
@@ -414,11 +426,13 @@ measurement.
 Expo native module.
 Feature code builds values and hands them over.
 
-The exception is a native module that _is_ a view, which cannot be wrapped by a
-service: `expo-camera` in `CaptureScreen`, `expo-maps` in `MapCanvas`,
-`@react-native-community/datetimepicker` in `NoteSheet`. One file each, and that
-is the rule — the point of the boundary is that there is a single place to look,
-not that the import lives in a particular directory.
+The exception is a native module that _is_ a view, or a hook over a native
+object a service cannot build and hand over: `expo-camera` in `CaptureScreen`,
+`expo-maps` in `MapCanvas`, `@react-native-community/datetimepicker` in
+`NoteSheet`, `expo-audio`'s player in `components/VoiceNotePlayer` and its
+recorder in `features/notes/hooks/useVoiceNote`. One file each, and that is the rule — the point of the boundary
+is that there is a single place to look, not that the import lives in a
+particular directory.
 
 **No navigation library.** Four tabs — Day, Capture, Media, Settings — and one
 level of detail below each. Capture and Media take the two middle slots: one is
@@ -504,16 +518,51 @@ component built for this is gone.
 Adding deltas per movement drifts, and it means letting go and repeating the
 same movement from the same place gives a different answer the second time.
 
-**A voice note is recorded from the Day screen, not from Capture.** Saying
-something aloud about a day and writing it down are the same act with different
-hands, and a voice note has no viewfinder — reaching it meant opening a camera
-you were going to ignore and finding a third mode behind it. `useVoiceNote`
-holds what `CaptureScreen` used to, and the two things that were hard-won there
-move with it: the position is read at the **start** and kept in a **ref**
-(`stop` resolves inside a closure created before the reading arrived, so as
-state it is null then and null for ever after), and the screen is held awake on
-**busy** rather than on recording, so the hold does not drop between stopping
-and saving. Capture has two modes now.
+**A voice note is a note, and it is recorded inside the note sheet.** This
+revises the decision that used to stand here twice over — it was the camera's
+third mode, then a button beside the pen on the Day screen — and both earlier
+versions filed a recording by the hardware it came out of rather than by what it
+is. Saying something about a day and writing it down are one act with two hands:
+the same entry, at the same instant, on the same day, with a title if it wants
+one. So `voice` is a **field of `DayNote`**, the bytes go to
+`services/noteAudio.ts`, and the microphone lives under the fields in
+`NoteSheet` — record, then type under it, or type and then add a sentence aloud,
+and it is still one note. Item 15 in `docs/BACKLOG.md` is the test of that: a
+transcript belongs _on the note_, beside what was typed, and that is only simple
+to build if the recording was never a row of its own. Capture has two modes.
+
+Four consequences, each of which cost something to get right:
+
+**A separate directory, `Documents/note-audio`, not the media one.**
+`sweepOrphans` deletes any file in the media directory the media index has never
+heard of, on launch, as soon as that index settles — and a recording referenced
+only from the notes is by definition a file it has never heard of. Two stores,
+two directories, two sweeps: the race stops existing rather than being timed
+correctly. `sweepNoteAudio` is the diary's own, and it runs only against a diary
+that has actually loaded, because an empty list means "not read yet" rather than
+"no notes".
+
+**Nothing shows a recording in the Media tab, and the old ones move.**
+`capturesOnly` is what the gallery, the map and the Data screen mean by a
+capture. Hiding a row is not the same as moving it, so
+`useAdoptVoiceCaptures` turns every voice note an earlier build filed as a
+capture into a note holding the same recording — one at a time, because both
+stores read their list out of the closure they were built in and a loop would
+write five notes over one snapshot.
+
+**Starting is a one-second hold with a ring that fills; stopping is a tap.** The
+recorder sits a thumb's width from the keyboard and Save, so a tap-to-toggle
+makes an accidental double tap into a recording that started and stopped — a
+second of silence attached to a diary entry. `HoldToRecord` decides with a
+single timeout of exactly `HOLD_MS` and draws with a separate interval, so a
+dropped frame cannot lengthen the hold; `hold.ts` exports the arithmetic and it
+is tested directly, per `SwipeBackPage`'s precedent.
+
+**The two things that were hard-won on the camera screen survive both moves:**
+the position is read at the **start** and kept in a **ref** (`stop` resolves
+inside a closure created before the reading arrived, so as state it is null then
+and null for ever after), and the screen is held awake on **busy** rather than
+on recording, so the hold does not drop between stopping and saving.
 
 **Capture is a viewfinder, not a page.** The preview fills the screen and the
 shutter sits at the bottom under a thumb; there is no header and no list. The

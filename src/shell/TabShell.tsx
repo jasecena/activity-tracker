@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { daysWorthOpening, groupByDay, whereToWrite, type DayNote } from '@/core/day';
-import type { MediaItem } from '@/core/media';
+import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
 import { modeLabel } from '@/core/format';
@@ -15,7 +15,6 @@ import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
 import { useTimeline } from '@/features/activities/hooks/useTimeline';
 import { CaptureScreen } from '@/features/capture/CaptureScreen';
 import { useMedia } from '@/features/capture/hooks/useMedia';
-import { useVoiceNote } from '@/features/capture/hooks/useVoiceNote';
 import { DataScreen } from '@/features/data/DataScreen';
 import { HistoryScreen } from '@/features/history/HistoryScreen';
 import { MediaGalleryScreen } from '@/features/media/MediaGalleryScreen';
@@ -28,6 +27,7 @@ import { MenuSheet } from '@/components/MenuSheet';
 import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
 import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { NoteSheet } from '@/features/notes/components/NoteSheet';
+import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptures';
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
@@ -148,10 +148,12 @@ export function TabShell() {
   const notes = useDayNotes();
   const places = usePlaces();
   const media = useMedia();
-  // Hoisted like the rest: the recorder belongs to the Day screen but the media
-  // store it writes to is shared, and a second copy would be a second recorder.
-  const voice = useVoiceNote(media);
   const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
+
+  // Voice notes made while a voice note was still a capture, moved into the
+  // diary. Hoisted here because it is the one place that holds both stores, and
+  // hiding those rows from the gallery without moving them would be losing them.
+  useAdoptVoiceCaptures(media, notes);
 
   // A phone that does not move produces no fixes, so an afternoon at a desk
   // would otherwise leave the day empty. Only while tracking is on: the switch
@@ -174,6 +176,16 @@ export function TabShell() {
     [timeline.history, timeline.today],
   );
   const visits = useMemo(() => visitsByPlace(allSegments, places.places), [allSegments, places.places]);
+
+  /**
+   * What the gallery, the map and the Data screen mean by a capture.
+   *
+   * A voice note is a note, so it is drawn on its day rather than in the
+   * library — and until `useAdoptVoiceCaptures` has moved the ones an earlier
+   * build filed here, the index still holds them. Filtered in one place because
+   * three screens ask the same question.
+   */
+  const captures = useMemo(() => capturesOnly(media.items), [media.items]);
 
   // Today is a day like any other to the player, so it is grouped the same way
   // rather than special-cased into the list.
@@ -352,7 +364,7 @@ export function TabShell() {
         fixes={timeline.fixes}
         segments={allSegments}
         places={places.places}
-        media={media.items}
+        media={captures}
         notes={notes.notes}
         rejected={timeline.rejected}
         preset={settings.settings.preset}
@@ -375,7 +387,7 @@ export function TabShell() {
           <ReplayScreen
             days={replayDays}
             places={places.places}
-            media={media.items}
+            media={captures}
             settings={settings}
             tzOffsetMinutes={timeline.tzOffsetMinutes}
             mapsEnabled={mapsEnabled}
@@ -389,7 +401,6 @@ export function TabShell() {
             notes={notes.notes}
             onWriteNote={(dayKey, segments) => setWritingNote({ kind: 'new', dayKey, segments })}
             onOpenNote={(note) => setWritingNote({ kind: 'edit', note })}
-            voice={voice}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -398,7 +409,7 @@ export function TabShell() {
 
         <View style={[styles.screen, tab !== 'gallery' && styles.hidden]}>
           <MediaGalleryScreen
-            items={media.items}
+            items={captures}
             tzOffsetMinutes={timeline.tzOffsetMinutes}
             visible={tab === 'gallery'}
             mapsEnabled={mapsEnabled}
@@ -490,9 +501,9 @@ export function TabShell() {
       <NoteSheet
         target={writingNote}
         defaultAt={noteDefaultAt}
-        onSave={(at, title, text) => {
-          if (writingNote?.kind === 'new') notes.write(at, title, text);
-          else if (writingNote) notes.edit(writingNote.note, at, title, text);
+        onSave={(at, title, text, voice) => {
+          if (writingNote?.kind === 'new') notes.write(at, title, text, voice);
+          else if (writingNote) notes.edit(writingNote.note, at, title, text, voice);
         }}
         // Only over a note that exists. Deleting is also what emptying the
         // field does, so this is the explicit way rather than the only one.
