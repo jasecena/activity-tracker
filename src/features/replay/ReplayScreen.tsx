@@ -2,13 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { summarizeDay, type DayGroup } from '@/core/day';
+import { notesForDay, summarizeDay, withNotes, type DayGroup, type DayNote } from '@/core/day';
 import { activeCalories } from '@/core/energy';
 import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
 import type { MoveSegment, Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
+import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
@@ -44,6 +45,18 @@ interface ReplayScreenProps {
    * this is how you say so.
    */
   readonly onCorrectMode?: (segment: MoveSegment) => void;
+  /**
+   * What you wrote about your days — all of them, cut to this one here.
+   *
+   * Passed whole rather than pre-filtered because the day on screen is this
+   * screen's own state: it is the thing the arrows change, and handing the
+   * caller the job of keeping a filtered list in step with it would be a second
+   * source of truth for which day is showing.
+   */
+  readonly notes?: readonly DayNote[];
+  /** Absent where the timeline is read-only, which is what hides the writing controls. */
+  readonly onWriteNote?: (dayKey: string, segments: readonly Segment[]) => void;
+  readonly onOpenNote?: (note: DayNote) => void;
 }
 
 /**
@@ -79,6 +92,9 @@ export function ReplayScreen({
   onOpenMedia,
   onOpenAllDays,
   onCorrectMode,
+  notes,
+  onWriteNote,
+  onOpenNote,
 }: ReplayScreenProps) {
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
@@ -90,6 +106,15 @@ export function ReplayScreen({
   const isToday = index === 0;
 
   const segments = useMemo<readonly Segment[]>(() => day?.segments ?? [], [day]);
+
+  // Cut to the day on screen here rather than by the caller: which day is
+  // showing is this screen's own state, and a filtered list passed in would be
+  // a second answer to it that could fall out of step with the arrows.
+  const dayNotes = useMemo(
+    () => (day ? notesForDay(notes ?? [], day.key, tzOffsetMinutes) : []),
+    [day, notes, tzOffsetMinutes],
+  );
+  const entries = useMemo(() => withNotes(segments, dayNotes), [segments, dayNotes]);
 
   const replay = useReplay(segments);
 
@@ -351,32 +376,57 @@ export function ReplayScreen({
           </>
         ) : null}
 
-        <Text style={styles.sectionLabel}>TIMELINE</Text>
+        <View style={styles.timelineHead}>
+          <Text style={styles.sectionLabel}>TIMELINE</Text>
+          {/* Available on a day with nothing in it, and that is the point: the
+              app recording nothing is not the same as nothing having happened,
+              and a day spent somewhere with no signal is exactly the one worth
+              writing a sentence about. */}
+          {onWriteNote && day ? (
+            <Pressable
+              onPress={() => onWriteNote(day.key, segments)}
+              accessibilityRole="button"
+              accessibilityLabel="Write a note about this day"
+              style={({ pressed }) => [styles.addNote, pressed && styles.pressed]}
+            >
+              <Ionicons name="create-outline" size={14} color={colors.textSecondary} />
+              <Text style={styles.addNoteText}>Note</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         <View style={styles.timeline}>
-          {segments.length === 0 ? (
+          {entries.length === 0 ? (
             <Text style={styles.empty}>
               {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
             </Text>
           ) : (
-            segments.map((segment) => (
-              <SegmentRow
-                key={segment.id}
-                segment={segment}
-                places={places}
-                tzOffsetMinutes={tzOffsetMinutes}
-                onOpen={onOpenSegment}
-                /* Long press rather than a swipe. A row on a list that scrolls
-                   vertically has to hand a horizontal drag back to the
-                   scroller often enough that the gesture is unreliable by
-                   nature, and a correction that only sometimes happens is
-                   worse than a menu that always does.
+            entries.map((entry) =>
+              entry.kind === 'note' ? (
+                <NoteRow key={entry.note.id} note={entry.note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpenNote} />
+              ) : (
+                <SegmentRow
+                  key={entry.segment.id}
+                  segment={entry.segment}
+                  places={places}
+                  tzOffsetMinutes={tzOffsetMinutes}
+                  onOpen={onOpenSegment}
+                  /* Long press rather than a swipe. A row on a list that scrolls
+                     vertically has to hand a horizontal drag back to the
+                     scroller often enough that the gesture is unreliable by
+                     nature, and a correction that only sometimes happens is
+                     worse than a menu that always does.
 
-                   Only a journey. A stay has no activity type, so a stay that
-                   opened this would be an action leading nowhere. */
-                onLongPress={onCorrectMode && segment.kind === 'move' ? () => onCorrectMode(segment) : undefined}
-              />
-            ))
+                     Only a journey. A stay has no activity type, so a stay that
+                     opened this would be an action leading nowhere. */
+                  onLongPress={
+                    onCorrectMode && entry.segment.kind === 'move'
+                      ? () => onCorrectMode(entry.segment as MoveSegment)
+                      : undefined
+                  }
+                />
+              ),
+            )
           )}
         </View>
       </ScrollView>
@@ -483,6 +533,15 @@ const styles = StyleSheet.create({
   noticeTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   noticeBody: { ...typography.caption, color: colors.textSecondary },
   sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
+  timelineHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  addNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  addNoteText: { ...typography.caption, color: colors.textSecondary },
   timeline: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
   empty: { ...typography.body, color: colors.textMuted, paddingVertical: spacing.lg, textAlign: 'center' },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },

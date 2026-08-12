@@ -64,6 +64,16 @@ export const STORAGE_KEYS = {
    * sitting on a desk fills this faster than one out walking.
    */
   fixArchive: `${PREFIX}fix-archive/`,
+  /**
+   * What you wrote about your days. See `core/day/notes.ts`.
+   *
+   * **The one store here that nothing can rebuild.** Fixes come again tomorrow,
+   * the timeline is a function of them, a thumbnail can be made from its
+   * original — a sentence about a Tuesday cannot be recovered from anything.
+   * That is why `normalizeDayNotes` repairs a row rather than dropping it
+   * wherever it can, and why retention never reaches this key.
+   */
+  dayNotes: `${PREFIX}day-notes`,
   /** Places you have named. */
   places: `${PREFIX}places`,
   /** Names you gave journeys, as time ranges. See `core/segments/manual.ts`. */

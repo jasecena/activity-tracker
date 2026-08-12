@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { groupByDay } from '@/core/day';
+import { daysWorthOpening, groupByDay, whereToWrite, type DayNote } from '@/core/day';
 import type { MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
@@ -26,6 +26,8 @@ import { NamedJourneysScreen } from '@/features/labels/NamedJourneysScreen';
 import { MenuSheet } from '@/components/MenuSheet';
 import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
 import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
+import { NoteSheet } from '@/features/notes/components/NoteSheet';
+import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
@@ -62,6 +64,17 @@ type Page =
   | { readonly kind: 'place'; readonly place: Place }
   | { readonly kind: 'journeys' }
   | { readonly kind: 'data' };
+
+/**
+ * What the note sheet is open for.
+ *
+ * A new note needs the day it is about and what that day recorded — where it
+ * lands depends on both. An edit needs only the note, which already knows its
+ * own instant.
+ */
+type NoteTarget =
+  | { readonly kind: 'new'; readonly dayKey: string; readonly segments: readonly Segment[] }
+  | { readonly kind: 'edit'; readonly note: DayNote };
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'replay', label: 'Day', icon: 'today-outline' },
@@ -119,9 +132,19 @@ export function TabShell() {
    */
   const [correcting, setCorrecting] = useState<MoveSegment | null>(null);
   const [replayDayKey, setReplayDayKey] = useState<string | null>(null);
+  /**
+   * The note being written or edited, or null.
+   *
+   * A new one carries the day it is about and that day's segments, because
+   * where a note lands depends on both — now if the day is today, the end of
+   * the last thing that happened if it is over. Reading them back off the
+   * timeline here would mean answering "which day is showing" twice.
+   */
+  const [writingNote, setWritingNote] = useState<NoteTarget | null>(null);
 
   const settings = useSettings();
   const journeys = useJourneyLabels();
+  const notes = useDayNotes();
   const places = usePlaces();
   const media = useMedia();
   const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
@@ -150,10 +173,39 @@ export function TabShell() {
 
   // Today is a day like any other to the player, so it is grouped the same way
   // rather than special-cased into the list.
+  //
+  // `daysWorthOpening` then adds the days that have no segments and still exist:
+  // the ones you wrote about, and today. Without it a day the app recorded
+  // nothing on has no arrow, no page and nowhere to write — which fails on a
+  // fresh install and on a day spent somewhere with no signal, the two days
+  // most worth a sentence rather than a measurement.
   const replayDays = useMemo(
-    () => groupByDay(allSegments, timeline.tzOffsetMinutes),
-    [allSegments, timeline.tzOffsetMinutes],
+    () =>
+      daysWorthOpening(
+        groupByDay(allSegments, timeline.tzOffsetMinutes),
+        notes.notes,
+        timeline.now,
+        timeline.tzOffsetMinutes,
+      ),
+    [allSegments, notes.notes, timeline.now, timeline.tzOffsetMinutes],
   );
+
+  /**
+   * When the note sheet's pickers start.
+   *
+   * A note already written starts at its own instant, so opening one to fix a
+   * typo cannot quietly move it. A new one gets `whereToWrite`'s answer — now
+   * if the day on screen is today, the end of the day if it is over — which is
+   * right often enough that the pickers are usually there to be ignored.
+   *
+   * `readNow()` rather than `timeline.now`, which is as old as the last refresh
+   * and would stamp a note up to twenty seconds early.
+   */
+  const noteDefaultAt = useMemo(() => {
+    if (!writingNote) return 0;
+    if (writingNote.kind === 'edit') return writingNote.note.at;
+    return whereToWrite(writingNote.dayKey, writingNote.segments, readNow(), timeline.tzOffsetMinutes);
+  }, [writingNote, timeline.tzOffsetMinutes]);
 
   /**
    * A second press on a tab, soon enough after the first, goes home.
@@ -297,6 +349,7 @@ export function TabShell() {
         segments={allSegments}
         places={places.places}
         media={media.items}
+        notes={notes.notes}
         rejected={timeline.rejected}
         preset={settings.settings.preset}
         now={timeline.now}
@@ -329,6 +382,9 @@ export function TabShell() {
             onOpenMedia={openMedia}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
             onCorrectMode={setCorrecting}
+            notes={notes.notes}
+            onWriteNote={(dayKey, segments) => setWritingNote({ kind: 'new', dayKey, segments })}
+            onOpenNote={(note) => setWritingNote({ kind: 'edit', note })}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -422,6 +478,21 @@ export function TabShell() {
             : undefined
         }
         onClose={() => setNamingJourney(null)}
+      />
+
+      {/* Beside the other two, for the same reason: writing about a day is
+          reachable from whichever day the Day screen is showing. */}
+      <NoteSheet
+        target={writingNote}
+        defaultAt={noteDefaultAt}
+        onSave={(at, text) => {
+          if (writingNote?.kind === 'new') notes.write(at, text);
+          else if (writingNote) notes.edit(writingNote.note, at, text);
+        }}
+        // Only over a note that exists. Deleting is also what emptying the
+        // field does, so this is the explicit way rather than the only one.
+        onForget={writingNote?.kind === 'edit' ? () => notes.forget(writingNote.note.id) : undefined}
+        onClose={() => setWritingNote(null)}
       />
 
       {/* Correcting what a journey was, reached by pulling its row to the left.

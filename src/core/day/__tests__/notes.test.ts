@@ -1,0 +1,248 @@
+import {
+  dayNoteId,
+  daysWorthOpening,
+  freeInstant,
+  normalizeDayNotes,
+  noteAt,
+  notesForDay,
+  whereToWrite,
+  withNotes,
+  type DayNote,
+} from '../notes';
+import type { Segment } from '../../segments';
+
+/**
+ * A note is the one thing in the store that is not derived from anything, and
+ * the one thing nothing can reconstruct. Most of what is asserted here is about
+ * not losing one: not to a blank save, not to two notes wanting the same
+ * instant, not to a stored row an older build wrote differently.
+ *
+ * UTC throughout — `jest.config.js` pins the suite to it, so a day key here
+ * reads as the calendar day it looks like.
+ */
+
+const UTC = 0;
+const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
+const HOUR = 3_600_000;
+
+function note(at: number, text = 'something'): DayNote {
+  return { id: dayNoteId(at), at, text };
+}
+
+function stay(startedAt: number, endedAt: number): Segment {
+  return {
+    kind: 'stay',
+    id: `seg-${startedAt}`,
+    startedAt,
+    endedAt,
+    fixCount: 4,
+    center: { lat: 0, lon: 0 },
+    radiusM: 5,
+  };
+}
+
+describe('writing one', () => {
+  it('keeps the words and derives the id from the instant', () => {
+    expect(noteAt(T0, 'Walked to the market with Sam')).toEqual({
+      id: `note-${T0}`,
+      at: T0,
+      text: 'Walked to the market with Sam',
+    });
+  });
+
+  it('trims, because trailing space is not content', () => {
+    expect(noteAt(T0, '  the long way home  ')?.text).toBe('the long way home');
+  });
+
+  /**
+   * Blank is the absence of a note rather than an empty one. A row with nothing
+   * in it cannot be read, cannot be tapped accurately and cannot be explained.
+   */
+  it('refuses to write nothing', () => {
+    expect(noteAt(T0, '')).toBeNull();
+    expect(noteAt(T0, '   \n  ')).toBeNull();
+  });
+
+  it('keeps its id when rewritten at the same instant', () => {
+    const first = note(T0, 'rain all day');
+
+    const second = noteAt(first.at, 'rain all morning, then sun');
+
+    expect(second?.id).toBe(first.id);
+    expect(second?.text).toBe('rain all morning, then sun');
+  });
+
+  /**
+   * The instant is choosable, so an edit can move a note — to another time, or
+   * to another day entirely. The id moves with it, which is what makes the old
+   * row go rather than the two of them coexisting.
+   */
+  it('takes a new id when moved to another instant', () => {
+    const moved = noteAt(T0 + 3 * HOUR, 'rain all day');
+
+    expect(moved?.id).toBe(dayNoteId(T0 + 3 * HOUR));
+    expect(moved?.id).not.toBe(dayNoteId(T0));
+  });
+});
+
+/**
+ * Ids come from instants, so two notes on one instant would be one note that
+ * had silently eaten the other. Reachable in practice: every note added to a
+ * finished day wants the same instant, the end of its last segment.
+ */
+describe('two notes wanting the same instant', () => {
+  it('moves the second along rather than overwriting the first', () => {
+    const taken = [note(T0), note(T0 + 1)];
+
+    expect(freeInstant(taken, T0)).toBe(T0 + 2);
+  });
+
+  it('leaves a free instant alone', () => {
+    expect(freeInstant([note(T0)], T0 + HOUR)).toBe(T0 + HOUR);
+  });
+
+  it('has nothing to avoid on an empty diary', () => {
+    expect(freeInstant([], T0)).toBe(T0);
+  });
+});
+
+describe('where a new note goes', () => {
+  const today = '2026-01-05';
+
+  it('sits at now, when the day being written about is today', () => {
+    const now = T0 + 5 * HOUR;
+
+    expect(whereToWrite(today, [stay(T0, T0 + HOUR)], now, UTC)).toBe(now);
+  });
+
+  /**
+   * A finished day is being looked back on, so the note goes after the last
+   * thing that happened — where an evening's reflection belongs.
+   */
+  it('sits at the end of a day already over', () => {
+    const now = Date.UTC(2026, 0, 9, 20, 0, 0);
+    const segments = [stay(T0, T0 + HOUR), stay(T0 + 2 * HOUR, T0 + 3 * HOUR)];
+
+    expect(whereToWrite(today, segments, now, UTC)).toBe(T0 + 3 * HOUR);
+  });
+
+  /**
+   * Noon rather than the start of the day: midnight belongs to the day before
+   * as far as anybody reading it is concerned, and a note is worth being
+   * unambiguous about.
+   */
+  it('sits at noon on a past day that recorded nothing', () => {
+    const now = Date.UTC(2026, 0, 9, 20, 0, 0);
+
+    expect(whereToWrite(today, [], now, UTC)).toBe(Date.UTC(2026, 0, 9, 12, 0, 0));
+  });
+});
+
+describe('reading a day back', () => {
+  it('takes only the notes belonging to it, oldest first', () => {
+    const notes = [note(T0 + 2 * HOUR, 'later'), note(T0, 'earlier'), note(T0 + 48 * HOUR, 'another day')];
+
+    expect(notesForDay(notes, '2026-01-05', UTC).map((one) => one.text)).toEqual(['earlier', 'later']);
+  });
+
+  it('interleaves what you wrote with what the app recorded', () => {
+    const segments = [stay(T0, T0 + HOUR), stay(T0 + 2 * HOUR, T0 + 3 * HOUR)];
+    const notes = [note(T0 + 90 * 60_000, 'between the two')];
+
+    expect(withNotes(segments, notes).map((entry) => entry.kind)).toEqual(['segment', 'note', 'segment']);
+  });
+
+  /**
+   * A note written at the instant a journey starts is a remark *about* that
+   * journey, so reading it above the row it refers to would be backwards.
+   */
+  it('puts the segment first when a note lands on its start', () => {
+    const entries = withNotes([stay(T0, T0 + HOUR)], [note(T0, 'setting off')]);
+
+    expect(entries.map((entry) => entry.kind)).toEqual(['segment', 'note']);
+  });
+
+  it('is happy with a day that is nothing but notes', () => {
+    expect(withNotes([], [note(T0)]).map((entry) => entry.kind)).toEqual(['note']);
+  });
+});
+
+/**
+ * `groupByDay` builds its list out of segments, so a day the app recorded
+ * nothing on does not exist as far as the Day screen is concerned. That was
+ * fine while a day *was* its segments, and stops being fine the moment one can
+ * hold a sentence instead.
+ */
+describe('the days you can open', () => {
+  const recorded = { key: '2026-01-05', startedAt: Date.UTC(2026, 0, 5), segments: [stay(T0, T0 + HOUR)] };
+  const now = Date.UTC(2026, 0, 9, 20, 0, 0);
+
+  it('includes today even when nothing has ever been recorded', () => {
+    const days = daysWorthOpening([], [], now, UTC);
+
+    expect(days.map((day) => day.key)).toEqual(['2026-01-09']);
+    expect(days[0]?.segments).toEqual([]);
+  });
+
+  // The day worth writing about rather than measuring: somewhere with no signal,
+  // which is exactly the day the app has no segments for.
+  it('includes a day that has only a note', () => {
+    const days = daysWorthOpening([recorded], [note(Date.UTC(2026, 0, 7, 12, 0, 0))], now, UTC);
+
+    expect(days.map((day) => day.key)).toEqual(['2026-01-09', '2026-01-07', '2026-01-05']);
+  });
+
+  it('does not duplicate a day that has both', () => {
+    const days = daysWorthOpening([recorded], [note(T0 + 2 * HOUR)], now, UTC);
+
+    expect(days.filter((day) => day.key === '2026-01-05')).toHaveLength(1);
+    expect(days.find((day) => day.key === '2026-01-05')?.segments).toHaveLength(1);
+  });
+
+  it('keeps newest first, which is the order the arrows walk', () => {
+    const days = daysWorthOpening([recorded], [note(Date.UTC(2026, 0, 7, 12, 0, 0))], now, UTC);
+
+    expect(days.map((day) => day.startedAt)).toEqual([...days.map((day) => day.startedAt)].sort((a, b) => b - a));
+  });
+});
+
+/**
+ * The bar for "unrecognisable" is deliberately lower here than for a fix or a
+ * segment. A malformed reading can go, because thousands more are coming; a
+ * note is the one row nobody and nothing can reconstruct.
+ */
+describe('reading the store back', () => {
+  it('keeps a note whose id no build ever wrote, rebuilding it from the instant', () => {
+    expect(normalizeDayNotes([{ id: 'whatever-this-is', at: T0, text: 'kept' }])).toEqual([
+      { id: dayNoteId(T0), at: T0, text: 'kept' },
+    ]);
+  });
+
+  it('drops what is not a note at all rather than repairing it', () => {
+    const stored = [
+      { id: 'note-1', at: 'yesterday', text: 'no instant' },
+      { id: 'note-2', at: T0, text: 42 },
+      { id: 'note-3', at: Number.NaN, text: 'not a time' },
+      null,
+      'a string',
+      note(T0, 'the only real one'),
+    ];
+
+    expect(normalizeDayNotes(stored).map((one) => one.text)).toEqual(['the only real one']);
+  });
+
+  it('drops a note that has been emptied to whitespace', () => {
+    expect(normalizeDayNotes([{ id: dayNoteId(T0), at: T0, text: '   ' }])).toEqual([]);
+  });
+
+  it('sorts what it reads, so the order does not depend on how it was written', () => {
+    const stored = [note(T0 + HOUR, 'second'), note(T0, 'first')];
+
+    expect(normalizeDayNotes(stored).map((one) => one.text)).toEqual(['first', 'second']);
+  });
+
+  it('reads nothing out of anything that is not a list', () => {
+    expect(normalizeDayNotes(undefined)).toEqual([]);
+    expect(normalizeDayNotes({ notes: [] })).toEqual([]);
+  });
+});

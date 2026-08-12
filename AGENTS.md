@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 622
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 662
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -85,6 +85,29 @@ finding the label behind a row by its id. Half a feature is worse than none. The
 merges themselves are dropped on launch — a merge was a label with an empty
 name, so anything nameless goes — because a build with no merge button would
 otherwise apply every merge ever made and offer no way out of any of them.
+
+**A note is the one thing here that is not derived from anything.** Every other
+row on a timeline is the fold's reading of a fix stream; none of it can say what
+the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
+each stamped with the moment it is about, interleaved into the timeline rather
+than filed under the date. **Retention never deletes one**, which is the rule
+captures already draw: a fix is something the app collected on its own and may
+discard on its own, a note is something you sat down and wrote. So a day can
+outlive its own readings as a sentence about what happened.
+
+Two consequences follow from it being unreconstructable. `normalizeDayNotes`
+**repairs rather than drops** wherever it can — an id no build ever wrote is
+rebuilt from the instant, because a malformed fix can go when thousands more are
+coming and a sentence about a Tuesday cannot. And it is the fourth CSV: an app
+whose argument is that your data is yours cannot be the one place your own
+writing is trapped.
+
+The instant is **chosen, with a default**. `whereToWrite` answers now for today
+and the end of the day for one already over; the sheet offers a compact date and
+time picker over the top, because when something is written down and when it
+happened are routinely different. Ids come from the instant, so `freeInstant`
+nudges a collision forward a millisecond — without it the second note about a
+finished day would silently replace the first, since both want the same default.
 
 **Naming a journey is retrospective.** Tap a journey the app already recorded
 and say what it was, the same way you name a stay. A `JourneyLabel` is made
@@ -372,10 +395,23 @@ live and can be killed at any point. Everything else the app knows how to do can
 be redone later from those fixes; nothing can recover a fix that was never
 written because the handler was busy segmenting the last one.
 
+**A day exists whether or not the app recorded anything on it.** `groupByDay`
+builds its list from segments, so `daysWorthOpening` adds the days that have
+only a note, and today. Without it a day with no readings has no arrow, no page
+and nowhere to write — failing on a fresh install and on a day spent somewhere
+with no signal, which are the two days most worth a sentence rather than a
+measurement.
+
 **Native modules live behind `src/services`.** `location.ts`, `vault.ts`,
 `storage.ts`, `battery.ts` and `mediaStore.ts` are the only files importing an
 Expo native module.
 Feature code builds values and hands them over.
+
+The exception is a native module that _is_ a view, which cannot be wrapped by a
+service: `expo-camera` in `CaptureScreen`, `expo-maps` in `MapCanvas`,
+`@react-native-community/datetimepicker` in `NoteSheet`. One file each, and that
+is the rule — the point of the boundary is that there is a single place to look,
+not that the import lives in a particular directory.
 
 **No navigation library.** Four tabs — Day, Capture, Media, Settings — and one
 level of detail below each. Capture and Media take the two middle slots: one is

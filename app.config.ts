@@ -69,6 +69,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   platforms: ['ios'],
 
   plugins: [
+    // The system date and time pickers, for choosing when a diary note belongs.
+    // A UI component rather than a capability: it asks for no permission, writes
+    // no Info.plist key and makes no request. It is here rather than autolinked
+    // silently because `expo-doctor` wants a native module's plugin declared,
+    // and a build that links one the config does not mention is the kind of
+    // drift that costs a release.
+    '@react-native-community/datetimepicker',
     [
       'expo-splash-screen',
       {

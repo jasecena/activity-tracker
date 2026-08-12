@@ -1,7 +1,7 @@
 import type { Fix } from '../../geo';
 import type { Place } from '../../places';
 import type { MoveSegment, Segment, StaySegment } from '../../segments';
-import { exportFilename, fixesToCsv, pointsToCsv, segmentsToCsv } from '../index';
+import { exportFilename, fixesToCsv, notesToCsv, pointsToCsv, segmentsToCsv } from '../index';
 
 const T0 = Date.UTC(2026, 0, 5, 22, 30, 0);
 const SYDNEY = 600;
@@ -153,6 +153,50 @@ describe('CSV quoting', () => {
   it('quotes a label containing a newline', () => {
     const awkward: Segment = { ...MOVE, label: 'two\nlines' };
     expect(segmentsToCsv([awkward], [], 0)).toContain('"two\nlines"');
+  });
+});
+
+/**
+ * The diary is the one export whose contents the app did not produce and could
+ * not produce again, which is exactly why it has to be gettable out — and why
+ * the quoting matters more here than anywhere else in this file. Free text is
+ * full of commas, quotes and paragraph breaks as a matter of course.
+ */
+describe('notesToCsv', () => {
+  const note = (at: number, text: string) => ({ id: `note-${at}`, at, text });
+
+  it('writes the instant, the day it belongs to, and the words', () => {
+    const [header, first] = rows(notesToCsv([note(T0, 'Walked to the market')], 0));
+
+    expect(header).toBe('timestamp,epoch_ms,day,text');
+    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Walked to the market`);
+  });
+
+  // The day column is the local day, so a note written late in Sydney files
+  // under the date its author would call it — the same rule as everywhere else.
+  it('names the local day, not the UTC one', () => {
+    expect(rows(notesToCsv([note(T0, 'late one')], SYDNEY))[1]).toContain('2026-01-06');
+  });
+
+  it('sorts oldest first whatever order it is handed', () => {
+    const out = rows(notesToCsv([note(T0 + 3_600_000, 'later'), note(T0, 'earlier')], 0));
+
+    expect(out[1]).toContain('earlier');
+    expect(out[2]).toContain('later');
+  });
+
+  it('survives a paragraph break, which a diary entry will have', () => {
+    expect(notesToCsv([note(T0, 'Morning.\n\nThen the long way home.')], 0)).toContain(
+      '"Morning.\n\nThen the long way home."',
+    );
+  });
+
+  it('doubles a quote and keeps a comma inside the cell', () => {
+    expect(notesToCsv([note(T0, 'Sam said "later", so we went')], 0)).toContain('"Sam said ""later"", so we went"');
+  });
+
+  it('writes a header and nothing else for an empty diary', () => {
+    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,text\n');
   });
 });
 
