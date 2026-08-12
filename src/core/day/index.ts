@@ -9,12 +9,14 @@
 export { dayKeyOf, groupByDay, startOfLocalDay, type DayGroup, type TzOffsetMinutes } from './day';
 export { applyRetention, mergeIntoLog, planFreeze, type FreezePlan } from './freeze';
 export {
+  appendTranscript,
   dayNoteId,
   daysWorthOpening,
   freeInstant,
   normalizeDayNotes,
   noteAt,
   notesForDay,
+  TRANSCRIPT_SEPARATOR,
   voiceFilesOf,
   whereToWrite,
   type DayNote,

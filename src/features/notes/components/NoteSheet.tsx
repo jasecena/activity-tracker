@@ -1,10 +1,11 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { DayNote, NoteVoice } from '@/core/day';
+import { appendTranscript, type DayNote, type NoteVoice } from '@/core/day';
 import { formatDuration } from '@/core/format';
 import { VoiceNotePlayer } from '@/components/VoiceNotePlayer';
+import type { TranscriptionFailure, TranscriptionResult } from '@/services/transcribe';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { useVoiceNote } from '../hooks/useVoiceNote';
@@ -32,7 +33,27 @@ interface NoteSheetProps {
   readonly onSave: (at: number, title: string, text: string, voice: NoteVoice | null) => void;
   readonly onForget?: () => void;
   readonly onClose: () => void;
+  /**
+   * Turn this note's recording into text, or absent when there is no API key.
+   *
+   * Absent rather than disabled: with no key there is no feature, and a button
+   * that exists only to explain that it cannot work is worse than no button.
+   * The caller owns the key — this sheet never sees it.
+   */
+  readonly onTranscribe?: (voice: NoteVoice) => Promise<TranscriptionResult>;
 }
+
+/** What went wrong, in the one sentence there is room for under the button. */
+const TRANSCRIPTION_MESSAGES: Readonly<Record<TranscriptionFailure, string>> = {
+  'no-key': 'Add an ElevenLabs key in Settings first.',
+  'no-audio': 'The recording’s file is missing.',
+  unauthorized: 'The key was refused. Check it in Settings.',
+  'rate-limited': 'Out of credit, or too many requests. Try later.',
+  offline: 'No connection — nothing was sent.',
+  timeout: 'The service did not answer. Try again.',
+  silent: 'Nothing was said in this recording.',
+  failed: 'Transcribing did not work. Try again.',
+};
 
 /**
  * Writing something down about a day — or saying it.
@@ -54,7 +75,7 @@ interface NoteSheetProps {
  * true: a transcript belongs *on the note*, beside what was typed, and that is
  * only a simple thing to build if the recording was never a row of its own.
  */
-export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: NoteSheetProps) {
+export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTranscribe }: NoteSheetProps) {
   const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   /**
@@ -89,11 +110,37 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
   // of talking with neither.
   const empty = title.trim().length === 0 && text.trim().length === 0 && voice === null;
 
+  /**
+   * Transcription state, local to the sheet and deliberately not persisted.
+   *
+   * `transcribed` only changes the button's label — it is not a record of
+   * anything, because the transcript itself is the record and it is in the text
+   * field where its owner can see it. Pressing the button again is allowed on
+   * purpose: a second attempt at a misheard name appends a second attempt.
+   */
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcribed, setTranscribed] = useState(false);
+  const [failure, setFailure] = useState<TranscriptionFailure | null>(null);
+  /**
+   * Which opening of the sheet we are in, so a request in flight can be
+   * abandoned when it closes.
+   *
+   * A ref rather than state because nothing renders it — this is the one thing
+   * `react-hooks/refs` is actually for. Bumped by `close`, and compared when a
+   * transcription answers.
+   */
+  const generation = useRef(0);
+
   const close = () => {
     setDraftTitle(null);
     setDraft(null);
     setChosen(null);
     setDraftVoice(null);
+    setTranscribed(false);
+    setTranscribing(false);
+    setFailure(null);
+    // Anything still out there is answering a question this sheet no longer has.
+    generation.current += 1;
     onClose();
   };
 
@@ -114,6 +161,42 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
    */
   const recorded = useCallback((made: NoteVoice) => setDraftVoice({ value: made }), []);
   const recorder = useVoiceNote(recorded);
+
+  const runTranscription = () => {
+    if (!onTranscribe || !voice || transcribing) return;
+    // Which sheet asked. A request is in flight for seconds, and by the time it
+    // answers this sheet may have been closed and reopened on another note —
+    // where the transcript would arrive as text nobody spoke about that day.
+    const askedIn = generation.current;
+
+    setFailure(null);
+    setTranscribing(true);
+    void onTranscribe(voice)
+      .then((result) => {
+        if (generation.current !== askedIn) return;
+
+        if (result.ok) {
+          // Into the *draft*, not the store. The transcript arrives where the
+          // words are, so it is read and edited before Save — which is what
+          // makes Save the approval rather than a second confirmation.
+          //
+          // **Appended to the draft as it is now, not as it was when the button
+          // was pressed.** A transcription takes seconds and typing during it is
+          // the obvious thing to do, so reading `text` from this closure would
+          // silently discard whatever was written while waiting — the same
+          // stale-closure bug `useVoiceNote` keeps a ref to avoid, in the one
+          // place where losing the value costs somebody's sentence rather than
+          // a coordinate.
+          setDraft((current) => appendTranscript(current ?? existing?.text ?? '', result.text));
+          setTranscribed(true);
+        } else {
+          setFailure(result.reason);
+        }
+      })
+      .finally(() => {
+        if (generation.current === askedIn) setTranscribing(false);
+      });
+  };
 
   /**
    * Take the date from one picker and the time from the other.
@@ -218,6 +301,42 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose }: Note
                 </View>
               </View>
 
+              {/* Under the recording, because it is a thing you do *to* the
+                  recording — and only when there is one to do it to and a key
+                  to do it with. Never automatic: this is the press that sends
+                  your voice to a third party, so it is always a press. */}
+              {voice && onTranscribe ? (
+                <View style={styles.transcribe}>
+                  <Pressable
+                    onPress={runTranscription}
+                    disabled={transcribing}
+                    accessibilityRole="button"
+                    accessibilityState={{ busy: transcribing }}
+                    accessibilityLabel={transcribed ? 'Transcribe the recording again' : 'Transcribe the recording'}
+                    style={({ pressed }) => [
+                      styles.transcribeButton,
+                      transcribing && styles.transcribeBusy,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.transcribeText}>
+                      {transcribing ? 'Transcribing…' : transcribed ? 'Transcribe again' : 'Transcribe'}
+                    </Text>
+                  </Pressable>
+
+                  {/* The failure, or the standing warning. One or the other:
+                      once something has gone wrong, saying what went wrong
+                      matters more than repeating what the button does. */}
+                  {failure ? (
+                    <Text style={styles.transcribeError}>{TRANSCRIPTION_MESSAGES[failure]}</Text>
+                  ) : (
+                    <Text style={styles.hint}>
+                      Sends this recording to ElevenLabs. Text is added below what you wrote.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
+
               <Pressable
                 onPress={save}
                 disabled={empty}
@@ -281,6 +400,17 @@ const styles = StyleSheet.create({
     minHeight: 120,
   },
   voice: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  transcribe: { gap: spacing.xs, marginTop: spacing.sm },
+  transcribeButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  transcribeBusy: { opacity: 0.5 },
+  transcribeText: { ...typography.body, color: colors.textPrimary },
+  transcribeError: { ...typography.caption, color: colors.danger },
   voiceState: { flex: 1 },
   recordingClock: { ...typography.clock, color: colors.danger },
   hint: { ...typography.caption, color: colors.textMuted },

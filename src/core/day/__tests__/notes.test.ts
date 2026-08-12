@@ -1,10 +1,12 @@
 import {
+  appendTranscript,
   dayNoteId,
   daysWorthOpening,
   freeInstant,
   normalizeDayNotes,
   noteAt,
   notesForDay,
+  TRANSCRIPT_SEPARATOR,
   voiceFilesOf,
   whereToWrite,
   type DayNote,
@@ -358,5 +360,72 @@ describe('the files the diary owns', () => {
 
   it('names nothing for a diary that has only ever been typed', () => {
     expect(voiceFilesOf([note(T0), note(T0 + HOUR)])).toEqual([]);
+  });
+});
+
+/**
+ * Transcription appends and never replaces, which is the entire reason a button
+ * that sends your voice to a third party is safe to press twice. What is
+ * asserted here is that no combination of note and transcript can destroy
+ * something the author typed.
+ */
+describe('appending a transcript', () => {
+  it('puts the transcript under what was already written, with a break between', () => {
+    expect(appendTranscript('Market day.', 'Walked there with Sam.')).toBe(
+      `Market day.${TRANSCRIPT_SEPARATOR}Walked there with Sam.`,
+    );
+  });
+
+  /**
+   * The ordinary case for this feature: you talked and never typed. A note
+   * opening with a dash above its first line would be the app's punctuation
+   * rather than the author's.
+   */
+  it('adds no separator to a note that was only a recording', () => {
+    expect(appendTranscript('', 'What I said walking home.')).toBe('What I said walking home.');
+    expect(appendTranscript('   \n  ', 'What I said walking home.')).toBe('What I said walking home.');
+  });
+
+  /**
+   * Scribe answers an empty string for a recording with no speech in it, and a
+   * dash floating under the text with nothing after it explains nothing.
+   */
+  it('adds nothing at all for a transcript of silence', () => {
+    expect(appendTranscript('Market day.', '')).toBe('Market day.');
+    expect(appendTranscript('Market day.', '   ')).toBe('Market day.');
+  });
+
+  it('leaves an empty note empty when there was nothing to hear', () => {
+    expect(appendTranscript('', '')).toBe('');
+  });
+
+  /**
+   * Transcribing twice appends twice, deliberately. A second attempt is a
+   * normal thing to want — the first misheard a name — and the honest way to
+   * offer it is to add the new one and let its owner delete the worse one.
+   */
+  it('appends again rather than replacing, so a second attempt keeps the first', () => {
+    const once = appendTranscript('Market day.', 'first attempt');
+    const twice = appendTranscript(once, 'second attempt');
+
+    expect(twice).toContain('first attempt');
+    expect(twice).toContain('second attempt');
+    expect(twice.startsWith('Market day.')).toBe(true);
+  });
+
+  /**
+   * The property that matters more than any single case: whatever the author
+   * typed is still in the result, whatever the service sent back.
+   */
+  it('never loses the existing text', () => {
+    const written = 'A paragraph I typed by hand, with a — dash in it.';
+
+    for (const transcript of ['', '   ', 'ordinary text', TRANSCRIPT_SEPARATOR, 'a\n\nb']) {
+      expect(appendTranscript(written, transcript)).toContain(written);
+    }
+  });
+
+  it('trims the transcript, because leading whitespace is not content', () => {
+    expect(appendTranscript('', '  spoken  ')).toBe('spoken');
   });
 });

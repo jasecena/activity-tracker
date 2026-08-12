@@ -26,8 +26,16 @@ export interface UseSettings {
   setPreset: (preset: TrackingPresetId) => void;
   setWeightKg: (weightKg: number) => void;
   setRetentionDays: (days: number | null) => void;
-  /** The one switch in this app that permits a network request. Off until you say otherwise. */
+  /** Map imagery — one of the two things here that permit a network request. Off until you say otherwise. */
   setMapsEnabled: (enabled: boolean) => void;
+  /**
+   * The ElevenLabs key, or empty to turn transcription off.
+   *
+   * Empty is the off state and the only gate: with no key the Transcribe button
+   * does not exist. Clearing this field is how the feature is withdrawn.
+   */
+  setTranscriptionKey: (key: string) => void;
+  setTranscriptionLanguage: (code: string) => void;
   /**
    * Whether a nearly-flat battery has temporarily coarsened tracking.
    *
@@ -201,6 +209,16 @@ export function useSettings(): UseSettings {
 
   const setWeightKg = useCallback((weightKg: number) => persist({ ...settings, weightKg }), [persist, settings]);
 
+  const setTranscriptionKey = useCallback(
+    (transcriptionKey: string) => persist({ ...settings, transcriptionKey: transcriptionKey.trim() }),
+    [persist, settings],
+  );
+
+  const setTranscriptionLanguage = useCallback(
+    (transcriptionLanguage: string) => persist({ ...settings, transcriptionLanguage }),
+    [persist, settings],
+  );
+
   const setRetentionDays = useCallback(
     (retentionDays: number | null) => persist({ ...settings, retentionDays }),
     [persist, settings],
@@ -234,6 +252,8 @@ export function useSettings(): UseSettings {
     setWeightKg,
     setRetentionDays,
     setMapsEnabled,
+    setTranscriptionKey,
+    setTranscriptionLanguage,
     savingBattery,
     runningPreset: running,
     askForPermission,

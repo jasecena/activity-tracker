@@ -33,6 +33,22 @@ are the literal shape of each value, not real ones.
 | `APP_STORE_CONNECT_KEY_ID`      | Key ID of the API key you generated there. 10 characters.                                                                                                   | `ABCD123456`                                                                                          |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | The **contents** of the `AuthKey_XXXXXXXXXX.p8` file, including the BEGIN/END lines. Downloadable exactly once — if you lost it, revoke and make a new one. | `-----BEGIN PRIVATE KEY-----`<br>`MIGTAgEAMBMGByqGSM49AgEGCCqGSM49...`<br>`-----END PRIVATE KEY-----` |
 
+### Set but not yet consumed
+
+| Name                 | What it is                                                           | Placeholder    |
+| -------------------- | -------------------------------------------------------------------- | -------------- |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key, for the transcription in `docs/BACKLOG.md` § 15. | `sk_0123ab...` |
+
+**Nothing reads this yet, and the release pipeline does not need it.** It is here
+so the secret is not an undocumented one — the transcription key's real home is
+the **vault on the device**, entered in Settings, which is what § 15 specifies:
+a key baked into the binary is extractable from the IPA, and rotating it would
+cost a rebuild and an upload rather than retyping a field.
+
+The one thing that would earn it a consumer is a CI check that makes a single
+real request against Scribe, to catch the service changing its contract. Until
+that exists, treat a workflow referencing this secret as a mistake.
+
 ### Optional secrets — manual signing only
 
 Leave both unset to use **cloud-managed signing**, which is the intended path:

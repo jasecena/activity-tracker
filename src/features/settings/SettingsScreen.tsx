@@ -1,4 +1,4 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import type { RejectionReason } from '@/core/geo';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -34,6 +34,32 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
   { label: '90 days', days: 90 },
   { label: '30 days', days: 30 },
 ];
+
+/**
+ * What honestly leaves this phone, given what is switched on.
+ *
+ * Four sentences for four states rather than one hedged sentence for all of
+ * them. The screen whose entire purpose is not overstating protection is the
+ * worst possible place to write something that is true in three configurations
+ * out of four — and this paragraph has already been wrong twice, both times in
+ * the direction of claiming more safety than the app provided.
+ *
+ * The transcription clause names the recording specifically. "A network
+ * request" and "a recording of your voice" are not the same admission, and
+ * collapsing them into one word would be the same failure in a new place.
+ */
+function networkNote(mapsEnabled: boolean, canTranscribe: boolean): string {
+  if (mapsEnabled && canTranscribe) {
+    return 'Two things leave this phone. Map imagery is fetched from Apple while you look at a map, and a voice note is uploaded to ElevenLabs when you press Transcribe on it. Nothing you have recorded goes with a map request, and nothing but the recording itself goes with a transcription.';
+  }
+  if (mapsEnabled) {
+    return 'Map imagery is the one exception: it is fetched from Apple while you look at a map. Nothing you have recorded is sent with it, and nothing else in the app talks to a network.';
+  }
+  if (canTranscribe) {
+    return 'One thing can leave this phone: a voice note, uploaded to ElevenLabs when you press Transcribe on it, and never on its own. Nothing goes with it — not your notes, not your days, not where you were. Nothing else in the app talks to a network.';
+  }
+  return 'The app makes no network requests of any kind — there is no server to send anything to.';
+}
 
 export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, onOpenJourneys }: SettingsScreenProps) {
   const { settings: values } = settings;
@@ -156,12 +182,66 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
             />
           </View>
         </View>
-        {/* The only place in the app that costs a network request, so it is the
-            only place that has to be spelled out rather than assumed. */}
+        {/* One of two places in the app that cost a network request, so it is
+            one of two places that have to be spelled out rather than assumed.
+            It said "the one thing" until transcription shipped; a privacy
+            paragraph that is one release out of date is the failure this screen
+            exists to avoid. */}
         <Text style={styles.footnote}>
-          This is the one thing in the app that talks to the internet. Turning it on lets Apple see which part of the
+          One of the two things in this app that talk to the internet. Turning it on lets Apple see which part of the
           map you are looking at. Your route is never sent — it is drawn on top, on this phone. With it off, journeys
           are drawn from your own coordinates with a scale bar and no map underneath.
+        </Text>
+
+        <Text style={styles.sectionLabel}>TRANSCRIBING VOICE NOTES</Text>
+        <View style={styles.card}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>ElevenLabs API key</Text>
+            <Text style={styles.rowDetail}>
+              {values.transcriptionKey.length > 0
+                ? 'Set — a Transcribe button appears on notes that have a recording'
+                : 'Not set — voice notes stay on this phone and cannot be transcribed'}
+            </Text>
+          </View>
+          <TextInput
+            value={values.transcriptionKey}
+            onChangeText={settings.setTranscriptionKey}
+            placeholder="xi-..."
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="ElevenLabs API key"
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+          />
+
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Language</Text>
+            <Text style={styles.rowDetail}>
+              An ISO code, pinned rather than detected. Telling the service which language to expect is most of its
+              accuracy.
+            </Text>
+          </View>
+          <TextInput
+            value={values.transcriptionLanguage}
+            onChangeText={settings.setTranscriptionLanguage}
+            placeholder="fa"
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="Transcription language code"
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={3}
+          />
+        </View>
+        {/* The plainest statement in the app, because it is the only feature
+            that sends a recording of its owner anywhere. */}
+        <Text style={styles.footnote}>
+          The second thing that talks to the internet, and the only one that sends anything you recorded.{' '}
+          <Text style={styles.footnoteStrong}>Nothing is transcribed automatically.</Text> When you press Transcribe on
+          a note, that one recording is uploaded to ElevenLabs and the text comes back and is added to the end of the
+          note. Nothing else goes with it — not what you typed, not the title, not the day, not where you were. Clear
+          the key and the button disappears. Your key is stored encrypted on this phone and never leaves it.
         </Text>
 
         <Text style={styles.sectionLabel}>CALORIES</Text>
@@ -286,9 +366,7 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
             Days, places and labels are encrypted on this phone with a key held in the iOS keychain and marked so it
             never enters a backup. Photos, video and voice notes are files in this app&apos;s own storage, which iOS
             encrypts under your passcode, and they are marked so they never enter a backup either.{' '}
-            {values.mapsEnabled
-              ? 'Map imagery is the one exception: it is fetched from Apple while you look at a map. Nothing you have recorded is sent with it, and nothing else in the app talks to a network.'
-              : 'The app makes no network requests of any kind — there is no server to send anything to.'}
+            {networkNote(values.mapsEnabled, values.transcriptionKey.length > 0)}
           </Text>
         </View>
 
@@ -344,6 +422,17 @@ const styles = StyleSheet.create({
   },
   stepperText: { ...typography.title, fontSize: 20, color: colors.textPrimary },
   privacy: { ...typography.caption, color: colors.textSecondary, paddingVertical: spacing.md },
+  footnoteStrong: { fontWeight: '600', color: colors.textPrimary },
+  keyInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
   erase: {
     marginTop: spacing.lg,
     borderWidth: 1,

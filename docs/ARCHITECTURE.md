@@ -708,14 +708,25 @@ than a test failure.
 
 ---
 
-## 12. One network request, and only when you ask for it
+## 12. Two network requests, and only when you ask for them
 
 The app makes no HTTP request of any kind on its own. There is no analytics, no
 telemetry, no crash reporting upload, no remote config and no geocoder — and
 therefore no endpoint a fix, a photo or a place name could be sent to,
 deliberately or by accident.
 
-**The single exception is map imagery.** `settings.mapsEnabled` is false on a
+**Two things can leave the phone, both behind a deliberate act.** This section
+was titled "One network request" until v0.6.0 and the count is now two: map
+imagery, and one voice note at a time. What has not changed is the property the
+title was pointing at — the list is short enough to enumerate in a sentence, and
+each entry is something its owner did rather than something the app decided.
+
+The count going up is the thing to be careful about, because the argument was
+never "one is fine and two is not". It is that anything on this list has to be
+nameable, gated, and described accurately on a screen its owner can read. § 12c
+is the second entry; the rest of this section is the first.
+
+**The first exception is map imagery.** `settings.mapsEnabled` is false on a
 fresh install, and while it stays false the app behaves exactly as every earlier
 version did: nothing it holds leaves the phone and nothing it draws comes from
 anywhere else. Turning it on lets MapKit fetch tiles for the region being looked
@@ -751,6 +762,86 @@ streets.
 
 Keeping `expo-maps` behind one file matters more than usual: it is alpha and
 documents frequent breaking changes.
+
+---
+
+## 12c. Transcribing a voice note: the heavier request
+
+`services/transcribe.ts`, the only file that knows ElevenLabs exists. This is the
+second thing that leaves the phone and the first that is **a recording of the
+app's owner**, which makes it categorically heavier than the first: a map request
+tells Apple which part of the world is on screen, and this one sends a person's
+voice to a company.
+
+`docs/BACKLOG.md` § 15 said this would be written up "with it rather than around
+it", so:
+
+**An empty key is the only gate, and it is a stronger one than a switch.**
+`settings.transcriptionKey` is `''` on a fresh install, and with no key the
+Transcribe button **does not exist** — `onTranscribe` is `undefined` and the
+control is not rendered at all, rather than rendered and disabled. A boolean can
+be left true by a stored value nobody remembers setting; a missing credential
+cannot authenticate a request by construction. Clearing the field is how the
+feature is withdrawn, and it takes effect immediately rather than at the next
+launch.
+
+**Nothing is automatic, and that is what makes this simple.** § 15 anticipated a
+queue — "the engineering, not the API call" — that survives suspension mid-upload
+and being offline when a recording ends. Making it a **button** deletes that
+requirement rather than solving it: the person is looking at the screen when the
+request goes, so a failure is a sentence under the button instead of a retry
+policy. There is no queue, no launch-time drain and no scheduled retry. A
+`timeout` and an `offline` are different messages because they are different
+things to do about it.
+
+**The request carries the audio, the model and the language.** Not the note's
+words, not its title, not its day, not the position stored on it. That is
+asserted in `transcribe.test.ts` by comparing the whole set of form keys rather
+than checking for absences, so a field added later fails the test instead of
+quietly widening what is sent.
+
+**The transcript is appended, never substituted** — see § 10a. The recording
+stays, the text lands under whatever was written, and it lands in the sheet's
+_draft_ so Save is the approval. Transcribing twice appends twice on purpose.
+
+**The language is pinned rather than detected**, Persian by default, and stored as
+a setting rather than a constant — which is the whole price of changing service
+or language later without a migration. Declaring it is most of the distance
+between Scribe's code-switched accuracy and its single-language accuracy; the
+cost is that an English word mid-sentence returns transliterated, which is
+accepted.
+
+**The key lives in the vault and nowhere else.** It is a field in Settings,
+sealed with every other stored value under the `THIS_DEVICE_ONLY` keychain key,
+so it enters no backup. It is deliberately **not** a build-time value: a key
+baked into the binary is extractable from the IPA and costs a rebuild and an
+upload to rotate, where a field is rotated by retyping it. `ELEVENLABS_API_KEY`
+exists as a repository secret with no consumer — `docs/DEPLOYMENT.md` § 2 says a
+workflow referencing it is a mistake until a CI check calls Scribe for real.
+
+### What it costs the app's argument, said plainly
+
+Every claim about what leaves this phone is now **state-dependent**, and that is
+the real maintenance burden rather than the request itself:
+
+- `networkNote` in `SettingsScreen` reads **four ways** — neither, maps only,
+  transcription only, both — because a sentence that is true in three
+  configurations out of four is the failure this screen exists to prevent.
+- The **microphone permission string stopped saying "never uploaded."** It was
+  true through v0.5.3 and false the moment a key could be entered. That string is
+  read once, at the prompt, by somebody deciding whether to trust the app, so an
+  unqualified "never" with a footnote they cannot see is worse than a longer
+  sentence. It now states the default and names the exception, in that order.
+- The **privacy manifest and nutrition label do not change.** Apple defines
+  "collect" as data transmitted off device _and_ linked to the user for the
+  developer's purposes; a transcription is the owner's own request to a service
+  of their choosing with their own credential, and this app has no server, no
+  account and no way to see any of it. That reasoning is worth re-reading before
+  an App Store submission rather than inherited — `docs/DEPLOYMENT.md` § 4.
+
+The v0.4.0 audit found the same class of drift twice, both times in the direction
+of promising more protection than the app provided. This section exists so a
+third time is harder.
 
 ---
 

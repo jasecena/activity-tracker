@@ -16,6 +16,13 @@ shell, the day screen with history and replay, places and journey labels, the
 encrypted store, CSV export, the low-battery lens, the Media tab with the Photos
 gestures, capture orientation, and the three-stop zoom on real lens optics.
 
+**Transcription shipped in v0.6.0**, which is the first half of item 15 and the
+second thing in this app that talks to a network. The count in
+`docs/ARCHITECTURE.md` § 12 went from one to two, the microphone permission string
+stopped saying "never uploaded", and the Settings paragraph now reads four ways
+depending on what is switched on. The LLM pass over the transcribed text — the
+three prompt buttons — is next.
+
 **The diary shipped in v0.5.1, and it was never an item in this file** — it was
 asked for directly and built the same day. Notes on a day, several per day, each
 with a title, and a date and time you can change; v0.5.2 moved them out of the
@@ -516,12 +523,37 @@ it, not a date in a calendar.
 
 ## 15. Transcribing a voice note
 
-**Status:** not started, and designed rather than sketched — the service is
-chosen, the numbers behind the choice are below, and the decisions that would
-otherwise be made twice have been made once. It is the second item in this file
-that widens the one-network-request rule, and unlike item 12 it does so for
-something the app could live without, so the reasoning has to be better rather
-than merely present.
+**Status: the transcription half shipped in v0.6.0.** Press Transcribe on a note
+that has a recording and the text is appended to the end of it. What shipped:
+Scribe v2, the language pinned as a setting, the key in the vault behind a
+Settings field, an empty key as the only gate, nothing automatic, and the request
+carrying the audio and nothing about the note. Reasoning in
+`docs/ARCHITECTURE.md` § 12c.
+
+**What is left of this item**, and it is the more interesting half:
+
+- **The LLM pass over the text** — three buttons, agreed 13 August 2026: fix the
+  grammar and improve it a little; write a diary for today from the text; and a
+  custom prompt. Text plus prompt to a pay-as-you-go API, the response comes back
+  as a candidate, and it is approved before it overrides. Multiple attempts are
+  expected. Provider undecided between Anthropic and OpenAI — at a few notes a
+  day the price difference is about a dollar a month, so the decision is Persian
+  output quality and should be settled by running real notes through both rather
+  than by a benchmark. Build a seam, not a choice.
+  - **Open question:** "write a diary for today" — one note, or all of today's
+    notes together? One note keeps the button in the sheet; the whole day makes it
+    a Day-screen button whose output is a _new_ note. Not yet answered.
+- **The three layers of text.** What shipped is simpler than what was designed
+  below, and deliberately: append-only into the note body, edited by hand. That
+  turned out to satisfy the property the three layers existed for — nothing is
+  ever overwritten, so no pass can eat a correction — without the extra fields.
+  Revisit only if the LLM pass proves it needs them.
+- **Diarization**, still decoupled and deferred.
+- **The queue.** Not built, and not needed as designed: a button press means the
+  person is watching, so a failure is a sentence rather than a retry policy.
+
+The design notes below are kept as written, because the parts that have not
+shipped are still governed by them.
 
 A voice note is currently a recording you can play and nothing else. Transcribed,
 it becomes something you can skim, search, and eventually hand to an LLM to write
@@ -568,7 +600,8 @@ languages later without a migration, and it is close to free now.
 
 **Not live.** Record, hand off, carry on; the text arrives later and you can edit
 it when it does. Batch is both cheaper and more accurate than streaming, so
-nothing is given up.
+nothing is given up. _(Shipped, with one change: the hand-off is a button rather
+than automatic, so "later" is "while you watch".)_
 
 **Segment timestamps are enough.** Word-level is available and unneeded — the
 transcript gets reviewed by hand.
