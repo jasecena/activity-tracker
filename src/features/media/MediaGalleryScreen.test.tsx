@@ -1,8 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import type { MediaItem } from '@/core/media';
 import { useVideoPlayer } from 'expo-video';
 
+import type { MediaItem } from '@/core/media';
 import { openForPlayback, openThumbnail, releasePlayback } from '@/services/mediaStore';
 
 import { MediaGalleryScreen } from './MediaGalleryScreen';
@@ -230,5 +230,31 @@ describe('MediaGalleryScreen', () => {
     await render(gallery([media(7)]));
 
     expect(screen.getByLabelText('photo at 09:07')).toBeOnTheScreen();
+  });
+});
+
+/**
+ * A clip plays as soon as you swipe to it, which is right — you swiped to it.
+ * Sound arriving unasked is a different thing: it carries into the room, and
+ * looking through a day's captures somewhere quiet should not be a decision
+ * about volume.
+ */
+describe('sound on a video', () => {
+  it('starts muted', async () => {
+    await render(gallery([media(1, 'video')]));
+    await act(async () => {});
+
+    const player = (useVideoPlayer as jest.Mock).mock.results.at(-1)?.value as { muted: boolean };
+    expect(player.muted).toBe(true);
+  });
+
+  it('turns the sound on from the transport', async () => {
+    await render(gallery([media(1, 'video')]));
+    await act(async () => {});
+
+    const player = (useVideoPlayer as jest.Mock).mock.results.at(-1)?.value as { muted: boolean };
+
+    await fireEvent.press(screen.getByLabelText('Turn sound on'));
+    expect(player.muted).toBe(false);
   });
 });
