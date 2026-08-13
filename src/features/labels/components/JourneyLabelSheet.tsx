@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { confirmDestructive } from '@/components/confirmDestructive';
 import { formatClockTime, formatDistance, formatDuration, modeLabel } from '@/core/format';
 import { ACTIVITY_MODES, durationMs, type ActivityMode, type MoveSegment } from '@/core/segments';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
@@ -124,10 +125,17 @@ export function JourneyLabelSheet({ journey, tzOffsetMinutes, onSave, onForget, 
 
             {onForget ? (
               <Pressable
-                onPress={() => {
-                  onForget();
-                  close();
-                }}
+                onPress={() =>
+                  confirmDestructive({
+                    title: 'Remove this name?',
+                    message: 'The journey stays; the name you gave it goes and cannot be recovered.',
+                    confirmLabel: 'Remove',
+                    onConfirm: () => {
+                      onForget();
+                      close();
+                    },
+                  })
+                }
                 accessibilityRole="button"
                 accessibilityLabel="Remove this name"
                 style={({ pressed }) => [styles.forget, pressed && styles.pressed]}

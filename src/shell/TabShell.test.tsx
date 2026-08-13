@@ -86,6 +86,17 @@ async function press(label: string) {
   });
 }
 
+/**
+ * The Day screen's timeline is a collapsed section, so its rows are not
+ * rendered until the heading is pressed. Reading the day starts with opening
+ * it, and so does asserting about it.
+ */
+async function openTimeline() {
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText(/^TIMELINE/));
+  });
+}
+
 describe('the shell', () => {
   it('opens on today', async () => {
     await render(<TabShell />);
@@ -101,6 +112,9 @@ describe('the shell', () => {
 
   it('says so plainly when there is nothing recorded yet', async () => {
     await render(<TabShell />);
+    await screen.findByLabelText(/^TIMELINE/);
+    await openTimeline();
+
     expect(await screen.findByText('Nothing recorded yet today.')).toBeOnTheScreen();
   });
 
@@ -229,6 +243,9 @@ describe('the shell', () => {
     await seedAWalk();
     await render(<TabShell />);
 
+    await screen.findByLabelText(/^TIMELINE/);
+    await openTimeline();
+
     expect(await screen.findByLabelText(/^Walk, /)).toBeOnTheScreen();
   });
 
@@ -327,6 +344,9 @@ describe('naming a place', () => {
     // A recording with no fixes produces a move, not a stay, so there is
     // nothing nameable on a fresh install — the picker is unreachable, which is
     // itself the correct behaviour and worth pinning.
+    await screen.findByLabelText(/^TIMELINE/);
+    await openTimeline();
+
     expect(await screen.findByText('Nothing recorded yet today.')).toBeOnTheScreen();
     expect(screen.queryByRole('header', { name: 'Name this place' })).not.toBeOnTheScreen();
   });
@@ -392,6 +412,8 @@ describe('naming a journey', () => {
     await seedAWalk();
     await render(<TabShell />);
 
+    await screen.findByLabelText(/^TIMELINE/);
+    await openTimeline();
     await act(async () => {
       fireEvent.press(await screen.findByLabelText(/^Walk, /));
     });
@@ -414,6 +436,8 @@ describe('naming a journey', () => {
     await seedAWalk();
     await render(<TabShell />);
 
+    await screen.findByLabelText(/^TIMELINE/);
+    await openTimeline();
     await act(async () => {
       fireEvent.press(await screen.findByLabelText(/^Unnamed place, /));
     });
@@ -428,6 +452,8 @@ describe('a segment page', () => {
     await seedAWalk();
     await render(<TabShell />);
 
+    await screen.findByLabelText(/^TIMELINE/);
+    await openTimeline();
     await act(async () => {
       fireEvent.press(await screen.findByLabelText(/^Walk, /));
     });

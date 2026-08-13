@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { holdScreenAwake, releaseScreenAwake } from './wakefulness';
 
 /**
@@ -112,23 +114,27 @@ export interface TranscriptionRequest {
 }
 
 /**
- * A React Native `FormData` part for a file on disk.
+ * The multipart part for a recording on disk.
  *
- * RN accepts `{ uri, name, type }` where the DOM types demand a `Blob`, and
- * this is the documented idiom rather than a trick — but the cast has to be
- * written down somewhere, so it is written down here.
+ * **A real `File`, not React Native's `{ uri, name, type }` object**, and this
+ * cost a release to learn. That object is the old RN idiom and every guide still
+ * shows it; Expo's `fetch` is WinterCG-compliant and its `FormData` rejects it
+ * outright with `Unsupported FormDataPart implementation` — thrown while the
+ * body is assembled, so it surfaces as a *failed request* rather than as a type
+ * error, which is why it read as "no connection" on a device and why the shipped
+ * diagnostic that prints the raw error is what found it in one attempt.
  *
- * Exported only so its shape can be asserted: the `FormData` in the test
- * environment stringifies a part to `[object Object]`, so a test that goes
- * through `append` can prove which *keys* are sent but not what the file part
- * says about itself.
+ * `expo-file-system`'s `File` implements `Blob`, so it is what the standard
+ * wants and it streams from disk rather than loading the recording into memory.
+ * Its `name` and `type` come from the file itself, which also retires the
+ * hand-written `audio/mp4` guess.
+ *
+ * Exported so its shape can be asserted: the `FormData` in the test environment
+ * stringifies a part, so a test going through `append` proves which *keys* are
+ * sent but nothing about the part itself.
  */
-export function filePart(uri: string): Blob {
-  // `audio/mp4`, not `audio/m4a`: the latter is not a registered media type, and
-  // the part's Content-Type is what the platform's multipart encoder and the
-  // service both read. The file itself is unchanged — an `.m4a` from
-  // `expo-audio` is an MPEG-4 audio container, which is what this says.
-  return { uri, name: 'note.m4a', type: 'audio/mp4' } as unknown as Blob;
+export function filePart(uri: string): File {
+  return new File(uri);
 }
 
 /** How much of the service's answer to put on screen before it stops being readable. */

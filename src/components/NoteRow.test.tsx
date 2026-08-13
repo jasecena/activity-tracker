@@ -27,10 +27,27 @@ function note(overrides: Partial<DayNote> = {}): DayNote {
 
 const VOICE = { fileName: 'voice-1.m4a', durationMs: 90_000, byteLength: 2048, at: null };
 
-it('prints the whole entry rather than a preview of it', async () => {
-  await render(<NoteRow note={note()} tzOffsetMinutes={UTC} />);
+/**
+ * A row is a heading now, not the entry. The list used to print every note in
+ * full; that was right when a day held one short note and wrong once days hold
+ * several with recordings, where the section became a wall of text to scroll
+ * past and "which note is which" was buried in it.
+ */
+it('shows the title rather than the body', async () => {
+  await render(<NoteRow note={note({ title: 'Market day', text: 'a long paragraph' })} tzOffsetMinutes={UTC} />);
+
+  expect(screen.getByText('Market day')).toBeTruthy();
+  expect(screen.queryByText('a long paragraph')).toBeNull();
+});
+
+/** An untitled note has no name, so its opening line is what stands in for one. */
+it('falls back to the first line for a note with no title', async () => {
+  const untitled = note({ title: '', text: 'Walked to the market\nand then the long way home' });
+
+  await render(<NoteRow note={untitled} tzOffsetMinutes={UTC} />);
 
   expect(screen.getByText('Walked to the market')).toBeTruthy();
+  expect(screen.queryByText(/long way home/)).toBeNull();
 });
 
 it('plays a recording from the row it belongs to', async () => {

@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { filePart, transcribe } from '../transcribe';
 
 /**
@@ -242,11 +244,21 @@ describe('what comes back', () => {
   });
 
   /**
-   * `audio/m4a` is not a registered media type; `audio/mp4` is what an `.m4a`
-   * container actually is. Asserted on the part directly because the test
-   * environment's `FormData` stringifies it on the way in.
+   * **A real `File`, not React Native's `{ uri, name, type }` object.** That
+   * object is the old RN idiom and Expo's WinterCG-compliant `FormData` rejects
+   * it with `Unsupported FormDataPart implementation` — thrown while the body is
+   * assembled, so it surfaces as a failed request rather than a type error, and
+   * on a device it read as "no connection". This is the regression test for
+   * that: a part that is not a real file object breaks transcription entirely.
+   *
+   * Asserted on the part directly because the test environment's `FormData`
+   * stringifies it on the way in.
    */
-  it('describes the file as a registered media type', () => {
-    expect(filePart(URI)).toEqual({ uri: URI, name: 'note.m4a', type: 'audio/mp4' });
+  it('sends the recording as a file object rather than a plain object', () => {
+    const part = filePart(URI);
+
+    expect(part).toBeInstanceOf(File);
+    expect(part.uri).toBe(URI);
+    expect(part.name).toBe('voice-1.m4a');
   });
 });

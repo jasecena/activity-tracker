@@ -840,6 +840,21 @@ is the same mistake as a permission string saying "never uploaded" — smaller,
 and the same shape. The messages state the outcome, which is knowable: no text
 was added.
 
+**The multipart part is a real `File`, and getting that wrong cost a release.**
+React Native's `{ uri, name, type }` object is the idiom every guide shows, and
+Expo's WinterCG-compliant `fetch` rejects it: `Unsupported FormDataPart
+implementation`, thrown while the body is assembled, so it surfaces as a failed
+request rather than a type error and read on the device as "no connection".
+`expo-file-system`'s `File` implements `Blob`, streams from disk instead of
+loading a recording into memory, and carries its own name and type.
+
+The way it was found is the part worth keeping. Nothing about the failure was
+diagnosable from a laptop — no server-side log, no crash reporter, no telemetry,
+and a message that named the wrong layer. Printing the service's own words under
+the button found it on the first attempt. That is why the raw detail is a
+permanent part of this screen rather than a debugging aid that was removed, and
+why `docs/BACKLOG.md` § 16 asks for the general version of it.
+
 **The request carries the audio, the model and the language.** Not the note's
 words, not its title, not its day, not the position stored on it. That is
 asserted in `transcribe.test.ts` by comparing the whole set of form keys rather

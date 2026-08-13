@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCallback, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { appendTranscript, type DayNote, type NoteVoice } from '@/core/day';
 import { formatDuration } from '@/core/format';
+import { confirmDestructive } from '@/components/confirmDestructive';
 import { VoiceNotePlayer } from '@/components/VoiceNotePlayer';
 import type { TranscriptionFailure, TranscriptionResult } from '@/services/transcribe';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -143,6 +144,11 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
   const generation = useRef(0);
 
   const close = () => {
+    // **Before anything else.** The keyboard is a separate window and does not
+    // go with the sheet on its own; leaving it up over a closed sheet is how the
+    // screen ends up with a keyboard and nothing to type into — reported from a
+    // phone after backgrounding the app, with no way out but force-quitting it.
+    Keyboard.dismiss();
     setDraftTitle(null);
     setDraft(null);
     setChosen(null);
@@ -239,9 +245,26 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
         <View style={styles.sheet}>
           {target ? (
             <>
-              <Text style={styles.title} accessibilityRole="header">
-                {target.kind === 'edit' ? 'Edit this note' : 'Write about this day'}
-              </Text>
+              {/* **A close button that is always there.** The backdrop closes
+                  the sheet too, but the keyboard covers it — and a keyboard
+                  that cannot be dismissed on a sheet that cannot be reached is
+                  an app you have to force-quit, which is what was reported.
+                  This sits at the top of the sheet, above the fields, so it is
+                  never the thing hidden behind what you are typing into. */}
+              <View style={styles.header}>
+                <Text style={styles.title} accessibilityRole="header">
+                  {target.kind === 'edit' ? 'Edit this note' : 'Write about this day'}
+                </Text>
+                <Pressable
+                  onPress={close}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close without saving"
+                  hitSlop={12}
+                  style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+                >
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
+                </Pressable>
+              </View>
 
               {/* The compact iOS style: two small fields that open a popover
                   when tapped, rather than a wheel that owns a third of the
@@ -306,7 +329,17 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                   ) : recorder.saving ? (
                     <Text style={styles.hint}>Saving…</Text>
                   ) : voice ? (
-                    <VoiceNotePlayer voice={voice} onForget={() => setDraftVoice({ value: null })} />
+                    <VoiceNotePlayer
+                      voice={voice}
+                      onForget={() =>
+                        confirmDestructive({
+                          title: 'Delete this recording?',
+                          message: 'The audio goes when the note is saved. Any text already transcribed from it stays.',
+                          confirmLabel: 'Delete',
+                          onConfirm: () => setDraftVoice({ value: null }),
+                        })
+                      }
+                    />
                   ) : (
                     <Text style={styles.hint}>Or say it instead</Text>
                   )}
@@ -383,10 +416,17 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
 
               {onForget ? (
                 <Pressable
-                  onPress={() => {
-                    onForget();
-                    close();
-                  }}
+                  onPress={() =>
+                    confirmDestructive({
+                      title: 'Delete this note?',
+                      message: 'The words and any recording on it go, and cannot be recovered.',
+                      confirmLabel: 'Delete',
+                      onConfirm: () => {
+                        onForget();
+                        close();
+                      },
+                    })
+                  }
                   accessibilityRole="button"
                   accessibilityLabel="Delete this note"
                   style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
@@ -412,7 +452,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },
-  title: { ...typography.title, color: colors.textPrimary },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { ...typography.title, color: colors.textPrimary, flex: 1 },
+  close: { padding: spacing.xs },
   when: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
   titleInput: {
     ...typography.title,
