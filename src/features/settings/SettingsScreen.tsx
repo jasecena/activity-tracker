@@ -244,34 +244,6 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
           the key and the button disappears. Your key is stored encrypted on this phone and never leaves it.
         </Text>
 
-        <Text style={styles.sectionLabel}>CALORIES</Text>
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>Weight</Text>
-              <Text style={styles.rowDetail}>{values.weightKg} kg — used for the calorie estimate</Text>
-            </View>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => settings.setWeightKg(values.weightKg - 1)}
-                accessibilityRole="button"
-                accessibilityLabel="Decrease weight"
-                style={({ pressed }) => [styles.stepperButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.stepperText}>−</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => settings.setWeightKg(values.weightKg + 1)}
-                accessibilityRole="button"
-                accessibilityLabel="Increase weight"
-                style={({ pressed }) => [styles.stepperButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.stepperText}>+</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-
         <Text style={styles.sectionLabel}>HISTORY</Text>
         <View style={styles.card}>
           {RETENTION_CHOICES.map((choice) => {
@@ -411,16 +383,6 @@ const styles = StyleSheet.create({
   selected: { color: colors.move, fontWeight: '600' },
   tick: { ...typography.body, color: colors.move },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
-  stepper: { flexDirection: 'row', gap: spacing.xs },
-  stepperButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperText: { ...typography.title, fontSize: 20, color: colors.textPrimary },
   privacy: { ...typography.caption, color: colors.textSecondary, paddingVertical: spacing.md },
   footnoteStrong: { fontWeight: '600', color: colors.textPrimary },
   keyInput: {

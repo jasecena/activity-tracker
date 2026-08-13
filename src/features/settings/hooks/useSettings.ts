@@ -24,7 +24,6 @@ export interface UseSettings {
   tracking: boolean;
   setTracking: (enabled: boolean) => void;
   setPreset: (preset: TrackingPresetId) => void;
-  setWeightKg: (weightKg: number) => void;
   setRetentionDays: (days: number | null) => void;
   /** Map imagery — one of the two things here that permit a network request. Off until you say otherwise. */
   setMapsEnabled: (enabled: boolean) => void;
@@ -207,8 +206,6 @@ export function useSettings(): UseSettings {
     [persist, savingBattery, settings],
   );
 
-  const setWeightKg = useCallback((weightKg: number) => persist({ ...settings, weightKg }), [persist, settings]);
-
   const setTranscriptionKey = useCallback(
     (transcriptionKey: string) => persist({ ...settings, transcriptionKey: transcriptionKey.trim() }),
     [persist, settings],
@@ -249,7 +246,6 @@ export function useSettings(): UseSettings {
     tracking,
     setTracking,
     setPreset,
-    setWeightKg,
     setRetentionDays,
     setMapsEnabled,
     setTranscriptionKey,
