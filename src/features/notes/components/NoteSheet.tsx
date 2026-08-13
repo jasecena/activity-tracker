@@ -345,7 +345,27 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                   )}
                 </View>
 
-                <RecordButton recording={recorder.recording} onStart={recorder.start} onStop={recorder.stop} />
+                {/* Recording over one that already exists destroys it: the new
+                    file replaces the old and the old is deleted on save. That
+                    is a delete, so it asks — like every other delete. Recording
+                    onto a note with nothing on it asks nothing, because there
+                    is nothing to lose. */}
+                <RecordButton
+                  recording={recorder.recording}
+                  onStart={
+                    voice
+                      ? () =>
+                          confirmDestructive({
+                            title: 'Record over this one?',
+                            message:
+                              'The recording already on this note is replaced, and the old audio cannot be recovered. Any text transcribed from it stays.',
+                            confirmLabel: 'Record again',
+                            onConfirm: recorder.start,
+                          })
+                      : recorder.start
+                  }
+                  onStop={recorder.stop}
+                />
               </View>
 
               {/* Under the recording, because it is a thing you do *to* the

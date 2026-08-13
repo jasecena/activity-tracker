@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 784
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 786
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -86,7 +86,11 @@ merges themselves are dropped on launch — a merge was a label with an empty
 name, so anything nameless goes — because a build with no merge button would
 otherwise apply every merge ever made and offer no way out of any of them.
 
-**Anything that erases something its owner made asks first.**
+**Anything that erases something its owner made asks first — recording over an
+existing recording included**, since the new file replaces the old one and the
+old one is deleted on save. Recording onto a note with nothing on it asks
+nothing: there is nothing to lose, and a dialog there is a dialog in front of
+the thing the button is for.
 `confirmDestructive` is one function rather than a habit, because the rule is
 easy to state and easy to forget at the call site that matters — three places
 deleted without asking (a note, a recording on a note, the name given to a
@@ -112,6 +116,19 @@ rather than a per-feature afterthought.
 where there is no title, and the recording's play button. Printing every note in
 full was right when a day held one and wrong once days hold several: the section
 became a wall of text to scroll past, and "which note is which" was buried in it.
+
+**A `Section`'s accessibility label is its name; the count is its accessibility
+_value_.** iOS collapses a labelled element's children, so the count cannot be
+its own node — and folding it into the label would make the only handle on the
+control change whenever the contents do, which the Maestro flow matches
+whole-string. VoiceOver reads the value after the label, so nothing is lost.
+
+**The smoke flow has to open a collapsed section before asserting into it, and
+forgetting that failed the v0.6.2 release.** The sections shipped, the Jest suite
+was updated for them, `.maestro/smoke.yaml` was not — so it asserted on text that
+had become rendered-but-invisible. Jest cannot tell those apart and Maestro can,
+which is the entire reason the smoke test exists. **A change to what is visible
+on the Day screen is a change to that flow.**
 
 **The Day screen goes map, player, notes, timeline — in that order, and the
 player is against the map.** The player drives the map, so anything between them
