@@ -528,6 +528,51 @@ rather than duplicates — the same discipline as segment ids.
 it nothing on earth can derive the key again. This is the file that makes the
 bucket openable at all.
 
+### The format, and why it is boring on purpose
+
+**Everything in the bucket must be readable by a Python script on a laptop**, so
+every choice below is constrained by what the other side can do without exotic
+dependencies. That rules out anything clever and it is the right trade: a backup
+whose format only one codebase understands has the same failure mode as a backup
+only one phone can open.
+
+**Key: scrypt**, with the salt and parameters in the plaintext manifest. Chosen
+because it is in Python's **standard library** — `hashlib.scrypt` — so the
+decrypt script needs no dependency at all to get from the passphrase to the key.
+Argon2id is a better KDF in the abstract and needs `argon2-cffi` on the other
+side; that is a real cost for a script somebody runs on a bad day. `@noble/hashes`
+provides the same function on the phone.
+
+**Cipher: XChaCha20-Poly1305**, unchanged from the vault. Python reads it through
+PyNaCl (`crypto_aead_xchacha20poly1305_ietf_decrypt`), which is one `pip install`
+and a libsodium binding rather than a reimplementation. The alternative worth
+naming is AES-256-GCM, which the `cryptography` package handles and which is more
+universally present — but it would mean two ciphers in one codebase, and the
+seam between them is exactly where mistakes live.
+
+**Framed in chunks**, because a 40 MB video cannot be one AEAD operation on a
+phone and should not be one on a laptop either:
+
+```
+"ATB1"                    magic, 4 bytes
+version                   1 byte
+chunkSize                 uint32 big-endian
+repeated to end of file:
+  nonce                   24 bytes
+  length                  uint32 big-endian
+  ciphertext              length bytes, Poly1305 tag included
+```
+
+**Each chunk's AAD is `magic || version || chunkIndex || isFinal`**, and that is
+the part not to leave out. Without the index a chunk can be moved; without the
+final flag the file can be truncated and still decrypt cleanly to something
+shorter than what was uploaded. Both are silent, and a backup that fails silently
+is worse than one that fails.
+
+Chunking is required for the phone regardless, which also settles half of the
+sealing question below: the first version chunks in JavaScript, and a Swift
+module later can emit the **same** format rather than a second one.
+
 ### What "no restore" obliges
 
 **The format has to be documented and independently readable, or the backup is
@@ -577,7 +622,8 @@ house rule that a settled decision changes `docs/ARCHITECTURE.md` with it.
   Retrieval is roughly a third of it for data that is read approximately never,
   which is exactly this. Deep Archive is cheaper again and takes hours to read —
   which for a backup nothing reads may be no cost at all.
-- **Chunked JS or the Swift module** for sealing, above.
+- **Whether the Swift module is needed at all**, once chunked JavaScript is
+  measured against a real video. The format does not change either way.
 - **Whether the first version carries media at all.** Stores and notes alone are
   kilobytes, exercise the entire pipeline including the key and the decrypt
   script, and defer the one part with a known performance trap.
