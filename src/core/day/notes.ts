@@ -233,6 +233,49 @@ export function whereToWrite(
   return startOfLocalDay(inside, tzOffsetMinutes) + 12 * 3_600_000;
 }
 
+export interface NoteDay {
+  /** `YYYY-MM-DD`, local. The same key `groupByDay` uses. */
+  readonly key: string;
+  /** Local midnight, for a heading and for sorting. */
+  readonly startedAt: number;
+  /** Newest first within the day. */
+  readonly notes: readonly DayNote[];
+}
+
+/**
+ * Every note, gathered into local days, **newest first in both directions**.
+ *
+ * The diary read as a timeline rather than as a day's worth of rows. The Day
+ * screen asks "what did I write about *this* day" and `notesForDay` answers it
+ * oldest-first, because a day reads forwards. A diary asks "what have I
+ * written", and that reads backwards: the thing you want is almost always the
+ * thing you wrote most recently, and a list that opens on last March is a list
+ * you scroll past every time.
+ *
+ * Days with nothing in them are absent. Unlike the Day screen — where a day
+ * exists whether or not anything was recorded on it, so there is somewhere to
+ * write — a diary is made of what was written, and an empty date is not an
+ * entry.
+ */
+export function groupNotesByDay(notes: readonly DayNote[], tzOffsetMinutes: TzOffsetMinutes): readonly NoteDay[] {
+  const days = new Map<string, DayNote[]>();
+
+  for (const note of notes) {
+    const key = dayKeyOf(note.at, tzOffsetMinutes);
+    const day = days.get(key);
+    if (day) day.push(note);
+    else days.set(key, [note]);
+  }
+
+  return [...days.entries()]
+    .map(([key, inDay]) => ({
+      key,
+      startedAt: startOfLocalDay(inDay[0]?.at ?? 0, tzOffsetMinutes),
+      notes: [...inDay].sort((a, b) => b.at - a.at),
+    }))
+    .sort((a, b) => b.startedAt - a.startedAt);
+}
+
 /** The notes belonging to one local day, in the order they were written. */
 export function notesForDay(
   notes: readonly DayNote[],

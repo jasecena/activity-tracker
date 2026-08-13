@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 794
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 804
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -159,6 +159,19 @@ name is a normal thing to want. It lands in the sheet's **draft**, so Save is th
 approval rather than a second confirmation, and a note that was only a recording
 gets no separator because that is the ordinary case for the feature rather than
 an edge of it.
+
+**The diary is its own tab, and the Day screen no longer carries notes.** A note
+was filed under the day it was about and reached by walking to that day, which
+`docs/BACKLOG.md` already called "fine for a week and not for a year". It is one
+list now — every note, **newest first**, grouped by the day it is about, because
+a diary is still indexed by the date. `groupNotesByDay` does that arithmetic in
+`core`; `notesForDay` remains for anything that wants one day forwards. The same
+rows in two places would be two things to keep in step and one always slightly
+wrong, which is the reasoning that retired `MediaScreen`.
+
+A row is a **heading and a play button** — the title, or the first line where
+there is no title. The whole entry is one tap away in the sheet, which is also
+the only place it can be edited.
 
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
@@ -542,8 +555,9 @@ recorder in `features/notes/hooks/useVoiceNote`. One file each, and that is the 
 is that there is a single place to look, not that the import lives in a
 particular directory.
 
-**No navigation library.** Four tabs — Day, Capture, Media, Settings — and one
-level of detail below each. Capture and Media take the two middle slots: one is
+**No navigation library.** Five tabs — Day, Capture, Media, Notes, Settings — and
+one level of detail below each. **Five is the ceiling**: iOS collapses a sixth
+into a "More" list, which is why Places is a page under Settings. Capture and Media take the two middle slots: one is
 the only tab that is an action rather than a view, the other the only one you
 open to _look_ at something rather than read it.
 
@@ -628,6 +642,29 @@ often enough that a swipe is unreliable by nature — reported from a phone as
 simply not working — and a correction that only sometimes happens is worse than
 a menu that always does. `SegmentRow` already had `onLongPress`; the gesture
 component built for this is gone.
+
+**That rule is about `PanResponder`, and the Notes tab is the exception that
+proves what it was really saying.** Swipe-to-delete there is
+`react-native-gesture-handler`, whose recognisers are native and negotiate with
+the scroll view through the platform's own failure and simultaneity
+relationships — the thing the responder system cannot express, and the reason
+UIKit's own swipe actions feel reliable where a hand-rolled one does not. So:
+**a horizontal gesture on a vertical list needs the library, or it needs to be a
+long press.** Never a third `PanResponder` attempt.
+
+`GestureHandlerRootView` wraps the whole app in `App.tsx` rather than the one
+screen using it: the library installs its touch handling at the root, and a
+gesture inside a subtree it does not own never fires. The legacy `Swipeable` is
+imported deliberately — the `ReanimatedSwipeable` replacement would pull in
+`react-native-reanimated`, a babel plugin and a worklets runtime, for one row
+action.
+
+**Deleting a note is a swipe on the Notes tab, and nowhere else.** The sheet's
+"Delete this note" text button is gone: a row of red text under a form is a
+worse place for it than the row itself, and the swipe reveals a button rather
+than deleting — so it is two deliberate acts and a confirmation for something
+nothing can reconstruct. Deleting a _recording_ stays in the sheet, because that
+is where the recording is.
 
 **The zoom is measured from the start of each gesture, never accumulated.**
 Adding deltas per movement drifts, and it means letting go and repeating the

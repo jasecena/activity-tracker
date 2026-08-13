@@ -52,17 +52,18 @@ appId: ${APP_ID}
 # "Tracking is off" heading inside it — is what exists.
 - assertVisible: 'Start tracking'
 
-# The timeline and the diary are collapsed sections now, so their contents are
-# not on screen until the heading is tapped. That is the whole point of them —
-# the Day screen is the map and the player, with the lists underneath — and it
-# is why this flow has to open one rather than assert into a closed drawer.
+# The timeline is a collapsed section, so its contents are not on screen until
+# the heading is tapped. That is the whole point of it — the Day screen is the
+# map and the player, with the timeline underneath — and it is why this flow has
+# to open it rather than assert into a closed drawer.
+#
+# The diary is no longer here at all: it is a tab, asserted further down.
 #
 # **This is what failed the v0.6.2 release.** The sections shipped, the Jest
 # suite was updated for them, and this flow was not; it asserted on text that had
 # become invisible-but-rendered. Maestro caught what Jest could not — the
 # difference between "the component renders that string" and "a person can see
 # it" — which is exactly the job this file exists to do.
-- assertVisible: 'NOTES'
 - tapOn: 'TIMELINE'
 - assertVisible: 'Nothing recorded yet today.'
 
@@ -134,6 +135,18 @@ appId: ${APP_ID}
 - tapOn: 'Media tab'
 - assertVisible: 'Media'
 - assertVisible: 'Nothing captured yet'
+
+# The diary is its own tab, fourth, before Settings. A note used to be filed
+# under the day it was about and reached by walking to that day; it is one list
+# now, newest first. Empty on a fresh install, which is the assertion that proves
+# the note store was read and decrypted rather than the screen hanging on it.
+#
+# Also the tab that mounts react-native-gesture-handler. A missing root view
+# shows up as a screen that renders and a swipe that never fires, so getting the
+# screen up at all is what this catches.
+- tapOn: 'Notes tab'
+- assertVisible: 'Notes'
+- assertVisible: 'Nothing written yet. Tap the pen to write about today, or hold the microphone and say it.'
 
 # The gallery's own gestures and panels cannot be reached here: `clearState`
 # leaves nothing captured, and a simulator has no camera to capture with — so

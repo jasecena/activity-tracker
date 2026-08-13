@@ -164,17 +164,6 @@ it('asks nothing before the first recording on a note', async () => {
   expect(Alert.alert).not.toHaveBeenCalled();
 });
 
-it('asks before deleting the note itself, and does nothing until answered', async () => {
-  const onForget = jest.fn();
-  await render(sheet({ target: { kind: 'edit', note: note({ voice: voice() }) }, onForget }));
-
-  await fireEvent.press(screen.getByLabelText('Delete this note'));
-  expect(onForget).not.toHaveBeenCalled();
-
-  await act(async () => confirmTheAlert());
-  expect(onForget).toHaveBeenCalled();
-});
-
 /**
  * The keyboard is a separate window and does not go with the sheet on its own.
  * Backgrounding the app left it up over a sheet that could not be reached, with

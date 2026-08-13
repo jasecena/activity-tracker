@@ -13,6 +13,7 @@ export {
   dayNoteId,
   daysWorthOpening,
   freeInstant,
+  groupNotesByDay,
   normalizeDayNotes,
   noteAt,
   notesForDay,
@@ -20,6 +21,7 @@ export {
   voiceFilesOf,
   whereToWrite,
   type DayNote,
+  type NoteDay,
   type NoteVoice,
 } from './notes';
 export { summarizeDay, type DaySummary } from './summary';
