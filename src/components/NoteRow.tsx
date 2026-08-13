@@ -28,6 +28,17 @@ interface NoteRowProps {
  * the first six words of your own memories, and the entries are a paragraph
  * each — not the sort of thing a timeline needs protecting from.
  */
+/**
+ * The first line of a note, for a row that shows a heading rather than an entry.
+ *
+ * An untitled note has no name, so its opening line is the closest thing — and
+ * it is what its author would recognise it by. Truncated by the renderer rather
+ * than here, so a long first line ellipsises instead of being cut mid-word.
+ */
+function firstLine(text: string): string {
+  return text.split('\n')[0]?.trim() ?? '';
+}
+
 export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: NoteRowProps) {
   const head = (
     <View style={styles.head}>
@@ -38,12 +49,28 @@ export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: 
     </View>
   );
 
-  const written = (
-    <>
-      {note.title.length > 0 ? <Text style={styles.noteTitle}>{note.title}</Text> : null}
-      {note.text.length > 0 ? <Text style={styles.text}>{note.text}</Text> : null}
-    </>
-  );
+  /**
+   * A line, not the entry.
+   *
+   * The list used to print every note in full, on the reasoning that a diary you
+   * have to tap to read is a list of the first six words of your own memories.
+   * That was right when a day held one short note and wrong once days hold
+   * several with recordings attached: the section became a wall of text you
+   * scroll past to reach the timeline, and the thing you actually want from a
+   * list — which note is which — was buried in it.
+   *
+   * So the row is a heading. The title if there is one; otherwise the first line
+   * of the body, which is what an untitled note has instead of a name. Tapping
+   * opens the whole thing, which is the one place it is all visible.
+   */
+  const heading = note.title.length > 0 ? note.title : firstLine(note.text);
+
+  const written =
+    heading.length > 0 ? (
+      <Text style={styles.noteTitle} numberOfLines={1}>
+        {heading}
+      </Text>
+    ) : null;
 
   /**
    * The words open the sheet; the player does not.
@@ -103,6 +130,5 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   time: { ...typography.caption, color: colors.textMuted },
   noteTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
-  text: { ...typography.body, color: colors.textPrimary },
   pressed: { opacity: 0.6 },
 });

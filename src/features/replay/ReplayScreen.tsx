@@ -10,6 +10,7 @@ import { matchPlace, type Place } from '@/core/places';
 import type { MoveSegment, Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { NoteRow } from '@/components/NoteRow';
+import { Section } from '@/components/Section';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
@@ -264,51 +265,6 @@ export function ReplayScreen({
           label={`Map of ${title}`}
         />
 
-        {/* Above the player and outside its guard, so a day with no fixes keeps
-            the button. That day is the one most worth a note: the app recording
-            nothing is not the same as nothing having happened.
-
-            One button, where there were two. The microphone used to sit beside
-            the pen, which said that writing and talking were different things
-            you chose between before you had said anything — they are the same
-            entry, so the recorder moved *inside* the sheet, under the fields.
-            Choosing which hand to use is a decision for after the sheet is
-            open, not before.
-
-            An icon alone, and large enough to hit without looking. The first
-            version was caption-sized text at the end of a section heading,
-            below the whole map — findable only by somebody who already knew it
-            was there, which is the one thing an entry point must not be. */}
-        <View style={styles.dayActions}>
-          {onWriteNote && day ? (
-            <Pressable
-              onPress={() => onWriteNote(day.key, segments)}
-              accessibilityRole="button"
-              accessibilityLabel="Write a note about this day"
-              style={({ pressed }) => [styles.dayAction, pressed && styles.pressed]}
-            >
-              <Ionicons name="create-outline" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        {/* Its own section rather than rows in the timeline, and directly under
-            the buttons that write one. A timeline is a record of where the phone
-            was, minute by minute; a sentence threaded into it arrived as another
-            reading the app had taken. What a diary is indexed by is the date —
-            the time is a detail within the day, which is why these still sort by
-            it. */}
-        {dayNotes.length > 0 ? (
-          <>
-            <Text style={styles.sectionLabel}>NOTES</Text>
-            <View style={styles.timeline}>
-              {dayNotes.map((note) => (
-                <NoteRow key={note.id} note={note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpenNote} />
-              ))}
-            </View>
-          </>
-        ) : null}
-
         {/* The player only exists where there is something to play. A day with
             no fixes gets its stats and its empty timeline and nothing else. */}
         {segments.length > 0 ? (
@@ -416,22 +372,68 @@ export function ReplayScreen({
           </>
         ) : null}
 
-        <Text style={styles.sectionLabel}>TIMELINE</Text>
+        {/* **Below the player, not above it.** The player drives the map and has
+            to sit against it: anything between the two detaches the scrubber
+            from the thing it scrubs, which is what a section of notes wedged in
+            there did.
 
-        <View style={styles.timeline}>
-          {segments.length === 0 ? (
-            <Text style={styles.empty}>
-              {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
-            </Text>
+            Its own section rather than rows in the timeline — a timeline is a
+            record of where the phone was minute by minute, and a sentence
+            threaded into it arrives as another reading the app took. What a
+            diary is indexed by is the date; the time is a detail within the day,
+            which is why these still sort by it.
+
+            The pen lives in the heading, on the right, where it is next to the
+            thing it adds to rather than floating above the page. It stays
+            outside the player's `segments.length` guard: a day the app recorded
+            nothing on is the day most worth writing about. */}
+        <Section
+          label="NOTES"
+          count={dayNotes.length}
+          action={
+            onWriteNote && day ? (
+              <Pressable
+                onPress={() => onWriteNote(day.key, segments)}
+                accessibilityRole="button"
+                accessibilityLabel="Write a note about this day"
+                style={({ pressed }) => [styles.dayAction, pressed && styles.pressed]}
+              >
+                <Ionicons name="create-outline" size={20} color={colors.textPrimary} />
+              </Pressable>
+            ) : null
+          }
+        >
+          {dayNotes.length > 0 ? (
+            <View style={styles.timeline}>
+              {dayNotes.map((note) => (
+                <NoteRow key={note.id} note={note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpenNote} />
+              ))}
+            </View>
           ) : (
-            segments.map((segment) => (
-              <SegmentRow
-                key={segment.id}
-                segment={segment}
-                places={places}
-                tzOffsetMinutes={tzOffsetMinutes}
-                onOpen={onOpenSegment}
-                /* Long press rather than a swipe. A row on a list that scrolls
+            <Text style={styles.empty}>Nothing written about this day yet.</Text>
+          )}
+        </Section>
+
+        {/* Collapsed like the notes above it, and for the same reason: a day of
+            errands is dozens of rows, and a page that opens on all of them is a
+            page you scroll rather than read. The count in the heading is what
+            makes collapsing safe — it hides the rows without hiding that there
+            are any. */}
+        <Section label="TIMELINE" count={segments.length}>
+          <View style={styles.timeline}>
+            {segments.length === 0 ? (
+              <Text style={styles.empty}>
+                {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
+              </Text>
+            ) : (
+              segments.map((segment) => (
+                <SegmentRow
+                  key={segment.id}
+                  segment={segment}
+                  places={places}
+                  tzOffsetMinutes={tzOffsetMinutes}
+                  onOpen={onOpenSegment}
+                  /* Long press rather than a swipe. A row on a list that scrolls
                      vertically has to hand a horizontal drag back to the
                      scroller often enough that the gesture is unreliable by
                      nature, and a correction that only sometimes happens is
@@ -439,11 +441,12 @@ export function ReplayScreen({
 
                      Only a journey. A stay has no activity type, so a stay that
                      opened this would be an action leading nowhere. */
-                onLongPress={onCorrectMode && segment.kind === 'move' ? () => onCorrectMode(segment) : undefined}
-              />
-            ))
-          )}
-        </View>
+                  onLongPress={onCorrectMode && segment.kind === 'move' ? () => onCorrectMode(segment) : undefined}
+                />
+              ))
+            )}
+          </View>
+        </Section>
       </ScrollView>
     </View>
   );

@@ -129,6 +129,15 @@ function renderScreen(day: DayGroup) {
   );
 }
 
+/**
+ * The timeline is a collapsed section now, so its rows are not rendered until
+ * the heading is pressed. Opening it is what a person does to read the day, and
+ * it is what these assertions have to do first.
+ */
+async function openTimeline() {
+  await fireEvent.press(screen.getByLabelText(/^TIMELINE/));
+}
+
 describe('the player', () => {
   it('shows today as an empty day before anything is recorded', async () => {
     await render(
@@ -149,6 +158,8 @@ describe('the player', () => {
     );
 
     // An empty day is still today: stats, an empty timeline, and no player.
+    await openTimeline();
+
     expect(screen.getByText('Nothing recorded yet today.')).toBeOnTheScreen();
     expect(screen.queryByLabelText('Play')).not.toBeOnTheScreen();
   });

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import { dayNoteId, type DayNote, type NoteVoice } from '@/core/day';
 
@@ -29,8 +30,21 @@ function sheet(props: Partial<React.ComponentProps<typeof NoteSheet>> = {}) {
   return <NoteSheet target={{ kind: 'new' }} defaultAt={T0} onSave={jest.fn()} onClose={jest.fn()} {...props} />;
 }
 
+/**
+ * Answer the destructive confirmation the way a person would.
+ *
+ * `Alert.alert` shows a native dialog there is nothing to press in a test, so
+ * the buttons are read off the call and the one that is not Cancel is invoked.
+ */
+function confirmTheAlert(): void {
+  const buttons = (Alert.alert as jest.Mock).mock.calls.at(-1)?.[2] as
+    { text: string; style?: string; onPress?: () => void }[] | undefined;
+  buttons?.find((button) => button.style === 'destructive')?.onPress?.();
+}
+
 beforeEach(() => {
   jest.useFakeTimers();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -93,14 +107,57 @@ it('plays back a recording already on the note', async () => {
  * Deleting the recording leaves the words, because they are two ways of writing
  * the same entry rather than two states of one.
  */
-it('drops the recording without touching what was typed', async () => {
+it('drops the recording without touching what was typed, once confirmed', async () => {
   const onSave = jest.fn();
   await render(sheet({ target: { kind: 'edit', note: note({ text: 'typed', voice: voice() }) }, onSave }));
 
   await fireEvent.press(screen.getByLabelText('Delete the recording'));
+  await act(async () => confirmTheAlert());
   await fireEvent.press(screen.getByLabelText('Save this note'));
 
   expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', null);
+});
+
+/**
+ * The point of the confirmation: a press on its own destroys nothing. Thirty
+ * seconds of talking cannot be recovered from anything, so the press has to be
+ * answered before it counts.
+ */
+it('keeps the recording when the confirmation is dismissed', async () => {
+  const onSave = jest.fn();
+  await render(sheet({ target: { kind: 'edit', note: note({ text: 'typed', voice: voice() }) }, onSave }));
+
+  await fireEvent.press(screen.getByLabelText('Delete the recording'));
+  // Dialog raised, nothing answered.
+  await fireEvent.press(screen.getByLabelText('Save this note'));
+
+  expect(Alert.alert).toHaveBeenCalled();
+  expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', expect.objectContaining({ fileName: 'voice-1.m4a' }));
+});
+
+it('asks before deleting the note itself, and does nothing until answered', async () => {
+  const onForget = jest.fn();
+  await render(sheet({ target: { kind: 'edit', note: note({ voice: voice() }) }, onForget }));
+
+  await fireEvent.press(screen.getByLabelText('Delete this note'));
+  expect(onForget).not.toHaveBeenCalled();
+
+  await act(async () => confirmTheAlert());
+  expect(onForget).toHaveBeenCalled();
+});
+
+/**
+ * The keyboard is a separate window and does not go with the sheet on its own.
+ * Backgrounding the app left it up over a sheet that could not be reached, with
+ * no way out but force-quitting.
+ */
+it('offers a close button that puts the keyboard away', async () => {
+  const onClose = jest.fn();
+  await render(sheet({ onClose }));
+
+  await fireEvent.press(screen.getByLabelText('Close without saving'));
+
+  expect(onClose).toHaveBeenCalled();
 });
 
 /**

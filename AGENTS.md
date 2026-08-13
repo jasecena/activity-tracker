@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 780
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 784
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -85,6 +85,41 @@ finding the label behind a row by its id. Half a feature is worse than none. The
 merges themselves are dropped on launch — a merge was a label with an empty
 name, so anything nameless goes — because a build with no merge button would
 otherwise apply every merge ever made and offer no way out of any of them.
+
+**Anything that erases something its owner made asks first.**
+`confirmDestructive` is one function rather than a habit, because the rule is
+easy to state and easy to forget at the call site that matters — three places
+deleted without asking (a note, a recording on a note, the name given to a
+journey) and each was written by somebody who knew the rule. The bar is **data
+its owner made**, not "an action that changes something": a fix or a segment
+would not qualify, because the app collected those and can collect them again.
+
+**The multipart part for a recording is a real `File`, not `{ uri, name, type }`.**
+That object is the old React Native idiom and every guide still shows it; Expo's
+`fetch` is WinterCG-compliant and its `FormData` rejects it with `Unsupported
+FormDataPart implementation`, thrown while the body is assembled — so it arrives
+as a _failed request_ rather than a type error and reads on a device as "no
+connection". `expo-file-system`'s `File` implements `Blob`, streams from disk,
+and carries its own name and type.
+
+This is also the case for the on-screen raw error. The failure was undiagnosable
+from a laptop: no log, no crash reporter, no telemetry, and a generic message. It
+was found in one attempt once the service's own words were printed under the
+button — see `docs/BACKLOG.md` § 16, which asks for that as a general facility
+rather than a per-feature afterthought.
+
+**A note in a list is a heading, not the entry.** The title, or the first line
+where there is no title, and the recording's play button. Printing every note in
+full was right when a day held one and wrong once days hold several: the section
+became a wall of text to scroll past, and "which note is which" was buried in it.
+
+**The Day screen goes map, player, notes, timeline — in that order, and the
+player is against the map.** The player drives the map, so anything between them
+detaches the scrubber from the thing it scrubs, which is what a notes section
+wedged in there did. Notes and the timeline are `Section`s: **collapsed by
+default**, with a count in the heading, because a page holding four things each
+worth a screen is a page you scroll rather than read. The count is what makes
+collapsing safe — it hides the contents without hiding that there are any.
 
 **A transcript is appended to a note, never written over it.** `appendTranscript`
 puts the text under whatever was there, so a bad transcription costs a paragraph
