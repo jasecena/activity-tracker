@@ -751,8 +751,8 @@ which is why the ring buffer is capped by count and why what goes in it is
 
 **Status:** not started, designed in conversation on 13 August 2026. **Both open
 questions were answered the same day** and are recorded below with the reasoning
-rather than as bare decisions: the provider is Anthropic, and the diary button
-reads one note. This is the second half of what item 15 set out to enable, and it is a
+rather than as bare decisions: the provider is OpenAI on `gpt-5.6-luna`, and the
+diary button reads one note. This is the second half of what item 15 set out to enable, and it is a
 separate feature rather than a continuation: a different service, a **third**
 network request, and the first thing in this app that _overwrites something its
 owner wrote_.
@@ -789,42 +789,61 @@ even though transcription did not need it. Append-only made layers unnecessary;
 replacement may make them necessary again. Decide when the shape is real, not
 now.
 
-### Decided: Anthropic, `claude-haiku-4-5`
+### Decided: OpenAI, `gpt-5.6-luna`
 
 The stated criteria were **price and limiting what is retained**, and they point
-opposite ways, so the tiebreak is written down here rather than left implicit.
+opposite ways, so both sides are written down here rather than left implicit.
 
 Price, measured 13 August 2026, per ~300 Persian words in and out (~1K tokens
 each way):
 
-| Model                | Per attempt | 100 notes/month, 2 attempts |
-| -------------------- | ----------- | --------------------------- |
-| GPT-5 Nano           | $0.00045    | $0.09                       |
-| GPT-5 Mini           | $0.0011     | $0.22                       |
-| **Claude Haiku 4.5** | $0.006      | **$1.20**                   |
+| Model            | Per attempt | 100 notes/month, 2 attempts |
+| ---------------- | ----------- | --------------------------- |
+| GPT-5 Nano       | $0.00045    | $0.09                       |
+| GPT-5 Mini       | $0.0011     | $0.22                       |
+| **GPT-5.6 Luna** | $0.0014     | **$0.28**                   |
+| GPT-5.6 Terra    | —           | step-up tier, if needed     |
+| Claude Haiku 4.5 | $0.006      | $1.20                       |
 
 Retention, as published on the same day:
 
-| Provider      | Default retention | Trains on it | Zero-retention for a solo developer |
-| ------------- | ----------------- | ------------ | ----------------------------------- |
-| **Anthropic** | **7 days**        | No           | Enterprise agreement only           |
-| OpenAI        | 30 days           | No           | Enterprise agreement only           |
+| Provider   | Default retention | Trains on it | Zero-retention for a solo developer |
+| ---------- | ----------------- | ------------ | ----------------------------------- |
+| Anthropic  | 7 days            | No           | Enterprise agreement only           |
+| **OpenAI** | **30 days**       | No           | Enterprise agreement only           |
 
 **OpenAI is cheaper by about a dollar a month; Anthropic keeps the text a
 quarter as long.** Neither will give an individual on pay-as-you-go a
 zero-retention agreement, so the honest comparison is 7 days against 30 — of the
-most personal text in the app, since a diary entry is exactly the thing this
-whole repository is arranged around not leaking.
+most personal text in the app.
 
-A dollar a month does not buy its way past that. It is the same shape as the
-argument item 15 already made for Scribe over a tenth-price Whisper: at this
-volume the cheaper option buys nothing worth having.
+**The call was OpenAI**, made on 13 August 2026 knowing that. Recorded plainly
+because it is a real cost accepted rather than an oversight to be rediscovered
+later: a note's text sits on OpenAI's servers for up to 30 days rather than 7.
+Not used for training either way, and no zero-retention option exists at this
+account tier on either side. The counter-argument — a dollar a month does not
+buy past a quarter as long holding a diary, which is the shape of the argument
+item 15 made picking Scribe over tenth-price Whisper — was made and not taken.
 
-**Unresolved inside the decision:** Haiku is the smallest Claude model, and
-"write a diary" is generative Persian writing — where a small model reads
-flattest. Keep the model a **setting per button**, so that button alone can move
-to `claude-sonnet-5` if the output disappoints. That is a one-string change and
-does not reopen the provider question.
+**Which model, and why the cheap tier is also the right one here.** The current
+lineup is GPT-5.6 in three tiers: **Sol** (flagship), **Terra** (balanced),
+**Luna** (cost-efficient). Luna is chosen because it is the tier OpenAI
+optimises for **multilingual** workloads, which is the only quality axis that
+matters here — every note is Persian, and a cheaper model tuned for non-English
+beats a pricier one that is not. At roughly $0.20/$1.20 per MTok that is about
+**28 cents a month** at 100 notes with two attempts each; GPT-5 Mini is a few
+cents cheaper, an older generation, and makes no multilingual claim, which is not
+a trade worth taking for six cents.
+
+**Step up, do not switch, if it disappoints.** "Write a diary" is generative
+Persian writing and the place a small model reads flattest. The model stays a
+**setting per button**, so that one button can move to `gpt-5.6-terra` without
+touching the others and without reopening the provider question. This is also
+what was asked for directly: the model changes per purpose and per feature.
+
+**Confirm the exact model id and price against the API before writing code.**
+Both come from vendor documentation read on 13 August 2026, and a model string is
+the one thing here that fails as a 404 rather than as a worse answer.
 
 ### Decided: the diary button reads **one note**
 
