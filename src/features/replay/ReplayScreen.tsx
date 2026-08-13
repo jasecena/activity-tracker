@@ -2,9 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { summarizeDay, type DayGroup } from '@/core/day';
-import { activeCalories } from '@/core/energy';
-import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
+import type { DayGroup } from '@/core/day';
+import { formatClockTime, formatDayTitle, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
 import type { MoveSegment, Segment } from '@/core/segments';
@@ -12,7 +11,6 @@ import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { Section } from '@/components/Section';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
-import { StatTile } from '@/components/StatTile';
 import type { UseSettings } from '@/features/settings/hooks/useSettings';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -110,9 +108,6 @@ export function ReplayScreen({
   const segments = useMemo<readonly Segment[]>(() => day?.segments ?? [], [day]);
 
   const replay = useReplay(segments);
-
-  const summary = summarizeDay(segments);
-  const calories = activeCalories(segments, settings.settings.weightKg);
 
   const overlay = useMemo(() => dayOverlay(segments, places), [segments, places]);
 
@@ -250,12 +245,6 @@ export function ReplayScreen({
             </Text>
           </View>
         ) : null}
-
-        <View style={styles.stats}>
-          <StatTile label="Distance" value={formatDistance(summary.distanceM)} accent={colors.move} />
-          <StatTile label="Moving" value={formatDuration(summary.movingMs)} />
-          <StatTile label="Calories" value={`${Math.round(calories)}`} accent={colors.success} />
-        </View>
 
         <MapCanvas
           mapsEnabled={mapsEnabled}
@@ -509,7 +498,6 @@ const styles = StyleSheet.create({
   },
   navDisabled: { opacity: 0.35 },
   dayNavLabel: { ...typography.body, fontWeight: '600', color: colors.textPrimary, textAlign: 'center' },
-  stats: { flexDirection: 'row', gap: spacing.sm },
   readout: { alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm },
   clock: { ...typography.hero, fontSize: 32, color: colors.textPrimary },
   detail: { ...typography.caption, color: colors.textSecondary },
