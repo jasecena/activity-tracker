@@ -951,16 +951,46 @@ knows they were at home. This feature is the one place where somebody can state
 what the app is forbidden to guess — which is a better justification for it than
 tidying drift, and it is the case to design the wording around.
 
-### Still open
+### Also decided
 
-- **How the two points are chosen.** Long-press a stay and pick the row to
-  extend to is the obvious candidate, since the anchor then has a place and
-  "where I was" needs no second answer — but no gesture is settled.
-- **The threshold itself.** `minMoveDistanceM` (60 m) is the natural reuse and
-  may be too tight for a large building.
-- **Where a claim is listed and removed.** Named journeys already have a page
-  under Settings; this wants the same, and that is what answers the withdrawn
-  feature's real objection.
+**Long-press the first row, then tap the second.** The same gesture that already
+corrects a journey's activity type, for the same reason it was chosen there: a
+horizontal swipe on a vertical list is unreliable by nature, and a correction
+that only sometimes happens is worse than a menu that always does. Long-pressing
+a _stay_ makes the anchor a place, so "where was I" needs no second answer.
+
+**Unmerge is a long press on the merged row**, and this is better than the
+Settings page that was proposed here — it is the thing the withdrawn feature
+could not do. Its objection was that _"undoing meant finding the label behind a
+row by its id"_. Under shape B the merged stay is **produced by** the claim, so
+the row can carry which claim made it and the undo is on the row itself. A list
+under Settings can come later as a way to _see_ them; it is no longer how you
+get rid of one.
+
+That also retires the permission this feature was offered with. Irreversible was
+acceptable; it is now unnecessary, and nothing is deleted to make it so.
+
+**The 60 m is measured against real movement, so the reading error comes off
+first.** A fix seventy metres away from a reading known to be worth ±20 m is not
+evidence that anybody moved seventy metres, and refusing on it would refuse
+exactly the drift-flattening the feature exists for. So the test is an
+_excursion_ from the anchor, net of what the readings could be wrong by:
+
+| Segment in the range | Excursion                                              |
+| -------------------- | ------------------------------------------------------ |
+| A stay               | `dist(anchor, center) - radiusM`                       |
+| A move               | `max over path of dist(anchor, point) - readingErrorM` |
+
+Refuse if any excursion exceeds `minMoveDistanceM`. A stay carries its own
+measured error — `radiusM` is exactly how far its fixes wandered — which is
+better than any constant. A move carries none, so `readingErrorM` is passed in
+from the **effective** preset's accuracy, which keeps `core` free of settings
+and makes a battery-saver day appropriately more forgiving than a balanced one.
+
+Note this is deliberately _not_ `distanceM` for a move: ground distance is the
+sum of the steps, so a stationary phone jittering for an hour accumulates
+hundreds of metres without ever being anywhere else. Furthest-point-from-anchor
+is the question being asked.
 
 ### What is wanted
 
