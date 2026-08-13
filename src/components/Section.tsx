@@ -45,7 +45,14 @@ export function Section({ label, count, action, children }: SectionProps) {
           onPress={() => setOpen(!open)}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={`${label}, ${count} ${count === 1 ? 'item' : 'items'}`}
+          // **Label is the name alone; the count is the accessibility *value*.**
+          // iOS collapses the children of a labelled element, so the number
+          // cannot be its own node — but folding it into the label would make
+          // the only handle on this control change every time the contents do,
+          // and the Maestro flow matches labels whole-string. VoiceOver reads
+          // the value after the label, so nothing is lost by the split.
+          accessibilityLabel={label}
+          accessibilityValue={{ text: `${count} ${count === 1 ? 'item' : 'items'}` }}
           style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
         >
           <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} color={colors.textMuted} />

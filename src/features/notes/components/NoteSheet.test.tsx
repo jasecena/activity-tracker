@@ -44,7 +44,10 @@ function confirmTheAlert(): void {
 
 beforeEach(() => {
   jest.useFakeTimers();
+  // Re-spying does not reset the existing spy's call log, and a test asserting
+  // that nothing was asked would otherwise see the previous test's dialogs.
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  (Alert.alert as jest.Mock).mockClear();
 });
 
 afterEach(() => {
@@ -133,6 +136,28 @@ it('keeps the recording when the confirmation is dismissed', async () => {
 
   expect(Alert.alert).toHaveBeenCalled();
   expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', expect.objectContaining({ fileName: 'voice-1.m4a' }));
+});
+
+/**
+ * Recording over an existing recording destroys it, so it is a delete and asks
+ * like one. Recording onto an empty note asks nothing — there is nothing to
+ * lose, and a confirmation for that would be a dialog in the way of the thing
+ * the button is for.
+ */
+it('asks before recording over a recording that already exists', async () => {
+  await render(sheet({ target: { kind: 'edit', note: note({ voice: voice() }) } }));
+
+  await fireEvent.press(screen.getByLabelText('Record a voice note'));
+
+  expect(Alert.alert).toHaveBeenCalledWith('Record over this one?', expect.any(String), expect.anything());
+});
+
+it('asks nothing before the first recording on a note', async () => {
+  await render(sheet());
+
+  await fireEvent.press(screen.getByLabelText('Record a voice note'));
+
+  expect(Alert.alert).not.toHaveBeenCalled();
 });
 
 it('asks before deleting the note itself, and does nothing until answered', async () => {

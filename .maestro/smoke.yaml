@@ -49,6 +49,19 @@ appId: ${APP_ID}
 # The tracking notice. Labelled by its Pressable, so this string — not the
 # "Tracking is off" heading inside it — is what exists.
 - assertVisible: 'Start tracking'
+
+# The timeline and the diary are collapsed sections now, so their contents are
+# not on screen until the heading is tapped. That is the whole point of them —
+# the Day screen is the map and the player, with the lists underneath — and it
+# is why this flow has to open one rather than assert into a closed drawer.
+#
+# **This is what failed the v0.6.2 release.** The sections shipped, the Jest
+# suite was updated for them, and this flow was not; it asserted on text that had
+# become invisible-but-rendered. Maestro caught what Jest could not — the
+# difference between "the component renders that string" and "a person can see
+# it" — which is exactly the job this file exists to do.
+- assertVisible: 'NOTES'
+- tapOn: 'TIMELINE'
 - assertVisible: 'Nothing recorded yet today.'
 
 # The vault generated a key and the store round-tripped. If the keychain call or
