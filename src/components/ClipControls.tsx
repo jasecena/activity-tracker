@@ -14,6 +14,15 @@ interface ClipControlsProps {
   readonly durationMs: number | null;
   /** True while the scrubber is being dragged — the host pauses its own gestures for the duration. */
   readonly onScrubbing?: (scrubbing: boolean) => void;
+  /**
+   * Turn the sound on or off.
+   *
+   * A callback rather than this component writing `player.muted`, because the
+   * player arrives here as a prop and a write to a prop is the shape mistakes
+   * take — the same reasoning the seek below already follows. The component that
+   * *created* the player owns changing it; this one reports the press.
+   */
+  readonly onToggleMute?: () => void;
 }
 
 /**
@@ -36,8 +45,12 @@ interface ClipControlsProps {
  * `timeUpdate` arrives four times a second — enough for a scrubber to read as
  * live, well under anything that would tax the bridge.
  */
-export function ClipControls({ player, durationMs, onScrubbing }: ClipControlsProps) {
+export function ClipControls({ player, durationMs, onScrubbing, onToggleMute }: ClipControlsProps) {
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  // Read from the player rather than mirrored into state, for the same reason
+  // the voice-note player reads `playing`: a boolean beside the truth is a
+  // boolean that eventually disagrees with it.
+  const { muted } = useEvent(player, 'mutedChange', { muted: player.muted });
   const { currentTime } = useEvent(player, 'timeUpdate', {
     currentTime: player.currentTime,
     currentLiveTimestamp: null,
@@ -56,9 +69,31 @@ export function ClipControls({ player, durationMs, onScrubbing }: ClipControlsPr
         onPress={() => (isPlaying ? player.pause() : player.play())}
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-        style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
-        <Ionicons name={isPlaying ? 'pause' : 'play'} size={22} color={colors.textPrimary} />
+        <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color={colors.textPrimary} />
+      </Pressable>
+
+      {/* **Sound is a control, not a surprise.** A clip starts muted because it
+          starts on its own, so this is how it gets a voice — which makes it a
+          primary control rather than an afterthought, and it is sized like one.
+          In the bar and in line with the scrubber, because it belongs to this
+          clip and this moment rather than to the app. */}
+      <Pressable
+        onPress={onToggleMute}
+        accessibilityRole="button"
+        accessibilityState={{ selected: !muted }}
+        accessibilityLabel={muted ? 'Turn sound on' : 'Mute'}
+        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      >
+        <Ionicons
+          // Different glyphs, not one glyph in two colours — the same rule the
+          // record button follows, so the state reads at a glance and survives
+          // a greyscale screen.
+          name={muted ? 'volume-mute' : 'volume-high'}
+          size={26}
+          color={colors.textPrimary}
+        />
       </Pressable>
 
       <Text style={styles.time}>{formatDuration(Math.max(0, atMs))}</Text>
@@ -94,9 +129,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
-  playButton: {
-    width: 40,
-    height: 40,
+  // 48, not the 40 it was: these are the two controls pressed while holding a
+  // phone one-handed over a moving picture, and 44 is the smallest iOS asks
+  // anything tappable to be.
+  button: {
+    width: 48,
+    height: 48,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

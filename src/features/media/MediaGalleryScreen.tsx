@@ -722,6 +722,13 @@ function VideoPlaying({
     // Without this the timeUpdate event never fires and the scrubber is a
     // still image of zero. Four a second reads as live.
     instance.timeUpdateEventInterval = 0.25;
+    // **Muted, because it starts on its own.** Swiping to a clip plays it
+    // without being asked, which is right — you swiped to it — but sound that
+    // arrives unasked is a different thing from a picture that does: it carries
+    // into the room, and looking through a day's captures somewhere quiet
+    // should not be a decision about volume. The speaker in the transport turns
+    // it on, and that is one tap where hurriedly muting a phone is several.
+    instance.muted = true;
     instance.play();
   });
   /**
@@ -739,7 +746,25 @@ function VideoPlaying({
         <VideoView style={StyleSheet.absoluteFill} player={player} nativeControls={false} contentFit="contain" />
       </Turned>
       <View style={styles.clipControls}>
-        <ClipControls player={player} durationMs={durationMs} onScrubbing={onScrubbing} />
+        <ClipControls
+          player={player}
+          durationMs={durationMs}
+          onScrubbing={onScrubbing}
+          // Owned here rather than in the transport, because this is where the
+          // player was created and a write to a *prop* is the shape mistakes
+          // take.
+          //
+          // The disable is deliberate and is the only one in `src`. The rule is
+          // right in general — a value from a hook is not yours to mutate — and
+          // it is why the scrubber calls `seekBy` instead of assigning
+          // `currentTime`. Muting has no method: `expo-video` documents the
+          // property assignment *as* the API ("setting this property to
+          // true/false will mute/unmute"), so there is nothing to call. A
+          // `VideoPlayer` is a handle to a native object rather than a value to
+          // be replaced, which is the case the rule does not model.
+          // eslint-disable-next-line react-hooks/immutability
+          onToggleMute={() => (player.muted = !player.muted)}
+        />
       </View>
     </>
   );

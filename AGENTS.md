@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 788
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 790
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -701,6 +701,23 @@ a session running behind three hidden screens costs battery and leaves the
 recording indicator lit. `MediaGalleryScreen` opens a capture only while Media is
 visible, so a video cannot play out of sight and no decrypted file sits in the
 cache for a tab nobody is looking at.
+
+**A video in the gallery starts muted, and the speaker is a first-class
+control.** It plays as soon as you swipe to it, which is right — you swiped to
+it — but sound arriving unasked is a different thing from a picture that does:
+it carries into the room. So `muted` is set in the `useVideoPlayer` setup and
+the transport carries a speaker beside the play button, both at 48 points
+because they are the two things pressed one-handed over a moving picture.
+Different glyphs rather than one in two colours, as the record button does it.
+
+Muting is the **one `eslint-disable` in `src`**, and it is justified where it
+sits: the immutability rule is right in general — it is why the scrubber calls
+`seekBy` instead of assigning `currentTime` — but `expo-video` documents the
+property assignment _as_ the mute API, so there is no method to call. A
+`VideoPlayer` is a handle to a native object rather than a value to replace,
+which is the case the rule does not model. The write lives in the component that
+_created_ the player; `ClipControls` takes a callback, because a write to a prop
+is a different and worse thing.
 
 **A video plays under the app's own transport, never AVKit's.** The reason is
 touch routing rather than appearance: `nativeControls` sit in a native view
