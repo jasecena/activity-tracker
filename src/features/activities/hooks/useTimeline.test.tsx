@@ -51,6 +51,7 @@ function aWalk(startingAt: number): Fix[] {
  * is a property of the test rather than of the hook — but it hangs just as
  * hard, and it hangs silently.
  */
+const NO_CLAIMS: never[] = [];
 const NO_LABELS: readonly [] = [];
 
 /** Only a move carries a name — a stay is named by the place it is at. */
@@ -86,7 +87,7 @@ describe('a journey named on a day that is already frozen', () => {
     };
 
     const labels = [label];
-    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, true));
+    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, NO_CLAIMS, true));
     await waitFor(() => expect(result.current.ready).toBe(true));
 
     await waitFor(() =>
@@ -101,7 +102,7 @@ describe('a journey named on a day that is already frozen', () => {
     const threeDaysAgo = NOW - 3 * DAY;
     await writeJson(STORAGE_KEYS.fixBuffer, aWalk(threeDaysAgo));
 
-    const unlabelled = await renderHook(() => useTimeline(DEFAULT_SETTINGS, NO_LABELS, true));
+    const unlabelled = await renderHook(() => useTimeline(DEFAULT_SETTINGS, NO_LABELS, NO_CLAIMS, true));
     await waitFor(() => expect(unlabelled.result.current.ready).toBe(true));
     const before = unlabelled.result.current.history.flatMap((day) => day.segments).length;
     expect(before).toBeGreaterThan(1);
@@ -115,7 +116,7 @@ describe('a journey named on a day that is already frozen', () => {
     };
 
     const labels = [span];
-    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, true));
+    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, NO_CLAIMS, true));
     await waitFor(() => expect(result.current.ready).toBe(true));
 
     await waitFor(() => expect(result.current.history.flatMap((day) => day.segments).length).toBeLessThan(before));
@@ -136,7 +137,7 @@ describe('a journey named on a day that is already frozen', () => {
     };
 
     const labels = [label];
-    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, true));
+    const { result } = await renderHook(() => useTimeline(DEFAULT_SETTINGS, labels, NO_CLAIMS, true));
     await waitFor(() => expect(namesOf(result.current.today)).toContain('This morning'));
   });
 });

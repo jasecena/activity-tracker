@@ -26,6 +26,17 @@ export {
 export { applyJourneyLabels, journeyLabelId, labelledSegmentId, splitSegment, type JourneyLabel } from './manual';
 export { overrideFor, saysSomething } from './override';
 export {
+  applyStationaryClaims,
+  claimBehind,
+  judgeStationaryClaim,
+  stationaryCentre,
+  stationaryClaimId,
+  type MergeQuestion,
+  type MergeRefusal,
+  type MergeVerdict,
+  type StationaryClaim,
+} from './stationary';
+export {
   ACTIVITY_MODES,
   averageSpeedMps,
   durationMs,

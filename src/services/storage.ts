@@ -80,6 +80,14 @@ export const STORAGE_KEYS = {
   /** Names you gave journeys, as time ranges. See `core/segments/manual.ts`. */
   journeyLabels: `${PREFIX}journey-labels`,
   /**
+   * Stretches you said you did not move through, as time ranges.
+   *
+   * The same shape as the labels above and for the same reason: a range is
+   * re-cut against whatever the day looks like now, so a change of tracking
+   * preset cannot orphan it. See `core/segments/stationary.ts`.
+   */
+  stationaryClaims: `${PREFIX}stationary-claims`,
+  /**
    * The index of captured photos, video and voice notes.
    *
    * Only the index. The bytes live in `services/mediaStore.ts`, sealed under

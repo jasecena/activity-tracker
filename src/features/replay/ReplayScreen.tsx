@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { DayGroup } from '@/core/day';
 import { formatClockTime, formatDayTitle, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
-import type { MoveSegment, Segment } from '@/core/segments';
+import { claimBehind, type MoveSegment, type Segment, type StationaryClaim } from '@/core/segments';
+import { confirmDestructive } from '@/components/confirmDestructive';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { Section } from '@/components/Section';
 import { Scrubber } from '@/components/Scrubber';
@@ -60,6 +61,15 @@ interface ReplayScreenProps {
    * this is how you say so.
    */
   readonly onCorrectMode?: (segment: MoveSegment) => void;
+  /** Stretches already claimed as one stop. Empty where the timeline is read-only. */
+  readonly claims?: readonly StationaryClaim[];
+  /**
+   * Say you were in one place from the start of the first row to the end of the
+   * second. Judged by the caller, which is where the thresholds and the day's
+   * captures live — this screen only knows which two rows were picked.
+   */
+  readonly onMerge?: (from: Segment, to: Segment, shown: readonly Segment[]) => void;
+  readonly onUnmerge?: (claim: StationaryClaim) => void;
 }
 
 /**
@@ -95,6 +105,9 @@ export function ReplayScreen({
   onOpenMedia,
   onOpenAllDays,
   onCorrectMode,
+  claims = [],
+  onMerge,
+  onUnmerge,
 }: ReplayScreenProps) {
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
@@ -132,6 +145,86 @@ export function ReplayScreen({
   );
 
   const currentSegment = segments.find((candidate) => candidate.id === replay.position?.segmentId) ?? null;
+
+  /**
+   * The row a merge started from, or null when nothing is being picked.
+   *
+   * **A mode, and a mode has to be visible and escapable**, which is what the
+   * banner under the heading is for: while it is up a tap means "and this one"
+   * rather than "open this", and that is a different meaning for the same
+   * gesture. `SegmentRow` already knew how to draw this — the tick and the
+   * checkbox role are left over from the merge feature that was withdrawn, and
+   * this is the first thing to use them since.
+   */
+  const [picking, setPicking] = useState<{ readonly dayKey: string | null; readonly from: Segment } | null>(null);
+
+  /**
+   * Walking to another day abandons the pick, and the day it was made on is
+   * stored *with* it rather than cleared by an effect.
+   *
+   * The obvious version clears the state when `selectedDayKey` changes, and
+   * `react-hooks/set-state-in-effect` is an error here for good reason: it is a
+   * second render to undo the first, and the rows of the new day would draw
+   * once with the old day's selection over them. Deriving it costs one
+   * comparison and cannot be out of step at any point.
+   */
+  const mergeFrom = picking && picking.dayKey === (day?.key ?? null) ? picking.from : null;
+  const setMergeFrom = (from: Segment | null) => setPicking(from ? { dayKey: day?.key ?? null, from } : null);
+
+  /**
+   * What a long press — or, while picking, a tap — means on a given row.
+   *
+   * Three different sentences share one gesture, and they are separated by what
+   * the row *is* rather than by a menu:
+   *
+   * - A row a claim made: **unmerge**. The row carries the claim's own id, so
+   *   there is nothing to look up. That is the answer to the withdrawn merge
+   *   feature's real objection — undoing it meant finding the label behind a
+   *   row by its id — and it is why the claim's id is the segment's id.
+   * - A stay: **start a merge**. A stay has a place, so the anchor answers
+   *   "where was I" without a second question.
+   * - A journey: **correct its activity type**, which is what this gesture
+   *   already did and still does. A stay has no activity type, so the two
+   *   meanings never compete for the same row.
+   */
+  const rowGesture = (segment: Segment) => {
+    if (mergeFrom) {
+      // The anchor again is how you get out without the banner's button, since
+      // the row you pressed is the obvious thing to press again.
+      if (segment.id === mergeFrom.id) {
+        setMergeFrom(null);
+        return;
+      }
+      const [first, second] = [mergeFrom, segment].sort((a, b) => a.startedAt - b.startedAt) as [Segment, Segment];
+      setMergeFrom(null);
+      // The rows as drawn, because the judgement has to be about what is on
+      // screen: these are already labelled and already merged wherever an
+      // earlier claim covered them.
+      onMerge?.(first, second, segments);
+      return;
+    }
+
+    const claim = claimBehind(segment, claims);
+    if (claim) {
+      // Asks first, because a claim is something its owner made — the same bar
+      // the name on a journey meets. What is underneath was never overwritten,
+      // so the day comes back exactly as the fold read it.
+      confirmDestructive({
+        title: 'Separate this stretch again?',
+        message: 'The journeys and stops the app recorded here come back. Nothing was deleted to merge them.',
+        confirmLabel: 'Separate',
+        onConfirm: () => onUnmerge?.(claim),
+      });
+      return;
+    }
+
+    if (segment.kind === 'stay' && onMerge) {
+      setMergeFrom(segment);
+      return;
+    }
+
+    if (segment.kind === 'move') onCorrectMode?.(segment);
+  };
 
   const title = day ? formatDayTitle(day.startedAt, tzOffsetMinutes) : 'Today';
   // Older is further along the list, since the list runs newest first.
@@ -385,6 +478,24 @@ export function ReplayScreen({
             same rows in two places would be two things to keep in step. */}
         <Section label="TIMELINE" count={segments.length}>
           <View style={styles.timeline}>
+            {/* The mode, said out loud. A gesture that silently changes what the
+                next tap means is a gesture nobody can undo, and the button is
+                here because pressing the anchor again is discoverable only
+                once you already know it. */}
+            {mergeFrom ? (
+              <View style={styles.picking}>
+                <Text style={styles.pickingText}>Now tap the row you were still until.</Text>
+                <Pressable
+                  onPress={() => setMergeFrom(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel merging"
+                  style={({ pressed }) => [styles.pickingCancel, pressed && styles.pressed]}
+                >
+                  <Text style={styles.pickingCancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             {segments.length === 0 ? (
               <Text style={styles.empty}>
                 {!ready ? 'Reading…' : isToday ? 'Nothing recorded yet today.' : 'Nothing was recorded on this day.'}
@@ -405,7 +516,10 @@ export function ReplayScreen({
 
                      Only a journey. A stay has no activity type, so a stay that
                      opened this would be an action leading nowhere. */
-                  onLongPress={onCorrectMode && segment.kind === 'move' ? () => onCorrectMode(segment) : undefined}
+                  onLongPress={() => rowGesture(segment)}
+                  /* Null means "not picking", which is what puts the row back
+                     to opening on a tap. A boolean is the mode. */
+                  selected={mergeFrom ? segment.id === mergeFrom.id : null}
                 />
               ))
             )}
@@ -512,6 +626,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
   },
   navDisabled: { opacity: 0.35 },
+  picking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  pickingText: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },
+  pickingCancelText: { ...typography.caption, fontWeight: '600', color: colors.move },
+  pickingCancel: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   dayNavLabel: { ...typography.body, fontWeight: '600', color: colors.textPrimary, textAlign: 'center' },
   readout: { alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm },
   clock: { ...typography.hero, fontSize: 32, color: colors.textPrimary },

@@ -50,6 +50,7 @@ export const TRACKING_PRESETS = {
     distanceInterval: 25,
     label: 'Balanced',
     detail: '~10 m accuracy, a point every 25 m',
+    readingErrorM: 10,
   },
   /** For a long day out. Wi-Fi-class positioning; routes come out coarse but the shape survives. */
   saver: {
@@ -57,6 +58,7 @@ export const TRACKING_PRESETS = {
     distanceInterval: 100,
     label: 'Battery saver',
     detail: '~100 m accuracy, a point every 100 m',
+    readingErrorM: 100,
   },
   /** For a run you care about. Noticeably more power. */
   detailed: {
@@ -64,10 +66,24 @@ export const TRACKING_PRESETS = {
     distanceInterval: 10,
     label: 'Detailed',
     detail: '~10 m accuracy, a point every 10 m',
+    readingErrorM: 10,
   },
 } as const;
 
 export type TrackingPresetId = keyof typeof TRACKING_PRESETS;
+
+/**
+ * What one reading from a preset could be out by, in metres.
+ *
+ * The same figure the preset's own `detail` string already tells its owner, as
+ * a number — kept beside it so the two cannot drift apart. It exists because
+ * asking "did you move" needs an allowance for readings that wander while a
+ * phone sits still, and on battery saver that wander is ten times what it is on
+ * balanced. `core` takes it as a parameter, since `core` reads no settings.
+ */
+export function readingErrorFor(preset: TrackingPresetId): number {
+  return TRACKING_PRESETS[preset].readingErrorM;
+}
 
 export const DEFAULT_PRESET: TrackingPresetId = 'balanced';
 
