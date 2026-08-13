@@ -555,16 +555,28 @@ only one phone can open.
 **Key: scrypt**, with the salt and parameters in the plaintext manifest. Chosen
 because it is in Python's **standard library** — `hashlib.scrypt` — so the
 decrypt script needs no dependency at all to get from the passphrase to the key.
-Argon2id is a better KDF in the abstract and needs `argon2-cffi` on the other
-side; that is a real cost for a script somebody runs on a bad day. `@noble/hashes`
-provides the same function on the phone.
 
-**Cipher: XChaCha20-Poly1305**, unchanged from the vault. Python reads it through
-PyNaCl (`crypto_aead_xchacha20poly1305_ietf_decrypt`), which is one `pip install`
-and a libsodium binding rather than a reimplementation. The alternative worth
-naming is AES-256-GCM, which the `cryptography` package handles and which is more
-universally present — but it would mean two ciphers in one codebase, and the
-seam between them is exactly where mistakes live.
+**Cipher: ChaCha20-Poly1305 (IETF, 12-byte nonce), not XChaCha20**, and this
+revises what stood here. XChaCha was the obvious choice because the vault
+already uses it — until the other side was actually checked. `cryptography` is
+present in an ordinary Python and provides IETF ChaCha20-Poly1305 and AES-GCM;
+**XChaCha needs PyNaCl**, which was not installed and could not be installed
+without first finding `pip`. That is exactly the friction that must not exist on
+the day somebody is opening this backup, and it was found by running the import
+rather than by reasoning about it.
+
+The 24-byte nonce XChaCha exists to allow is not needed here anyway, because
+nonces are **not random**: see the per-file key below.
+
+**A key per object**, derived as `SHA-256(backupKey || fileSalt)` with a random
+16-byte `fileSalt` in each object's header. That is a sound derivation when
+`backupKey` is 32 uniformly random bytes, and it costs **nothing on either
+side** — `hashlib.sha256` in Python, `expo-crypto`'s `digest` on the phone,
+both already there. It is what lets the chunk nonce be a plain counter: a
+counter is only unsafe when a key is reused across files, and no key here is.
+
+So the whole format needs **no new dependency anywhere**: `@noble/ciphers` and
+`expo-crypto` on the phone, `cryptography` and `hashlib` on the laptop.
 
 **Framed in chunks**, because a 40 MB video cannot be one AEAD operation on a
 phone and should not be one on a laptop either:
@@ -573,17 +585,24 @@ phone and should not be one on a laptop either:
 "ATB1"                    magic, 4 bytes
 version                   1 byte
 chunkSize                 uint32 big-endian
+fileSalt                  16 bytes
 repeated to end of file:
-  nonce                   24 bytes
   length                  uint32 big-endian
   ciphertext              length bytes, Poly1305 tag included
 ```
 
+The nonce is not stored: it is the chunk index, big-endian, in the low 8 bytes
+of the 12-byte nonce. One less thing to get wrong and 12 bytes saved per chunk.
+
 **Each chunk's AAD is `magic || version || chunkIndex || isFinal`**, and that is
 the part not to leave out. Without the index a chunk can be moved; without the
 final flag the file can be truncated and still decrypt cleanly to something
-shorter than what was uploaded. Both are silent, and a backup that fails silently
-is worse than one that fails.
+shorter than what was uploaded. Both are silent, and a backup that fails
+silently is worse than one that fails.
+
+**The phone has no unseal path at all**, which falls out of one-way and is worth
+keeping deliberately: the app can produce this format and cannot read it back,
+so there is no decrypt code on the device to be wrong, tested, or exploited.
 
 Chunking is required for the phone regardless, which also settles half of the
 sealing question below: the first version chunks in JavaScript, and a Swift
