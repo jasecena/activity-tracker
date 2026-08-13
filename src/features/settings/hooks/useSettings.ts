@@ -1,4 +1,8 @@
+import { bytesToHex } from '@noble/ciphers/utils.js';
+import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { backupKeyFrom } from '@/services/backup';
 import { AppState } from 'react-native';
 
 import { shouldSaveBattery, type PowerReading } from '@/core/power';
@@ -33,6 +37,9 @@ export interface UseSettings {
    * Empty is the off state and the only gate: with no key the Transcribe button
    * does not exist. Clearing this field is how the feature is withdrawn.
    */
+  setBackupTarget: (target: { bucket: string; region: string; accessKeyId: string; secretKey: string }) => void;
+  /** Returns false when one is already set, which is the whole rule made structural. */
+  setBackupPassphrase: (passphrase: string) => boolean;
   setTranscriptionKey: (key: string) => void;
   setTranscriptionLanguage: (code: string) => void;
   /**
@@ -206,6 +213,45 @@ export function useSettings(): UseSettings {
     [persist, savingBattery, settings],
   );
 
+  /**
+   * Where the backup goes. Four fields, all rotatable by retyping.
+   */
+  const setBackupTarget = useCallback(
+    (target: { bucket: string; region: string; accessKeyId: string; secretKey: string }) =>
+      persist({
+        ...settings,
+        backupBucket: target.bucket.trim(),
+        backupRegion: target.region.trim(),
+        backupAccessKeyId: target.accessKeyId.trim(),
+        backupSecretKey: target.secretKey.trim(),
+      }),
+    [persist, settings],
+  );
+
+  /**
+   * Set the passphrase, once and for ever.
+   *
+   * **Refuses if one is already set**, which is the decision made when this was
+   * designed rather than a limitation of it: there is no restore path, so
+   * nothing could re-encrypt what is already in the bucket, and a second
+   * passphrase would silently orphan everything written under the first. The
+   * caller cannot get this wrong because the answer is no.
+   *
+   * The phrase is not kept. scrypt turns it into a key here and what is stored
+   * is that key and its salt — so a phone taken apart yields something that
+   * opens this backup and nothing else.
+   */
+  const setBackupPassphrase = useCallback(
+    (passphrase: string) => {
+      if (settings.backupKeyHex.length > 0) return false;
+      const salt = Crypto.getRandomBytes(16);
+      const key = backupKeyFrom(passphrase, salt);
+      persist({ ...settings, backupKeyHex: bytesToHex(key), backupSaltHex: bytesToHex(salt) });
+      return true;
+    },
+    [persist, settings],
+  );
+
   const setTranscriptionKey = useCallback(
     (transcriptionKey: string) => persist({ ...settings, transcriptionKey: transcriptionKey.trim() }),
     [persist, settings],
@@ -248,6 +294,8 @@ export function useSettings(): UseSettings {
     setPreset,
     setRetentionDays,
     setMapsEnabled,
+    setBackupTarget,
+    setBackupPassphrase,
     setTranscriptionKey,
     setTranscriptionLanguage,
     savingBattery,

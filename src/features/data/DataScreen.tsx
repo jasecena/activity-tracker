@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import type { DayNote } from '@/core/day';
+import { daysAboutToBeLost, previousDays } from '@/core/backup';
+import type { DayGroup, DayNote } from '@/core/day';
 import { exportFilename, fixesToCsv, notesToCsv, pointsToCsv, segmentsToCsv } from '@/core/export';
 import { formatBytes, formatDistance, formatIsoWithOffset } from '@/core/format';
 import type { Fix, RejectionReason } from '@/core/geo';
@@ -14,6 +15,7 @@ import { shareCsv } from '@/services/exportFile';
 import { allFixes, archivedCount } from '@/services/fixBuffer';
 import { backupExclusionApplied } from '@/services/mediaStore';
 import { TRACKING_PRESETS, type TrackingPresetId } from '@/services/location';
+import type { UseBackup } from './hooks/useBackup';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 interface DataScreenProps {
@@ -33,6 +35,11 @@ interface DataScreenProps {
    * other repairs live, rather than something the app does on its own.
    */
   readonly onRebuildThumbnails: () => Promise<number>;
+  /** Every finished day, for what the backup would cover. */
+  readonly days: readonly DayGroup[];
+  readonly backup: UseBackup;
+  readonly retentionDays: number | null;
+  readonly backupConfigured: boolean;
 }
 
 const REJECTION_LABELS: Readonly<Record<RejectionReason, string>> = {
@@ -73,8 +80,23 @@ export function DataScreen({
   tzOffsetMinutes,
   onBack,
   onRebuildThumbnails,
+  days,
+  backup,
+  retentionDays,
+  backupConfigured,
 }: DataScreenProps) {
   const [rebuilding, setRebuilding] = useState(false);
+
+  const eligibleDays = useMemo(() => previousDays(days, now, tzOffsetMinutes), [days, now, tzOffsetMinutes]);
+  const backedUp = useMemo(
+    () => eligibleDays.filter((day) => backup.uploaded.has(`days/${day.key}`)),
+    [eligibleDays, backup.uploaded],
+  );
+  const atRisk = useMemo(
+    () => daysAboutToBeLost(days, backup.uploaded, retentionDays ?? 0, now, tzOffsetMinutes),
+    [days, backup.uploaded, retentionDays, now, tzOffsetMinutes],
+  );
+  const backingUp = backup.progress.stage === 'listing' || backup.progress.stage === 'uploading';
   const [rebuilt, setRebuilt] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -200,6 +222,76 @@ export function DataScreen({
           {formatDistance(TRACKING_PRESETS[preset].distanceInterval)}, which is what makes tracking cheap. A stop of two
           hours can be built from a handful of fixes. Short segments are then folded away: a stop under 3 minutes, or a
           movement under 60 m or 45 seconds, is merged into what surrounds it rather than becoming its own row.
+        </Text>
+
+        {/* **The backup, and everything it does not do.**
+            
+            On this screen rather than in Settings because it is a sibling of
+            export: both are "what you are holding, and how to get it out". The
+            counts it needs are already here.
+
+            Every sentence below is load-bearing. This is the one design in the
+            app that can mislead by omission — a button that says "Back up" and
+            a phone that quietly means "except today, and except anything you
+            wrote since" is a promise nobody checked. */}
+        <Text style={styles.sectionLabel}>BACKUP</Text>
+        <View style={styles.card}>
+          <Row label="Days finished and eligible" value={`${eligibleDays.length}`} />
+          <Row label="  Already in the bucket" value={`${backedUp.length}`} />
+          <Row label="Not backed up yet" value={`${eligibleDays.length - backedUp.length}`} />
+          <Pressable
+            onPress={() =>
+              Alert.alert(
+                'Back up the days that are over?',
+                `${eligibleDays.length - backedUp.length} day(s) will be sealed on this phone and sent to your bucket. Today is not included — it is still being recorded. Anything you write after this stays on the phone until you press it again.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Back up', onPress: () => void backup.run(days, notes) },
+                ],
+              )
+            }
+            disabled={!backupConfigured || backingUp}
+            accessibilityRole="button"
+            accessibilityLabel="Back up now"
+            style={({ pressed }) => [
+              styles.action,
+              (!backupConfigured || backingUp) && styles.actionOff,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.actionText}>
+              {backingUp
+                ? `Backing up… ${backup.progress.sent} of ${backup.progress.total}`
+                : backup.progress.stage === 'done'
+                  ? `Sent ${backup.progress.sent}`
+                  : 'Back up now'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {backup.progress.error ? (
+          // The service's own words, on the screen. A generic message read on a
+          // phone as "no connection" once already, and cost a release to
+          // diagnose — see `docs/BACKLOG.md` § 16.
+          <Text style={styles.footnoteWarn}>
+            {backup.progress.error.reason === 'not-configured'
+              ? 'Set the bucket and a passphrase in Settings first.'
+              : backup.progress.error.detail || backup.progress.error.reason}
+          </Text>
+        ) : null}
+
+        {atRisk.length > 0 ? (
+          <Text style={styles.footnoteWarn}>
+            {atRisk.length} day(s) older than your {retentionDays}-day limit have never been backed up. Retention will
+            delete them from this phone, and they are not anywhere else. Back up now, or turn retention off.
+          </Text>
+        ) : null}
+
+        <Text style={styles.footnote}>
+          Only days that are over — today is still being recorded. Notes and recordings go with their day, sealed on
+          this phone with your passphrase before anything leaves it. Nothing is automatic: what you write after a backup
+          stays here until you press the button again. The app can never read the bucket back, so erasing everything
+          here leaves your backup where it is.
         </Text>
 
         {/* A repair, not a routine: for a library whose thumbnails drifted
@@ -338,6 +430,12 @@ const styles = StyleSheet.create({
   },
   rowLabel: { ...typography.body, color: colors.textSecondary, flex: 1 },
   rowValue: { ...typography.clock, color: colors.textPrimary },
+  footnoteWarn: {
+    ...typography.caption,
+    color: colors.danger,
+    marginTop: spacing.xs,
+    marginHorizontal: spacing.xs,
+  },
   footnote: { ...typography.caption, color: colors.textMuted, paddingHorizontal: spacing.xs },
   action: { paddingVertical: spacing.md, gap: 2 },
   actionText: { ...typography.body, color: colors.move, fontWeight: '600' },

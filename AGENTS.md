@@ -480,12 +480,14 @@ and an `<Image>` handed ciphertext draws nothing — so treating a non-null
 `thumbFileName` as good enough left every old capture as a blank square in the
 filmstrip, with an index that looked perfectly healthy.
 
-**The app makes exactly two kinds of network request, and only when you ask.**
-This revises "exactly one", which held until transcription shipped. There is
-still no analytics, no telemetry, no crash reporting and no geocoder — that is
-still why a place has no name until you type one — and the list is still
-enumerable in a sentence, which is the property worth defending rather than the
-number.
+**The app makes exactly three kinds of network request, and only when you ask.**
+This revises "exactly two", which revised "exactly one". There is still no
+analytics, no telemetry, no crash reporting and no geocoder — that is still why
+a place has no name until you type one — and the list is still enumerable in a
+sentence, **which is the property worth defending rather than the number**.
+
+The third is the largest by far and the rule survives it for one reason: it is
+still a press. `docs/BACKLOG.md` § 12 is the whole design.
 
 The first is **Apple Maps imagery**, behind `settings.mapsEnabled`, **off on a
 fresh install**. Your track is never sent: it is an overlay drawn on the device.
@@ -515,7 +517,26 @@ it: a claim about somebody else's servers is not ours to print, and this file
 has an unhappy history with strings that promised more protection than existed.
 There is no account-level retention switch to set instead; that was checked.
 
-App Transport Security stays fully enforced for both.
+**The third is the backup: the days that are over, to an S3 bucket you own.**
+Sealed on the phone first — `services/backup/seal.ts`, ChaCha20-Poly1305 under a
+key scrypt makes from a passphrase that is never stored — so the bucket holds
+ciphertext and its operator holds nothing. **One way**: the app has no unseal
+path at all and the bucket policy denies it every read of an object, so a stolen
+phone with these credentials can add to the backup and cannot open it. What gets
+data back is `scripts/unseal_backup.py`, on a laptop.
+
+**Nothing is automatic, and previous days only.** A day that is over cannot
+change, which is what makes it safe to send once; today is still being recorded.
+A note written after a backup is not up there until the button is pressed again,
+and the Data screen says exactly that rather than implying otherwise.
+
+**The Settings paragraph is composed from a list now, not written per
+combination.** Two switches were four sentences and three would be eight — eight
+chances to leave one stale, in a file that has already shipped two claims
+promising more protection than the app provided. A list cannot drift: a fourth
+destination adds a line rather than doubling the prose.
+
+App Transport Security stays fully enforced for all three.
 
 **Every claim about this is state-dependent now, and that is a trap.** The
 Settings paragraph reads four ways (`networkNote`), and the microphone

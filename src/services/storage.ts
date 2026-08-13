@@ -88,6 +88,15 @@ export const STORAGE_KEYS = {
    */
   stationaryClaims: `${PREFIX}stationary-claims`,
   /**
+   * What has already gone to the bucket: a hash per object key.
+   *
+   * Not a timestamp and not a flag — a day whose notes changed has to go again,
+   * and only the bytes know that. Losing this store costs one re-upload of
+   * everything, never a lost day, because the bucket's own listing is consulted
+   * as well.
+   */
+  backupLog: `${PREFIX}backup-log`,
+  /**
    * The index of captured photos, video and voice notes.
    *
    * Only the index. The bytes live in `services/mediaStore.ts`, sealed under

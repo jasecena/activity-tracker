@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import type { RejectionReason } from '@/core/geo';
@@ -48,21 +49,81 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
  * request" and "a recording of your voice" are not the same admission, and
  * collapsing them into one word would be the same failure in a new place.
  */
-function networkNote(mapsEnabled: boolean, canTranscribe: boolean): string {
-  if (mapsEnabled && canTranscribe) {
-    return 'Two things leave this phone. Map imagery is fetched from Apple while you look at a map, and a voice note is uploaded to ElevenLabs when you press Transcribe on it. Nothing you have recorded goes with a map request, and nothing but the recording itself goes with a transcription.';
+/**
+ * What leaves this phone, said accurately whatever is switched on.
+ *
+ * **Composed from a list rather than written out per combination**, and that is
+ * a change forced by the third destination. Two switches were four sentences
+ * and three would be eight — which is eight chances to leave one stale, and
+ * this app has already shipped two claims that promised more protection than it
+ * provided. A list cannot drift: adding a destination adds a line.
+ *
+ * Each entry says the thing that actually goes, because "talks to the internet"
+ * is not the question anybody is asking. What they want to know is what of
+ * theirs is in the request.
+ */
+function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: boolean): string {
+  const destinations = [
+    mapsEnabled &&
+      'map imagery is fetched from Apple while you look at a map, and nothing you have recorded goes with the request',
+    canTranscribe &&
+      'a voice note is uploaded to ElevenLabs when you press Transcribe on it, and nothing goes with it — not your notes, not your days, not where you were',
+    canBackUp &&
+      'the days that are over are sealed on this phone and sent to your own S3 bucket when you press Back up, which nobody but you holds the key to',
+  ].filter((entry): entry is string => typeof entry === 'string');
+
+  if (destinations.length === 0) {
+    return 'The app makes no network requests of any kind — there is no server to send anything to.';
   }
-  if (mapsEnabled) {
-    return 'Map imagery is the one exception: it is fetched from Apple while you look at a map. Nothing you have recorded is sent with it, and nothing else in the app talks to a network.';
-  }
-  if (canTranscribe) {
-    return 'One thing can leave this phone: a voice note, uploaded to ElevenLabs when you press Transcribe on it, and never on its own. Nothing goes with it — not your notes, not your days, not where you were. Nothing else in the app talks to a network.';
-  }
-  return 'The app makes no network requests of any kind — there is no server to send anything to.';
+
+  const count =
+    destinations.length === 1 ? 'One thing leaves this phone' : `${destinations.length} things leave this phone`;
+  return `${count}, and only when you ask: ${destinations.join('; ')}. Nothing else in the app talks to a network, and none of it happens on its own.`;
 }
 
 export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, onOpenJourneys }: SettingsScreenProps) {
   const { settings: values } = settings;
+
+  /**
+   * The bucket's four fields, held locally and written on blur.
+   *
+   * Persisting per keystroke would seal and write the store on every letter of
+   * a secret key. They are drafts of one setting rather than four settings.
+   */
+  const [bucket, setBucket] = useState(values.backupBucket);
+  const [region, setRegion] = useState(values.backupRegion);
+  const [accessKeyId, setAccessKeyId] = useState(values.backupAccessKeyId);
+  const [secretKey, setSecretKey] = useState(values.backupSecretKey);
+  const saveTarget = () => settings.setBackupTarget({ bucket, region, accessKeyId, secretKey });
+
+  /**
+   * The passphrase, twice.
+   *
+   * It can never be changed and the app can never read the bucket back to check
+   * it, so a typo is permanent and silent — confirming is the only defence, and
+   * it costs one field. Both drafts are dropped the moment it is set: what is
+   * kept is the key scrypt makes, never the phrase.
+   */
+  const [phrase, setPhrase] = useState('');
+  const [phraseAgain, setPhraseAgain] = useState('');
+  const savePassphrase = () => {
+    if (phrase.length === 0 || phrase !== phraseAgain) return;
+    Alert.alert(
+      'Set this passphrase for good?',
+      'It cannot be changed afterwards, and nothing in this app can recover it. Everything backed up will be sealed with it — without it, the bucket cannot be opened by anybody, including you.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Set it',
+          onPress: () => {
+            settings.setBackupPassphrase(phrase);
+            setPhrase('');
+            setPhraseAgain('');
+          },
+        },
+      ],
+    );
+  };
 
   /**
    * Two prompts, not one, and the second is not a repeat of the first.
@@ -91,7 +152,7 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
   const confirmErase = () => {
     Alert.alert(
       'Erase everything?',
-      'This destroys the encryption key and deletes every photo, video and voice note. Every recorded day becomes permanently unreadable.',
+      'This destroys the encryption key and deletes every photo, video and voice note. Every recorded day becomes permanently unreadable.\n\nAnything already backed up to your bucket is not touched — this app cannot delete from it.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Continue', style: 'destructive', onPress: confirmEraseFinal },
@@ -188,9 +249,128 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
             paragraph that is one release out of date is the failure this screen
             exists to avoid. */}
         <Text style={styles.footnote}>
-          One of the two things in this app that talk to the internet. Turning it on lets Apple see which part of the
-          map you are looking at. Your route is never sent — it is drawn on top, on this phone. With it off, journeys
-          are drawn from your own coordinates with a scale bar and no map underneath.
+          One of the things in this app that talk to the internet. Turning it on lets Apple see which part of the map
+          you are looking at. Your route is never sent — it is drawn on top, on this phone. With it off, journeys are
+          drawn from your own coordinates with a scale bar and no map underneath.
+        </Text>
+
+        {/* **The bucket, and the one field that can never be changed.**
+            
+            Four fields for the destination, rotatable by retyping, and a
+            passphrase that is typed twice and then gone. What is stored is the
+            key scrypt makes from it, never the phrase — a phone taken apart
+            yields something that opens this backup and nothing else. */}
+        <Text style={styles.sectionLabel}>BACKUP</Text>
+        <View style={styles.card}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Bucket</Text>
+            <Text style={styles.rowDetail}>
+              {values.backupBucket.length > 0 ? `${values.backupBucket} · ${values.backupRegion}` : 'Not set'}
+            </Text>
+          </View>
+          <TextInput
+            value={bucket}
+            onChangeText={setBucket}
+            onBlur={saveTarget}
+            placeholder="bucket name"
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="Backup bucket"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            value={region}
+            onChangeText={setRegion}
+            onBlur={saveTarget}
+            placeholder="ap-southeast-2"
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="Backup region"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            value={accessKeyId}
+            onChangeText={setAccessKeyId}
+            onBlur={saveTarget}
+            placeholder="AKIA..."
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="Backup access key id"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            value={secretKey}
+            onChangeText={setSecretKey}
+            onBlur={saveTarget}
+            placeholder="secret access key"
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="Backup secret key"
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+          />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Passphrase</Text>
+            <Text style={styles.rowDetail}>
+              {values.backupKeyHex.length > 0
+                ? 'Set. It cannot be changed, and nothing here can recover it.'
+                : 'Type it twice. It is never stored and can never be changed.'}
+            </Text>
+          </View>
+          {values.backupKeyHex.length === 0 ? (
+            <>
+              <TextInput
+                value={phrase}
+                onChangeText={setPhrase}
+                placeholder="passphrase"
+                placeholderTextColor={colors.textMuted}
+                style={styles.keyInput}
+                accessibilityLabel="Backup passphrase"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+              <TextInput
+                value={phraseAgain}
+                onChangeText={setPhraseAgain}
+                placeholder="passphrase again"
+                placeholderTextColor={colors.textMuted}
+                style={styles.keyInput}
+                accessibilityLabel="Backup passphrase again"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+              <Pressable
+                onPress={savePassphrase}
+                disabled={phrase.length === 0 || phrase !== phraseAgain}
+                accessibilityRole="button"
+                accessibilityLabel="Set the backup passphrase"
+                style={({ pressed }) => [
+                  styles.action,
+                  (phrase.length === 0 || phrase !== phraseAgain) && styles.actionOff,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.actionText}>
+                  {phrase.length > 0 && phrase !== phraseAgain ? 'They do not match' : 'Set it, for good'}
+                </Text>
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+        <Text style={styles.footnote}>
+          Backing up sends the days that are over to your own S3 bucket, sealed on this phone first. It happens only
+          when you press the button on the Raw data screen — nothing is automatic. The passphrase is asked for twice
+          because a typo in it is permanent and silent: it can never be changed, and the app cannot read the bucket back
+          to check. Write it down somewhere that is not this phone.
         </Text>
 
         <Text style={styles.sectionLabel}>TRANSCRIBING VOICE NOTES</Text>
@@ -340,7 +520,11 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
             Days, places and labels are encrypted on this phone with a key held in the iOS keychain and marked so it
             never enters a backup. Photos, video and voice notes are files in this app&apos;s own storage, which iOS
             encrypts under your passcode, and they are marked so they never enter a backup either.{' '}
-            {networkNote(values.mapsEnabled, values.transcriptionKey.length > 0)}
+            {networkNote(
+              values.mapsEnabled,
+              values.transcriptionKey.length > 0,
+              values.backupBucket.length > 0 && values.backupKeyHex.length > 0,
+            )}
           </Text>
         </View>
 
@@ -406,5 +590,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   eraseText: { ...typography.body, color: colors.danger, fontWeight: '600' },
+  action: {
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  actionOff: { opacity: 0.4 },
+  actionText: { ...typography.body, fontWeight: '600', color: colors.textPrimary },
   pressed: { opacity: 0.6 },
 });
