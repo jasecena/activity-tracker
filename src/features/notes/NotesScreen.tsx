@@ -89,7 +89,7 @@ export function NotesScreen({ notes, tzOffsetMinutes, now, onWrite, onOpen, onFo
 
         {days.length === 0 && upcoming.length === 0 ? (
           <Text style={styles.empty}>
-            Nothing written yet. Tap the pen to write about today, or hold the microphone and say it.
+            Nothing written yet. Tap the pen to write about today, or to say it out loud.
           </Text>
         ) : (
           days.map((day) => (
