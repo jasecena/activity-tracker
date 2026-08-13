@@ -128,7 +128,16 @@ forgetting that failed the v0.6.2 release.** The sections shipped, the Jest suit
 was updated for them, `.maestro/smoke.yaml` was not — so it asserted on text that
 had become rendered-but-invisible. Jest cannot tell those apart and Maestro can,
 which is the entire reason the smoke test exists. **A change to what is visible
-on the Day screen is a change to that flow.**
+on any screen that flow walks is a change to that flow** — Day, Capture, Media,
+Notes, Settings and Raw data, which is all of them.
+
+That wording is wider than it was, because the narrower version said "the Day
+screen" and was read as being about the Day screen. **v0.9.0 failed on Raw
+data**: a bare `assertVisible` for a backup button that sits below the counts,
+so it was rendered and off screen. `scrollUntilVisible` first, every time, for
+anything not at the top of a page — which is the same lesson the v0.2.0 release
+taught when the Places row pushed "Raw data & export" under the tab bar, written
+down twice now and learned the hard way both times.
 
 **The Day screen has no header bar.** It used to carry one — a title, a subtitle
 counting journeys and stops, a Today button and a calendar button — directly
