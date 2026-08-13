@@ -81,3 +81,9 @@ private_keys/
 xcuserdata/
 *.orig.*
 .kotlin/
+
+# Rendered infrastructure policies. The `.template` files are committed and
+# carry the shape; the rendered ones name a real bucket and a real account, and
+# this repository stays free of account-specific values — the same rule that
+# keeps APPLE_TEAM_ID in `.env`.
+infra/*.local.json

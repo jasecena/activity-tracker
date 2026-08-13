@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WriteOnlyIntoTheBackup",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::${BUCKET}/*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "StringEquals": {
+          "s3:x-amz-storage-class": ["STANDARD", "GLACIER_IR"]
+        }
+      }
+    },
+    {
+      "Sid": "KnowWhatIsAlreadyThere",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::${BUCKET}",
+      "Condition": { "Bool": { "aws:SecureTransport": "true" } }
+    }
+  ]
+}
