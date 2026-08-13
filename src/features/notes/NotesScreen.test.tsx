@@ -24,6 +24,7 @@ jest.mock('@/services/noteAudio', () => ({
 const UTC = 0;
 const HOUR = 3_600_000;
 const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
+const NOW = T0 + 12 * HOUR; // late on the 5th, so the fixtures above are behind it
 
 function note(at: number, title: string): DayNote {
   return { id: dayNoteId(at), at, title, text: '', voice: null };
@@ -40,6 +41,7 @@ function notesScreen(props: Partial<React.ComponentProps<typeof NotesScreen>> = 
     <NotesScreen
       notes={[]}
       tzOffsetMinutes={UTC}
+      now={NOW}
       onWrite={jest.fn()}
       onOpen={jest.fn()}
       onForget={jest.fn()}
@@ -118,5 +120,52 @@ describe('deleting', () => {
     await act(async () => confirmTheAlert());
 
     expect(onForget).toHaveBeenCalledWith(dayNoteId(T0 + HOUR));
+  });
+});
+
+/**
+ * A note can be dated ahead of now — writing towards a meeting over the days
+ * before it is the whole reason for allowing it — and one that has not happened
+ * yet is a different kind of thing from a record of one that has.
+ */
+describe('what has not happened yet', () => {
+  const NEXT_WEEK = NOW + 7 * 24 * HOUR;
+
+  it('puts a future note in its own box, above the diary', async () => {
+    await render(notesScreen({ notes: [note(T0, 'market day'), note(NEXT_WEEK, 'the meeting')] }));
+
+    expect(screen.getByText('COMING UP')).toBeTruthy();
+
+    // Ahead of the diary, not merely present somewhere on the page: the point
+    // of the box is that the next thing coming is the first thing you see.
+    const page = screen.toJSON();
+    const printed = JSON.stringify(page);
+    expect(printed.indexOf('the meeting')).toBeLessThan(printed.indexOf('market day'));
+  });
+
+  it('says nothing about the future when nothing is dated ahead', async () => {
+    await render(notesScreen({ notes: [note(T0, 'market day')] }));
+
+    expect(screen.queryByText('COMING UP')).toBeNull();
+  });
+
+  /**
+   * Soonest first, which is the opposite of the diary underneath it. What has
+   * happened reads backwards from now; what has not reads forwards to the next
+   * thing. Both put the entry nearest to now at the top.
+   */
+  it('reads forwards, nearest first', async () => {
+    const notes = [note(NEXT_WEEK, 'far'), note(NOW + HOUR, 'soon')];
+    await render(notesScreen({ notes }));
+
+    const printed = JSON.stringify(screen.toJSON());
+    expect(printed.indexOf('soon')).toBeLessThan(printed.indexOf('far'));
+  });
+
+  it('still says what to do when the only notes are ahead', async () => {
+    await render(notesScreen({ notes: [note(NEXT_WEEK, 'the meeting')] }));
+
+    expect(screen.queryByText(/Nothing written yet/)).toBeNull();
+    expect(screen.getByText('the meeting')).toBeTruthy();
   });
 });

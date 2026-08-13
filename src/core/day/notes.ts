@@ -233,6 +233,14 @@ export function whereToWrite(
   return startOfLocalDay(inside, tzOffsetMinutes) + 12 * 3_600_000;
 }
 
+/**
+ * Which way a grouped list runs.
+ *
+ * `newest` for what has happened, `soonest` for what has not — both meaning
+ * "nearest to now first", which is the same instinct pointed in two directions.
+ */
+export type NoteOrder = 'newest' | 'soonest';
+
 export interface NoteDay {
   /** `YYYY-MM-DD`, local. The same key `groupByDay` uses. */
   readonly key: string;
@@ -257,7 +265,14 @@ export interface NoteDay {
  * write — a diary is made of what was written, and an empty date is not an
  * entry.
  */
-export function groupNotesByDay(notes: readonly DayNote[], tzOffsetMinutes: TzOffsetMinutes): readonly NoteDay[] {
+export function groupNotesByDay(
+  notes: readonly DayNote[],
+  tzOffsetMinutes: TzOffsetMinutes,
+  order: NoteOrder = 'newest',
+): readonly NoteDay[] {
+  // `b - a` is descending, which is what `newest` wants; `soonest` is the same
+  // comparison turned round.
+  const direction = order === 'newest' ? 1 : -1;
   const days = new Map<string, DayNote[]>();
 
   for (const note of notes) {
@@ -271,9 +286,34 @@ export function groupNotesByDay(notes: readonly DayNote[], tzOffsetMinutes: TzOf
     .map(([key, inDay]) => ({
       key,
       startedAt: startOfLocalDay(inDay[0]?.at ?? 0, tzOffsetMinutes),
-      notes: [...inDay].sort((a, b) => b.at - a.at),
+      notes: [...inDay].sort((a, b) => direction * (b.at - a.at)),
     }))
-    .sort((a, b) => b.startedAt - a.startedAt);
+    .sort((a, b) => direction * (b.startedAt - a.startedAt));
+}
+
+/**
+ * What a day holds and what is still to come, split at `now`.
+ *
+ * A note may be dated ahead: writing towards a meeting next week, adding to it
+ * over the days before, is a thing a diary should let you do — and the moment it
+ * describes is the moment it is filed under, whether or not that moment has
+ * happened.
+ *
+ * Split rather than flagged, because the two halves are read differently. What
+ * has happened is a record and reads **backwards** from now; what has not is a
+ * plan and reads **forwards** to the next thing. Both orders put the entry
+ * nearest to now first, which is the one you want in either direction.
+ *
+ * `now` is a parameter, like every other date decision in `core`.
+ */
+export function splitAtNow(
+  notes: readonly DayNote[],
+  now: number,
+): { readonly ahead: readonly DayNote[]; readonly behind: readonly DayNote[] } {
+  return {
+    ahead: notes.filter((note) => note.at > now),
+    behind: notes.filter((note) => note.at <= now),
+  };
 }
 
 /** The notes belonging to one local day, in the order they were written. */
@@ -308,7 +348,15 @@ export function daysWorthOpening(
 ): readonly DayGroup[] {
   const byKey = new Map(days.map((day) => [day.key, day]));
 
-  for (const at of [...notes.map((note) => note.at), now]) {
+  // **Notes in the future add no day, and that is not a detail.** A note can be
+  // dated ahead — writing towards a meeting next week is the point of them — and
+  // the list here is sorted newest first, so a future day would sort above today
+  // and become `days[0]`. The Day screen calls `days[0]` *today*: it would open
+  // on a date that has not happened, labelled Today, with nothing on it.
+  //
+  // A day you can open is a day that has been, plus today. What is written about
+  // next Tuesday lives on the Notes tab until next Tuesday.
+  for (const at of [...notes.map((note) => note.at).filter((instant) => instant <= now), now]) {
     const key = dayKeyOf(at, tzOffsetMinutes);
     if (byKey.has(key)) continue;
     byKey.set(key, { key, startedAt: startOfLocalDay(at, tzOffsetMinutes), segments: [] });

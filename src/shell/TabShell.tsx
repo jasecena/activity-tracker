@@ -453,6 +453,7 @@ export function TabShell() {
           <NotesScreen
             notes={notes.notes}
             tzOffsetMinutes={timeline.tzOffsetMinutes}
+            now={timeline.now}
             // A new note from here is about *today*, at now. The sheet's date
             // and time pickers are how it becomes about any other day — which
             // is the same affordance that already existed, now reached from the

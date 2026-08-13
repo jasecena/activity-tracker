@@ -4,6 +4,7 @@ import {
   daysWorthOpening,
   freeInstant,
   groupNotesByDay,
+  splitAtNow,
   normalizeDayNotes,
   noteAt,
   notesForDay,
@@ -478,5 +479,64 @@ describe('the diary, newest first', () => {
 
     expect(days).toHaveLength(1);
     expect(days[0]?.notes.map((one) => one.text)).toEqual(['late', 'earlier']);
+  });
+});
+
+/**
+ * A note may be dated ahead — writing towards a meeting next week and adding to
+ * it over the days before is the point. What has happened reads backwards from
+ * now; what has not reads forwards to the next thing.
+ */
+describe('notes about what has not happened yet', () => {
+  const NOW = T0 + 6 * HOUR;
+
+  it('splits at now, with the boundary counting as behind', () => {
+    const notes = [note(NOW - HOUR, 'earlier'), note(NOW, 'exactly now'), note(NOW + HOUR, 'later')];
+
+    const { ahead, behind } = splitAtNow(notes, NOW);
+
+    expect(ahead.map((one) => one.text)).toEqual(['later']);
+    expect(behind.map((one) => one.text)).toEqual(['earlier', 'exactly now']);
+  });
+
+  it('has nothing ahead when nothing is dated ahead', () => {
+    expect(splitAtNow([note(T0)], NOW).ahead).toEqual([]);
+  });
+
+  /** Both orders put the entry nearest to now first, pointed opposite ways. */
+  it('runs soonest first when grouped for what is coming', () => {
+    const nextWeek = T0 + 7 * 24 * HOUR;
+    const tomorrow = T0 + 24 * HOUR;
+    const days = groupNotesByDay([note(nextWeek, 'the meeting'), note(tomorrow, 'sooner')], UTC, 'soonest');
+
+    expect(days.map((day) => day.notes[0]?.text)).toEqual(['sooner', 'the meeting']);
+  });
+
+  it('runs newest first by default, which is what the diary shows', () => {
+    const days = groupNotesByDay([note(T0), note(T0 + 24 * HOUR)], UTC);
+
+    expect(days[0]?.startedAt).toBeGreaterThan(days[1]?.startedAt ?? 0);
+  });
+
+  /**
+   * The Day screen calls `days[0]` today. A future day sorting above it would
+   * make the app open on a date that has not happened, labelled Today, with
+   * nothing on it.
+   */
+  it('adds no day to the Day screen for a note dated ahead', () => {
+    const now = Date.UTC(2026, 0, 9, 20, 0, 0);
+    const nextWeek = now + 7 * 24 * HOUR;
+
+    const days = daysWorthOpening([], [note(nextWeek, 'the meeting')], now, UTC);
+
+    expect(days.map((day) => day.key)).toEqual(['2026-01-09']);
+  });
+
+  it('still adds a day for a note about one that has been', () => {
+    const now = Date.UTC(2026, 0, 9, 20, 0, 0);
+
+    const days = daysWorthOpening([], [note(T0, 'last Monday')], now, UTC);
+
+    expect(days.map((day) => day.key)).toEqual(['2026-01-09', '2026-01-05']);
   });
 });

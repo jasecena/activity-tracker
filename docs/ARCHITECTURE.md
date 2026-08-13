@@ -545,10 +545,31 @@ They are **not** timeline rows, and that is the second attempt. Interleaving
 them between the stays and journeys read wrong: a timeline is a record of where
 the phone was, minute by minute, and a sentence dropped into it arrived as
 another reading the app had taken. A diary is indexed by the **date** — the time
-is a detail within the day — so notes get their own section, in time order,
-directly under the buttons that write them and above the day the app measured.
-`notesForDay` is the whole of what a day needs to draw them; nothing combined is
-stored.
+is a detail within the day — so notes get their own **tab**, headed by day and
+in time order under each heading. `groupNotesByDay` is the whole of the
+arithmetic and it lives in `core`; nothing combined is stored.
+
+**A note may be dated ahead of now, and the ones that are are cut off the top
+of the list.** The date picker never had a maximum, so writing towards
+something — a meeting next week, added to over the days before it — was always
+possible and always unfindable: the entry sorted below this morning's, a
+fortnight down a list that reads backwards. `splitAtNow` divides the diary in
+two and the halves read in **opposite directions**. What has happened runs
+backwards from now, because a record is walked most-recent-first; what has not
+runs forwards to the next thing, because a plan is walked soonest-first. Both
+put the entry nearest to now at the top, which is why it works as one page: the
+reading order is continuous through the join even though the sort flips across
+it. A note stamped exactly now counts as behind — it is about the moment it was
+written.
+
+Drawn in a **dashed box**, which is the cheapest possible way to say "not yet".
+A colour needs a legend and fails in greyscale; an outline that is not solid
+says provisional on its own, and the heading over it says the rest.
+
+`daysWorthOpening` takes the same cut, filtering to `at <= now`. It answers
+which days the Day screen can walk and `days[0]` is what that screen calls
+today, so without the filter a note about next Thursday makes next Thursday
+today — a diary claiming to hold a day that has not happened.
 
 **Ids are derived from the instant**, `note-<at>`, because `core` has no entropy
 source. That makes an edit at the same instant an update rather than a duplicate,
