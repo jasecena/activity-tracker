@@ -505,12 +505,28 @@ and both the app and any future reader derive the same one. It is typed once,
 kept in the vault like the transcription key, and the app cannot help anybody
 who loses it.
 
-**Large files go to a cold storage class at upload time**, not by a lifecycle
-rule — a lifecycle transition costs a minimum residency in Standard first, and
-the point is to stop paying Standard rates for a video the moment it lands. Set
-`x-amz-storage-class` on the PUT. Small objects stay Standard: the cold classes
-bill a minimum object size, so a 3 KB day of notes is billed as if it were far
-larger and the "saving" is negative.
+**Large files land cold and then go colder.** Two levels: the PUT sets
+`x-amz-storage-class: GLACIER_IR`, and a lifecycle rule on the bucket moves it
+to `DEEP_ARCHIVE` later. Cold at upload rather than by a first lifecycle hop,
+because a transition rule bills a minimum residency in Standard before it fires
+and the point is to stop paying Standard rates for a video the moment it lands.
+
+**The second hop waits ninety days, and that number is not arbitrary.** Glacier
+Instant Retrieval carries a ninety-day minimum storage duration: moving an object
+out sooner is still charged as though it had stayed, so a rule set at thirty days
+pays for ninety and buys nothing. Deep Archive then carries a hundred-and-eighty
+day minimum of its own, which is free here — nothing deletes.
+
+**The rule lives on the bucket, not in the app.** The phone sets a class on a PUT
+and has no further say, which is the same reasoning as withholding
+`DeleteObject`: what happens to a backup over months is decided somewhere a
+stolen phone cannot reach.
+
+**Below about 128 KB an object stays Standard.** Glacier Instant Retrieval bills
+a minimum object size of 128 KB, so a 3 KB day of notes is charged as though it
+were forty times its size and the "saving" is a loss. The threshold is a property
+of the class rather than a guess, and it is why the classes are chosen per object
+rather than per prefix.
 
 ### Layout
 
@@ -624,9 +640,7 @@ house rule that a settled decision changes `docs/ARCHITECTURE.md` with it.
   which for a backup nothing reads may be no cost at all.
 - **Whether the Swift module is needed at all**, once chunked JavaScript is
   measured against a real video. The format does not change either way.
-- **Whether the first version carries media at all.** Stores and notes alone are
-  kilobytes, exercise the entire pipeline including the key and the decrypt
-  script, and defer the one part with a known performance trap.
+  (Nothing.)
 
 ## 13. CodeQL over the Swift
 
