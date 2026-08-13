@@ -21,11 +21,13 @@
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:ci",
     "audit:ci": "npm audit --audit-level=high",
     "doctor": "npx --yes expo-doctor@latest",
-    "prepare": "husky"
+    "prepare": "husky",
+    "verify:backup": "node scripts/check-backup-format.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@noble/ciphers": "^2.2.0",
+    "@noble/hashes": "^2.3.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
     "expo": "~57.0.12",
