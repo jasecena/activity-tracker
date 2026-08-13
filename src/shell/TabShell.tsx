@@ -27,6 +27,7 @@ import { MenuSheet } from '@/components/MenuSheet';
 import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
 import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { useStationaryClaims } from '@/features/activities/hooks/useStationaryClaims';
+import { configFrom, useBackup } from '@/features/data/hooks/useBackup';
 import { readingErrorFor } from '@/services/location';
 import { NoteSheet } from '@/features/notes/components/NoteSheet';
 import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptures';
@@ -149,6 +150,7 @@ export function TabShell() {
   const settings = useSettings();
   const journeys = useJourneyLabels();
   const stationary = useStationaryClaims();
+  const backup = useBackup(settings.settings);
   const notes = useDayNotes();
   const places = usePlaces();
   const media = useMedia();
@@ -473,6 +475,10 @@ export function TabShell() {
         now={timeline.now}
         tzOffsetMinutes={timeline.tzOffsetMinutes}
         onBack={back}
+        days={timeline.history}
+        backup={backup}
+        retentionDays={settings.settings.retentionDays}
+        backupConfigured={configFrom(settings.settings) !== null}
         onRebuildThumbnails={media.rebuildThumbnails}
       />
     );

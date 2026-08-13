@@ -226,6 +226,17 @@ appId: ${APP_ID}
 - tapOn: 'Raw data and export'
 - assertVisible: 'Raw data'
 - assertVisible: 'Route points (all history): 0'
+
+# The backup button, which must be *present and disabled* on a fresh install:
+# there is no bucket and no passphrase, so there is nothing it could do. A
+# button that looked pressable here would be one that fails after a tap rather
+# than one that says why beforehand.
+#
+# Deliberately not pressed. It would make a real request to a real bucket, which
+# a smoke test has no business doing — and with nothing configured it cannot
+# anyway. What the request itself does is asserted in the Jest suite and against
+# AWS's own published signing vector.
+- assertVisible: 'Back up now'
 - tapOn: 'Back'
 # Asserted on the erase button, not on 'Track my day': the flow is scrolled to
 # the bottom of Settings by this point, so the switch at the top is off screen.

@@ -48,6 +48,41 @@ export interface Settings {
    */
   readonly transcriptionKey: string;
   /**
+   * Where the backup goes, and what may write to it.
+   *
+   * Four fields rather than one because an S3 bucket is genuinely four things,
+   * and putting them in the vault beside the transcription key follows the same
+   * reasoning: a credential in a field is rotated by retyping it, where one
+   * baked into a build is extractable from the IPA and costs a release.
+   *
+   * The credential these hold can only **append** — the bucket policy denies the
+   * phone every read of an object and every delete — so what a stolen phone
+   * yields is the ability to add ciphertext to a bucket it cannot open.
+   */
+  readonly backupBucket: string;
+  readonly backupRegion: string;
+  readonly backupAccessKeyId: string;
+  readonly backupSecretKey: string;
+  /**
+   * The key the bucket's contents are sealed under, as hex, and its salt.
+   *
+   * **The passphrase itself is never stored.** It is typed once, run through
+   * scrypt, and thrown away — so a phone that is taken apart yields a key that
+   * opens this backup and nothing else, where the phrase might be one its owner
+   * has used somewhere that matters more.
+   *
+   * The salt is not a secret and is uploaded in the bucket's plaintext
+   * manifest. Without it up there, nothing on any laptop could ever derive this
+   * key again, and the backup would be a receipt.
+   *
+   * Both are empty until a passphrase is set, and **once set neither changes**.
+   * That is the decision made when this feature was designed rather than a
+   * limitation: with no restore path there is nothing to re-encrypt, so a second
+   * passphrase would simply orphan everything written under the first.
+   */
+  readonly backupKeyHex: string;
+  readonly backupSaltHex: string;
+  /**
    * The language Scribe is told to expect, as an ISO-639 code.
    *
    * **Pinned rather than detected**, and Persian by default. Declaring the
@@ -73,6 +108,12 @@ export const DEFAULT_SETTINGS: Settings = {
   retentionDays: null,
   mapsEnabled: false,
   transcriptionKey: '',
+  backupBucket: '',
+  backupRegion: 'ap-southeast-2',
+  backupAccessKeyId: '',
+  backupSecretKey: '',
+  backupKeyHex: '',
+  backupSaltHex: '',
   transcriptionLanguage: DEFAULT_TRANSCRIPTION_LANGUAGE,
   segmentation: DEFAULT_SEGMENT_CONFIG,
 };
@@ -103,6 +144,11 @@ function normalizeRetentionDays(input: unknown): number | null {
  * default because `weightKg` came back as a string would silently turn tracking
  * off — which reads as the app having forgotten what it was doing.
  */
+/** A stored string, or nothing. Never a repaired one — see `backupKeyHex`. */
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export function normalizeSettings(input: unknown): Settings {
   const source = (typeof input === 'object' && input !== null ? input : {}) as Partial<Record<string, unknown>>;
   return {
@@ -117,6 +163,14 @@ export function normalizeSettings(input: unknown): Settings {
     // Trimmed, because a key pasted from a web page arrives with whitespace on
     // it and a leading space is an authentication failure nobody can see.
     transcriptionKey: typeof source.transcriptionKey === 'string' ? source.transcriptionKey.trim() : '',
+    backupBucket: text(source.backupBucket),
+    backupRegion: text(source.backupRegion) || DEFAULT_SETTINGS.backupRegion,
+    backupAccessKeyId: text(source.backupAccessKeyId),
+    backupSecretKey: text(source.backupSecretKey),
+    // Hex or nothing. A half-written key is not repaired into a different key:
+    // it would seal objects nothing can open, and silently.
+    backupKeyHex: /^[0-9a-f]{64}$/.test(text(source.backupKeyHex)) ? text(source.backupKeyHex) : '',
+    backupSaltHex: /^[0-9a-f]{32}$/.test(text(source.backupSaltHex)) ? text(source.backupSaltHex) : '',
     transcriptionLanguage: normalizeLanguageCode(source.transcriptionLanguage),
     segmentation: normalizeSegmentConfig(source.segmentation),
   };
