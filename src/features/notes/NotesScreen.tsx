@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { formatDayTitle } from '@/core/format';
-import { groupNotesByDay, type DayNote } from '@/core/day';
+import { groupNotesByDay, splitAtNow, type DayNote, type NoteDay } from '@/core/day';
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -13,6 +13,14 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 interface NotesScreenProps {
   readonly notes: readonly DayNote[];
   readonly tzOffsetMinutes: number;
+  /**
+   * Where the line between written and planned falls.
+   *
+   * A parameter rather than a clock read here, like every other date decision —
+   * and it only has to be roughly right: a note crossing from ahead to behind is
+   * a heading moving, not data changing.
+   */
+  readonly now: number;
   readonly onWrite: () => void;
   readonly onOpen: (note: DayNote) => void;
   readonly onForget: (id: string) => void;
@@ -41,8 +49,19 @@ interface NotesScreenProps {
  * full entries is a wall of text to scroll past, and "which note is which" is
  * what a list is for.
  */
-export function NotesScreen({ notes, tzOffsetMinutes, onWrite, onOpen, onForget }: NotesScreenProps) {
-  const days = useMemo(() => groupNotesByDay(notes, tzOffsetMinutes), [notes, tzOffsetMinutes]);
+export function NotesScreen({ notes, tzOffsetMinutes, now, onWrite, onOpen, onForget }: NotesScreenProps) {
+  /**
+   * What has happened and what has not, read in opposite directions.
+   *
+   * A note can be dated ahead — writing towards a meeting next week and adding
+   * to it over the days before is the point of allowing it — and the two halves
+   * want different orders. What has happened is a record, so it reads backwards
+   * from now; what has not is a plan, so it reads forwards to the next thing.
+   * Both put the entry nearest to now first.
+   */
+  const { ahead, behind } = useMemo(() => splitAtNow(notes, now), [notes, now]);
+  const upcoming = useMemo(() => groupNotesByDay(ahead, tzOffsetMinutes, 'soonest'), [ahead, tzOffsetMinutes]);
+  const days = useMemo(() => groupNotesByDay(behind, tzOffsetMinutes), [behind, tzOffsetMinutes]);
 
   return (
     <View style={styles.screen}>
@@ -53,30 +72,62 @@ export function NotesScreen({ notes, tzOffsetMinutes, onWrite, onOpen, onForget 
       />
 
       <ScrollView contentContainerStyle={styles.content}>
-        {days.length === 0 ? (
+        {/* **Ahead of now, in a dashed box at the top.** Dashed rather than a
+            colour or a badge: an outline that is not solid reads as "not settled
+            yet" without needing a legend, and it survives the greyscale and
+            colourblind cases a tint would not. At the top because the next thing
+            coming is what you opened this for — a week of notes towards a
+            meeting is only useful if the meeting is the first thing you see. */}
+        {upcoming.length > 0 ? (
+          <View style={styles.ahead}>
+            <Text style={styles.aheadLabel}>COMING UP</Text>
+            {upcoming.map((day) => (
+              <Day key={day.key} day={day} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpen} onForget={onForget} />
+            ))}
+          </View>
+        ) : null}
+
+        {days.length === 0 && upcoming.length === 0 ? (
           <Text style={styles.empty}>
             Nothing written yet. Tap the pen to write about today, or hold the microphone and say it.
           </Text>
         ) : (
           days.map((day) => (
-            <View key={day.key} style={styles.day}>
-              <Text style={styles.dayLabel}>{formatDayTitle(day.startedAt, tzOffsetMinutes)}</Text>
-
-              <View style={styles.card}>
-                {day.notes.map((note) => (
-                  <SwipeToDelete
-                    key={note.id}
-                    note={note}
-                    tzOffsetMinutes={tzOffsetMinutes}
-                    onOpen={onOpen}
-                    onForget={onForget}
-                  />
-                ))}
-              </View>
-            </View>
+            <Day key={day.key} day={day} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpen} onForget={onForget} />
           ))
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/** One day's heading and its entries. The same shape either side of now. */
+function Day({
+  day,
+  tzOffsetMinutes,
+  onOpen,
+  onForget,
+}: {
+  readonly day: NoteDay;
+  readonly tzOffsetMinutes: number;
+  readonly onOpen: (note: DayNote) => void;
+  readonly onForget: (id: string) => void;
+}) {
+  return (
+    <View style={styles.day}>
+      <Text style={styles.dayLabel}>{formatDayTitle(day.startedAt, tzOffsetMinutes)}</Text>
+
+      <View style={styles.card}>
+        {day.notes.map((note) => (
+          <SwipeToDelete
+            key={note.id}
+            note={note}
+            tzOffsetMinutes={tzOffsetMinutes}
+            onOpen={onOpen}
+            onForget={onForget}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -146,6 +197,15 @@ function SwipeToDelete({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
+  ahead: {
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    borderRadius: radius.md,
+  },
+  aheadLabel: { ...typography.label, fontSize: 11, color: colors.move },
   day: { gap: spacing.xs },
   dayLabel: { ...typography.label, fontSize: 11, color: colors.textMuted },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, overflow: 'hidden' },

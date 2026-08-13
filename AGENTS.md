@@ -173,14 +173,34 @@ A row is a **heading and a play button** — the title, or the first line where
 there is no title. The whole entry is one tap away in the sheet, which is also
 the only place it can be edited.
 
+**A note may be dated ahead, and the ones that are sit in a dashed box at the
+top.** Preparing for something — a meeting next week, added to over the days
+before it — is the same act as writing about a Tuesday that has been, and the
+date picker never had a maximum, so it was already possible to make one and
+then never find it again: a note about next Thursday sorted below a note about
+this morning, three hundred rows down a list that reads backwards. `splitAtNow`
+cuts the diary at now, and the two halves read in **opposite directions** —
+what has happened runs backwards from now, what has not runs forwards to the
+next thing, so both put the entry nearest to now first. The boundary counts as
+behind: a note stamped exactly now is about the moment it was written.
+
+**Dashed rather than a colour or a badge.** An outline that is not solid reads
+as "not settled yet" without needing a legend, and it survives greyscale and
+colourblindness in a way a tint does not.
+
+The same cut is why `daysWorthOpening` filters to `at <= now`. It builds the
+list of days the Day screen can walk, `days[0]` is what that screen calls
+today, and a note about next Thursday would otherwise make next Thursday
+today — an app claiming to have data from a day that has not happened.
+
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
 each with an optional title, a body and a recording, stamped with the moment it
-is about and shown in **their own section** on the Day screen, in time order,
-above the timeline. Not rows in it: a timeline is a record of where the phone was
-minute by minute, and a sentence threaded through it arrives as another reading
-the app took. A diary is indexed by the date; the time is a detail within the day.
+is about and shown in **their own tab**, in date order. Never rows on a
+timeline: a timeline is a record of where the phone was minute by minute, and a
+sentence threaded through it arrives as another reading the app took. A diary is
+indexed by the date; the time is a detail within the day.
 **Any one of the three alone is a note**: a title says the day ("Moved house"), so
 does a paragraph nobody wanted to name, and so does half a minute of talking with
 neither — requiring more would be the app deciding how somebody keeps a diary.

@@ -17,11 +17,13 @@ export {
   normalizeDayNotes,
   noteAt,
   notesForDay,
+  splitAtNow,
   TRANSCRIPT_SEPARATOR,
   voiceFilesOf,
   whereToWrite,
   type DayNote,
   type NoteDay,
+  type NoteOrder,
   type NoteVoice,
 } from './notes';
 export { summarizeDay, type DaySummary } from './summary';
