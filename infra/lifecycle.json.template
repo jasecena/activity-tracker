@@ -1,0 +1,38 @@
+{
+  "Rules": [
+    {
+      "ID": "large-files-to-deep-archive-after-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "And": {
+          "Prefix": "media/",
+          "ObjectSizeGreaterThan": 131072
+        }
+      },
+      "Transitions": [{ "Days": 90, "StorageClass": "DEEP_ARCHIVE" }]
+    },
+    {
+      "ID": "recordings-to-deep-archive-after-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "And": {
+          "Prefix": "note-audio/",
+          "ObjectSizeGreaterThan": 131072
+        }
+      },
+      "Transitions": [{ "Days": 90, "StorageClass": "DEEP_ARCHIVE" }]
+    },
+    {
+      "ID": "bound-superseded-versions",
+      "Status": "Enabled",
+      "Filter": {},
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 90, "NewerNoncurrentVersions": 3 }
+    },
+    {
+      "ID": "clean-up-abandoned-uploads",
+      "Status": "Enabled",
+      "Filter": {},
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}
