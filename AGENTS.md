@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 786
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 788
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -129,6 +129,19 @@ was updated for them, `.maestro/smoke.yaml` was not — so it asserted on text t
 had become rendered-but-invisible. Jest cannot tell those apart and Maestro can,
 which is the entire reason the smoke test exists. **A change to what is visible
 on the Day screen is a change to that flow.**
+
+**The Day screen has no header bar.** It used to carry one — a title, a subtitle
+counting journeys and stops, a Today button and a calendar button — directly
+above a second row holding the day arrows and the same date. Two bars of chrome
+saying overlapping things, above a map that is the reason for the page.
+Everything the header did now lives where it was already implied: **the date is
+the title**, **tapping the date is the calendar** (an icon beside a date is the
+same thing twice, and the date is the bigger target), and **pressing the Day tab
+is the Today button**. The subtitle went entirely — the stats row says more about
+a day than a count of rows, and each section heading carries its own count now.
+
+**That one bar is sticky.** It holds the only way to change day and the page is
+long; arrows that scroll off the top mean scrolling back up to use them.
 
 **The Day screen goes map, player, notes, timeline — in that order, and the
 player is against the map.** The player drives the map, so anything between them
@@ -531,11 +544,18 @@ moved — three renderers of one thing, a Today that could not show yesterday an
 a History that could not show today. The day is a parameter now; arrows walk
 backwards and the full list is a page under it.
 
-**Pressing a tab twice goes home.** Every detail page above it closes, and on
-Day the day itself returns to today — the day is a parameter of one screen
-rather than a page of its own, so "the root of the Day tab" and "today" are the
-same place. Only a second press on the _same_ tab counts; two quick presses on
-two different tabs is somebody looking around, not asking to go home.
+**Pressing the tab you are already on goes home.** Every detail page above it
+closes, and on Day the day itself returns to today — the day is a parameter of
+one screen rather than a page of its own, so "the root of the Day tab" and
+"today" are the same place. A press on a tab you are _not_ on only switches to
+it: moving about is not asking to go home.
+
+This replaces a double-press inside a 300 ms window, and the simplification came
+from deleting the Day screen's Today button — with the button gone this _is_ the
+way back to today, so it has to be the obvious gesture rather than a hidden one.
+It is also what every other iOS app does. The cost is that a stray press on the
+current tab loses the day you were looking at, which is one tap to recover
+through the date.
 
 **Back is a swipe as well as a button.** `shell/SwipeBackPage.tsx` is a
 `PanResponder` and one `Animated.Value`, edge-initiated so it can never fight

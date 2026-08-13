@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -41,15 +41,6 @@ import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
 
 type Tab = 'replay' | 'capture' | 'gallery' | 'settings';
-
-/**
- * How close together two presses have to be to count as one gesture.
- *
- * iOS uses about this for a double tap. Longer and a slow, deliberate second
- * visit to a tab starts throwing away the page you were reading; shorter and
- * the gesture is one nobody can perform reliably.
- */
-const DOUBLE_PRESS_MS = 300;
 
 /**
  * The tabs that can have a detail page over them.
@@ -250,32 +241,33 @@ export function TabShell() {
   }, [writingNote, timeline.tzOffsetMinutes]);
 
   /**
-   * A second press on a tab, soon enough after the first, goes home.
+   * Pressing the tab you are already on goes home.
    *
    * "Home" is the tab's root with every detail page closed — and on Day it is
    * also *today*, because the day is a parameter of one screen rather than a
-   * page of its own. Being four days back and pressing Day twice should land
-   * where opening the app lands.
+   * page of its own. Being four days back and pressing Day should land where
+   * opening the app lands.
    *
-   * A ref, and never read during a render: two presses are two events, and the
-   * only thing between them is a timestamp nothing draws.
+   * **This replaces a double-press within a timeout**, and the simplification
+   * came from deleting the Day screen's Today button: with the button gone this
+   * is the way back to today, so it has to be the obvious gesture rather than a
+   * hidden one. It is also what every other iOS app does, and it removes a ref,
+   * a timestamp and a window in which two presses meant something a third did
+   * not.
+   *
+   * A press on a tab you are *not* on still only switches to it, which is the
+   * distinction the timeout used to draw: moving about is not asking to go home.
+   * The cost is that a stray press on the current tab loses the day you were
+   * looking at — recoverable in one tap through the date, which is now the
+   * picker.
    */
-  const lastTabPress = useRef<{ tab: Tab; at: number } | null>(null);
-
   const pressTab = (key: Tab) => {
-    const at = readNow();
-    const previous = lastTabPress.current;
-    lastTabPress.current = { tab: key, at };
+    const alreadyHere = tab === key;
     setTab(key);
-
-    // Only a second press on the *same* tab counts. Two quick presses on two
-    // different tabs is somebody moving about, not asking to go home.
-    if (!previous || previous.tab !== key || at - previous.at > DOUBLE_PRESS_MS) return;
+    if (!alreadyHere) return;
 
     if (key !== 'capture') stacks[key].reset();
     if (key === 'replay') setReplayDayKey(null);
-    // So a third press is not read as a second one.
-    lastTabPress.current = null;
   };
 
   const openSegment = (which: PagedTab) => (segment: Segment) => stacks[which].push({ kind: 'segment', segment });

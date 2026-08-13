@@ -101,7 +101,7 @@ describe('the shell', () => {
   it('opens on today', async () => {
     await render(<TabShell />);
 
-    expect(await screen.findByRole('header', { name: 'Today' })).toBeOnTheScreen();
+    expect(await screen.findByLabelText(/^Today\. Choose another day$/)).toBeOnTheScreen();
     expect(screen.getByLabelText('Day tab')).toBeOnTheScreen();
   });
 
@@ -133,7 +133,7 @@ describe('the shell', () => {
     expect(screen.getByText('Track my day')).toBeOnTheScreen();
 
     await press('Day tab');
-    expect(screen.getByRole('header', { name: 'Today' })).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Today\. Choose another day$/)).toBeOnTheScreen();
   });
 
   // Today and History were both "look at a day", differing only in which one.
@@ -142,11 +142,13 @@ describe('the shell', () => {
     await seedAWalk();
     await render(<TabShell />);
 
-    await press('All days');
+    // The date is the way in — the calendar button is gone, because an icon
+    // beside a date was the same thing twice.
+    await press('Today. Choose another day');
     expect(await screen.findByRole('header', { name: 'All days' })).toBeOnTheScreen();
 
     await press('Back');
-    expect(screen.getByRole('header', { name: 'Today' })).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Today\. Choose another day$/)).toBeOnTheScreen();
   });
 
   // Order is invisible to every other test here — they all select a tab by its
@@ -234,9 +236,10 @@ describe('the shell', () => {
 
     expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
     // The day view is hidden from the accessibility tree — `display: none` —
-    // but still mounted, which is the whole point.
-    expect(screen.queryByRole('header', { name: 'Today' })).not.toBeOnTheScreen();
-    expect(screen.getByRole('header', { name: 'Today', includeHiddenElements: true })).toBeOnTheScreen();
+    // but still mounted, which is the whole point. Asserted on the day bar's
+    // date, since the Day screen has no header of its own any more.
+    expect(screen.queryByLabelText(/Choose another day$/)).not.toBeOnTheScreen();
+    expect(screen.getByLabelText(/Choose another day$/, { includeHiddenElements: true })).toBeOnTheScreen();
   });
 
   it('shows a journey the fold produced from real fixes', async () => {

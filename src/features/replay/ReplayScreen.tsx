@@ -11,7 +11,6 @@ import type { MoveSegment, Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
 import { NoteRow } from '@/components/NoteRow';
 import { Section } from '@/components/Section';
-import { ScreenHeader } from '@/components/ScreenHeader';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
 import { StatTile } from '@/components/StatTile';
@@ -146,39 +145,28 @@ export function ReplayScreen({
   const currentSegment = segments.find((candidate) => candidate.id === replay.position?.segmentId) ?? null;
 
   const title = day ? formatDayTitle(day.startedAt, tzOffsetMinutes) : 'Today';
-  const subtitle = ready
-    ? `${summary.moveCount === 1 ? '1 journey' : `${summary.moveCount} journeys`} · ${summary.stayCount === 1 ? '1 stop' : `${summary.stayCount} stops`}`
-    : 'Reading your day…';
-
   // Older is further along the list, since the list runs newest first.
   const older = days[index + 1] ?? null;
   const newer = index > 0 ? (days[index - 1] ?? null) : null;
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader
-        title={isToday ? 'Today' : title}
-        subtitle={subtitle}
-        actions={[
-          // Only when it would do something. On today it is a no-op, and its
-          // absence is itself the answer to "which day am I looking at".
-          ...(isToday
-            ? []
-            : [
-                {
-                  label: 'Back to today',
-                  icon: 'today-outline' as const,
-                  text: 'Today',
-                  onPress: () => onSelectDay(null),
-                },
-              ]),
-          { label: 'All days', icon: 'calendar-outline' as const, onPress: onOpenAllDays },
-        ]}
-      />
+      {/* **One bar, not two.** This screen used to carry a `ScreenHeader` — a
+          title, a subtitle counting journeys and stops, a Today button and a
+          calendar button — sitting directly above a second bar with the day
+          arrows and the same date in it. Two rows of chrome saying overlapping
+          things, above a map that is the reason for the page.
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Going back in time, one day at a time. The arrows are the common
-            case; the full list is in the header for anything further. */}
+          Everything the header did now lives somewhere it was already implied:
+          the date is the title, tapping it is the calendar, and pressing the Day
+          tab you are already on is the Today button. The subtitle went entirely
+          — the stats row underneath says more about the day than a count of
+          rows does, and the timeline's own heading carries the count now.
+
+          **The bar is sticky.** It holds the only way to change day, and this
+          page is long — arrows that scroll off the top mean scrolling back up to
+          use them, on a screen whose whole job is moving between days. */}
+      <ScrollView contentContainerStyle={styles.content} stickyHeaderIndices={[0]}>
         <View style={styles.dayNav}>
           <Pressable
             onPress={() => older && onSelectDay(older.key)}
@@ -190,9 +178,18 @@ export function ReplayScreen({
             <Ionicons name="chevron-back" size={18} color={older ? colors.textPrimary : colors.textMuted} />
           </Pressable>
 
-          <Text style={styles.dayNavLabel} numberOfLines={1}>
-            {title}
-          </Text>
+          {/* The date is the button. A calendar icon beside a date is the same
+              thing twice, and the date is a bigger target than an icon. */}
+          <Pressable
+            onPress={onOpenAllDays}
+            accessibilityRole="button"
+            accessibilityLabel={`${isToday ? 'Today' : title}. Choose another day`}
+            style={({ pressed }) => [styles.dayNavLabelButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.dayNavLabel} numberOfLines={1}>
+              {isToday ? 'Today' : title}
+            </Text>
+          </Pressable>
 
           <Pressable
             onPress={() => onSelectDay(newer ? newer.key : null)}
@@ -504,7 +501,17 @@ const styles = StyleSheet.create({
   },
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
-  dayNav: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
+  dayNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    // The bar is sticky, so it needs a ground of its own — without one the
+    // content scrolls visibly underneath it.
+    backgroundColor: colors.background,
+  },
+  dayNavLabelButton: { flex: 1, paddingVertical: spacing.xs },
   navButton: {
     width: 36,
     height: 36,
@@ -514,7 +521,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
   },
   navDisabled: { opacity: 0.35 },
-  dayNavLabel: { ...typography.body, fontWeight: '600', color: colors.textPrimary, flex: 1, textAlign: 'center' },
+  dayNavLabel: { ...typography.body, fontWeight: '600', color: colors.textPrimary, textAlign: 'center' },
   stats: { flexDirection: 'row', gap: spacing.sm },
   readout: { alignItems: 'center', gap: spacing.xs, paddingTop: spacing.sm },
   clock: { ...typography.hero, fontSize: 32, color: colors.textPrimary },
