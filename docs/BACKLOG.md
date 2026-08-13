@@ -460,37 +460,127 @@ already need, so it belongs with that rather than bolted on beside the photo
 button. Until then the Rotate control is offered for photographs only, which is
 why it checks the kind rather than hiding a failure.
 
-## 12. Backup and sync, to an S3 bucket
+## 12. Backup to an S3 bucket, one way
 
-**Status:** not started, and the item that matters most. Media is excluded from
-backups as of v0.4.0, so a lost phone is now the end of a photograph — the
-guarantee this replaces has no substitute until this exists.
+**Status:** planned 13 August 2026, not built. The item that matters most: media
+is excluded from backups as of v0.4.0, so a lost phone is now the end of a
+photograph.
 
-The store, backed up off the phone — the item the architecture has been
-waiting for: media encryption moved to files precisely because "encryption
-belongs at the boundary where data actually leaves the phone — the sync that
-is coming — and the bytes get sealed on the way out". This is that sync.
+This is the sync the architecture has been waiting for — media encryption moved
+to files precisely because "encryption belongs at the boundary where data
+actually leaves the phone, and the bytes get sealed on the way out".
 
-Direction so far, superseding the earlier parked note: the destination is an
-S3 bucket rather than a hosted service. Everything is sealed client-side
-before upload under keys that never leave the device's keychain family, so
-the bucket holds ciphertext and its operator holds nothing. Decisions when
-work starts: bucket credentials on device (scoped, write-mostly), what the
-restore story is on a new phone (the key is THIS_DEVICE_ONLY today — restore
-is the hard half of this feature, not upload), scheduling (manual first),
-and what the one-network-request rule becomes — this widens it far more than
-Apple Maps tiles did, and the reasoning must be rewritten with it.
+### Decided
 
-Two things the audits left specifically for this item:
+**One way. The app never reads the bucket back.** There is no restore screen,
+no merge, no conflict resolution — the phone writes and forgets. That is a much
+smaller feature than the one this entry used to describe, and it deletes the
+hard half outright: _"restore is the hard half of this feature, not upload"_
+no longer applies, because there is no restore.
 
-- **Key handling gets revisited here, not before.** `deviceKey` currently
-  replaces an unreadable key rather than keeping it, which is right while there
-  is nothing behind it to lose and nowhere to re-encrypt to. Restore changes
-  both halves of that sentence.
-- **The restore path is what makes `normalizeMedia`'s strictness load-bearing.**
-  A media index arriving from off the phone is untrusted input in a way a local
-  one never was — that is why file names are now required to be names rather
-  than paths, and the check exists before the path that needs it.
+Two notes that were written _for_ restore therefore stand down, and should not
+be quietly re-adopted:
+
+- `deviceKey` replacing an unreadable key rather than keeping it stays exactly
+  as it is. It was flagged as "the interim answer, revisited when there is
+  somewhere to re-encrypt to" — there still is not.
+- `normalizeMedia`'s strictness stays a robustness property rather than becoming
+  a security boundary. Nothing arrives from off the phone.
+
+**Previous days only.** A day that has ended cannot change, which is what makes
+it safe to upload once and never think about again — and it is the same line
+`freeze` already draws. Today is never uploaded; it is not finished being
+recorded.
+
+**One button, in Settings, behind a confirmation.** Nothing is automatic, which
+keeps the house rule intact: every request this app makes is a deliberate press.
+Pressing it uploads everything eligible that is not up there yet — which is also
+what catches a note written _about_ last Tuesday three days later. A note added
+after a backup is simply not in the bucket until the button is pressed again,
+and that is stated plainly rather than papered over.
+
+**A passphrase, entered once, never changed.** So there is nothing to rotate and
+nothing to re-wrap: the key is derived from the passphrase and a stored salt,
+and both the app and any future reader derive the same one. It is typed once,
+kept in the vault like the transcription key, and the app cannot help anybody
+who loses it.
+
+**Large files go to a cold storage class at upload time**, not by a lifecycle
+rule — a lifecycle transition costs a minimum residency in Standard first, and
+the point is to stop paying Standard rates for a video the moment it lands. Set
+`x-amz-storage-class` on the PUT. Small objects stay Standard: the cold classes
+bill a minimum object size, so a 3 KB day of notes is billed as if it were far
+larger and the "saving" is negative.
+
+### Layout
+
+Objects are immutable and named so that pressing the button twice overwrites
+rather than duplicates — the same discipline as segment ids.
+
+```
+<prefix>/manifest.json          plaintext: format version, KDF name, salt, params
+<prefix>/days/<YYYY-MM-DD>      sealed: that day's segments, its archived fixes, its notes
+<prefix>/media/<id>             sealed original            — cold class
+<prefix>/note-audio/<id>        sealed recording           — cold class
+```
+
+**The manifest is deliberately plaintext.** A salt is not a secret, and without
+it nothing on earth can derive the key again. This is the file that makes the
+bucket openable at all.
+
+### What "no restore" obliges
+
+**The format has to be documented and independently readable, or the backup is
+write-only for ever.** A bucket full of ciphertext that only a lost phone could
+have opened is not a backup; it is a receipt. So the deliverable includes a
+`scripts/` decrypt tool that takes the passphrase and a downloaded prefix and
+writes plaintext files — small, testable on Linux, and the thing that proves the
+whole exercise was worth doing.
+
+### The trap
+
+**Sealing a 40 MB video in pure JavaScript is the failure that already happened
+once.** It is why the media container was removed: forty megabytes of
+pure-JavaScript AEAD on the thread that draws the screen made the gallery
+unusable. Upload meets the same wall from the other side, and "it is a
+background operation" is not an answer on a single JS thread.
+
+So it is chunked, with progress, under the wake lock the capture path already
+owns — or it is the third local Swift module. Whichever ships, the number to
+watch is the same one the audits watch, and it belongs in `services/timing.ts`
+under a name that says a shape rather than a content.
+
+### Credentials
+
+An IAM user scoped to one bucket prefix, stored in the vault beside the
+transcription key. The policy is the interesting part: `PutObject` and
+`ListBucket`, and **no `DeleteObject`** — with versioning on the bucket, a
+stolen phone can add to the backup and cannot destroy it. Pruning is a lifecycle
+rule, decided from the bucket side where the phone has no say.
+
+`ListBucket` earns its place without contradicting "one way": it is how the app
+knows what it has already uploaded after a reinstall, so a fresh install does
+not re-upload a year of video. It reads names, never contents.
+
+### The network rule this rewrites
+
+AGENTS.md says the app makes exactly two kinds of network request. This makes a
+third, and it is categorically larger than a map tile or one recording: it is
+everything you own. The property worth defending was never the number — it is
+that the list is enumerable in a sentence, every item is a deliberate press, and
+none of it is on by default. That sentence gets rewritten with this, per the
+house rule that a settled decision changes `docs/ARCHITECTURE.md` with it.
+
+### Still open
+
+- **Which cold class.** Standard-IA is the safe default. Glacier Instant
+  Retrieval is roughly a third of it for data that is read approximately never,
+  which is exactly this. Deep Archive is cheaper again and takes hours to read —
+  which for a backup nothing reads may be no cost at all.
+- **Chunked JS or the Swift module** for sealing, above.
+- **Whether the first version carries media at all.** Stores and notes alone are
+  kilobytes, exercise the entire pipeline including the key and the decrypt
+  script, and defer the one part with a known performance trap.
 
 ## 13. CodeQL over the Swift
 
