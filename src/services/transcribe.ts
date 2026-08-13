@@ -194,6 +194,26 @@ export async function transcribe({ uri, apiKey, languageCode }: TranscriptionReq
   // between Scribe's code-switched and single-language accuracy on Persian —
   // see `docs/BACKLOG.md` § 15.
   form.append('language_code', languageCode);
+  /**
+   * **Ask them not to keep it.**
+   *
+   * `enable_logging=false` is how ElevenLabs' Zero Retention Mode is requested
+   * on the speech-to-text endpoints: with it, the audio and the text are
+   * deleted once the request completes rather than retained — the default,
+   * which also keeps backups for up to thirty days after a deletion.
+   *
+   * **It may not be honoured.** Their documentation describes ZRM as an
+   * enterprise arrangement, so this is a request rather than a guarantee, and
+   * an account without it either ignores the field or rejects the call. That is
+   * the reason it is sent unconditionally and the reason nothing here promises
+   * anything about it: the Settings text says what the app *sends*, which is
+   * this recording and nothing else, and never what the other end does with it.
+   * A claim about somebody else's servers is not ours to print.
+   *
+   * It costs one field either way, and the alternative is retention we did not
+   * ask them to skip.
+   */
+  form.append('enable_logging', 'false');
 
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
