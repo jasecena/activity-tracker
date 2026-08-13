@@ -87,7 +87,7 @@ const YESTERDAY: DayGroup = {
   segments: [move(T0 - 24 * 60 * 60_000, T0 - 24 * 60 * 60_000 + 10 * MINUTE, 0, 800)],
 };
 
-function renderTwoDays() {
+function renderTwoDays(overrides: { onOpenAllDays?: () => void } = {}) {
   function Harness() {
     const [selected, setSelected] = useState<string | null>(null);
     return (
@@ -103,7 +103,7 @@ function renderTwoDays() {
         onSelectDay={setSelected}
         onOpenSegment={() => undefined}
         onOpenMedia={() => undefined}
-        onOpenAllDays={() => undefined}
+        onOpenAllDays={overrides.onOpenAllDays ?? (() => undefined)}
       />
     );
   }
@@ -254,27 +254,44 @@ describe('the player', () => {
   });
 });
 
-describe('getting back to today', () => {
-  // A day view is long, and the previous/next arrows scroll away with it. The
-  // button lives in the header, which does not move.
-  it('offers no way back while you are already on today', async () => {
+describe('the day bar', () => {
+  /**
+   * The Today button and the calendar button are both gone. Getting back to
+   * today is pressing the Day tab you are already on (`TabShell`), and choosing
+   * a day is tapping the date — a calendar icon beside a date was the same
+   * thing twice, and the date is the bigger target.
+   */
+  it('offers no Today button, because the tab is the way back', async () => {
     await renderTwoDays();
+
     expect(screen.queryByLabelText('Back to today')).not.toBeOnTheScreen();
   });
 
-  it('appears once you have gone back, and returns in one tap', async () => {
+  it('says Today on today, and the date once you have gone back', async () => {
     await renderTwoDays();
+    expect(screen.getByLabelText(/^Today\./)).toBeOnTheScreen();
 
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Previous day'));
     });
-    expect(screen.getByRole('header', { name: 'Sunday 4 Jan' })).toBeOnTheScreen();
+
+    expect(screen.getByLabelText(/^Sunday 4 Jan\./)).toBeOnTheScreen();
+  });
+
+  it('opens the day list from the date itself', async () => {
+    const onOpenAllDays = jest.fn();
+    await renderTwoDays({ onOpenAllDays });
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Back to today'));
+      fireEvent.press(screen.getByLabelText(/Choose another day$/));
     });
 
-    expect(screen.getByRole('header', { name: 'Today' })).toBeOnTheScreen();
-    expect(screen.queryByLabelText('Back to today')).not.toBeOnTheScreen();
+    expect(onOpenAllDays).toHaveBeenCalled();
+  });
+
+  it('counts nothing in a subtitle any more', async () => {
+    await renderTwoDays();
+
+    expect(screen.queryByText(/journeys ·/)).not.toBeOnTheScreen();
   });
 });

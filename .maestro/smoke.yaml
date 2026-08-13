@@ -43,8 +43,10 @@ appId: ${APP_ID}
 # The header is a bare Text with `accessibilityRole="header"`, so it is exposed
 # as itself. The subtitle proves the timeline hook resolved rather than hanging
 # on the store read.
-- assertVisible: 'Today'
-- assertVisible: '0 journeys · 0 stops'
+# The Day screen has no header bar. The day arrows, the date and the way into
+# the day list are one row, and the date itself is the button — so this is the
+# label of a Pressable, not a heading.
+- assertVisible: 'Today. Choose another day'
 
 # The tracking notice. Labelled by its Pressable, so this string — not the
 # "Tracking is off" heading inside it — is what exists.
@@ -79,7 +81,6 @@ appId: ${APP_ID}
 # pressed Record and asserted a row appeared, which is precisely the fiction
 # that put a journey on the wrong day at a time that had not arrived.
 - assertVisible: 'Nothing recorded yet today.'
-- assertVisible: '0 journeys · 0 stops'
 
 # --- The other tabs render ------------------------------------------------
 # Worth the extra seconds: these screens pull in the icon font, the SVG renderer
@@ -88,14 +89,14 @@ appId: ${APP_ID}
 # The day view is the app's front page and mounts the offline map canvas — SVG,
 # the projection, the scale bar. With maps off (the default) it must render
 # without MapKit being involved at all.
-- assertVisible: 'Today'
+- assertVisible: 'Today. Choose another day'
 
 # Every day, one tap away. Today and History used to be separate tabs; they were
 # both "look at a day" and are one screen now, with the list as its page.
-- tapOn: 'All days'
+- tapOn: 'Today. Choose another day'
 - assertVisible: 'All days'
 - tapOn: 'Back'
-- assertVisible: 'Today'
+- assertVisible: 'Today. Choose another day'
 
 # Capture is the one screen that touches the camera, and the only place a
 # missing native module would surface as a blank rectangle rather than a crash.
@@ -226,4 +227,10 @@ appId: ${APP_ID}
 # Still an empty day after a tour of every other tab. Today was never unmounted,
 # which is the guarantee that stops a timeline just derived, or a half-typed
 # name, being thrown away when you glance somewhere else.
-- assertVisible: '0 journeys · 0 stops'
+#
+# Pressing the tab you are already on is also what returns to today now that the
+# Today button is gone — so this second press proves the gesture rather than
+# merely arriving somewhere.
+- tapOn: 'Day tab'
+- assertVisible: 'Today. Choose another day'
+- assertVisible: 'Distance: 0 m'
