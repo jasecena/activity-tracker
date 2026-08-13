@@ -846,6 +846,16 @@ and the autoplay are all covered by one rule.
 than before it — the microphone would otherwise record the other recording, and
 a refused prompt should not stop playback for a recording that never starts.
 
+**Leaving a tab silences it too, and that is the shell's rule rather than any
+player's.** Every tab stays mounted with the inactive ones hidden — deliberate,
+so a switch cannot throw away a running recording or a timeline just derived —
+and the price is a player that carries on behind a screen nobody is looking at,
+with its pause button a tab away. `TabShell` silences in the **cleanup** of an
+effect keyed on the tab, so it belongs to the tab being _left_ and nothing
+happens on first mount. Only a tab change counts: a note opened in the sheet, or
+a segment over the day, is a page above the same tab — still the screen you were
+on, still the thing you were listening to.
+
 **A video in the gallery starts muted, and the speaker is a first-class
 control.** It plays as soon as you swipe to it, which is right — you swiped to
 it — but sound arriving unasked is a different thing from a picture that does:

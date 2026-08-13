@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as BatteryModule from 'expo-battery';
 
 import { EARTH_RADIUS_M, type Fix } from '@/core/geo';
+import { silenceAudio, takeAudioFocus } from '@/services/audioFocus';
 import { STORAGE_KEYS, writeJson } from '@/services/storage';
 
 import { TabShell } from './TabShell';
@@ -116,6 +117,43 @@ describe('the shell', () => {
     await openTimeline();
 
     expect(await screen.findByText('Nothing recorded yet today.')).toBeOnTheScreen();
+  });
+
+  /**
+   * **Leaving a tab stops what it was playing.**
+   *
+   * Tabs stay mounted with the inactive ones hidden, which is deliberate — it
+   * is what stops a switch throwing away a running recording or a timeline just
+   * derived — and the cost is a player that carries on behind a screen nobody
+   * is looking at, with its pause button a tab away.
+   *
+   * Driven through the focus registry rather than through a real player, on
+   * purpose: the fake stands in for any of them, and what is being asserted is
+   * the shell's rule, not one player's wiring. Whether a player is *in* the
+   * registry is asserted where that player lives.
+   */
+  it('silences whatever was playing when the tab changes', async () => {
+    await render(<TabShell />);
+
+    const stop = jest.fn();
+    takeAudioFocus(stop);
+
+    await press('Notes tab');
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves playback alone while you stay on the same tab', async () => {
+    await render(<TabShell />);
+
+    const stop = jest.fn();
+    takeAudioFocus(stop);
+
+    // Pressing the tab you are already on goes home; it does not take you off
+    // the screen you are listening to.
+    await press('Day tab');
+    expect(stop).not.toHaveBeenCalled();
+
+    silenceAudio();
   });
 
   it('shows every tab and switches between them', async () => {
