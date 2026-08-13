@@ -6,6 +6,7 @@ import { Keyboard, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, Tex
 import { appendTranscript, type DayNote, type NoteVoice } from '@/core/day';
 import { formatDuration } from '@/core/format';
 import { confirmDestructive } from '@/components/confirmDestructive';
+import { copyText } from '@/services/clipboard';
 import { VoiceNotePlayer } from '@/components/VoiceNotePlayer';
 import type { TranscriptionFailure, TranscriptionResult } from '@/services/transcribe';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -133,6 +134,15 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
    * and is never written anywhere.
    */
   const [failureDetail, setFailureDetail] = useState<string | null>(null);
+  /**
+   * Shown for a moment after copying, then gone.
+   *
+   * A pasteboard write is completely invisible — nothing on screen changes and
+   * iOS gives no confirmation — so without this the button is indistinguishable
+   * from one that does nothing, and the honest response to that is to press it
+   * again.
+   */
+  const [copied, setCopied] = useState(false);
   /**
    * Which opening of the sheet we are in, so a request in flight can be
    * abandoned when it closes.
@@ -300,18 +310,53 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
                 returnKeyType="next"
               />
 
-              <TextInput
-                value={text}
-                onChangeText={setDraft}
-                placeholder="What happened, who you were with, what it was like…"
-                placeholderTextColor={colors.textMuted}
-                style={styles.input}
-                accessibilityLabel="Note"
-                multiline
-                textAlignVertical="top"
-                /* No `returnKeyType: done` and no submit handler: return has to
-                   put in a paragraph break. A diary entry is not a search box. */
-              />
+              <View style={styles.bodyField}>
+                <TextInput
+                  value={text}
+                  onChangeText={(next) => {
+                    setDraft(next);
+                    // The tick means "this text is on the pasteboard", so it
+                    // stops being true the moment the text changes. That is
+                    // also why there is no timer undoing it: nothing else can
+                    // make it false.
+                    setCopied(false);
+                  }}
+                  placeholder="What happened, who you were with, what it was like…"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  accessibilityLabel="Note"
+                  multiline
+                  textAlignVertical="top"
+                  /* No `returnKeyType: done` and no submit handler: return has to
+                     put in a paragraph break. A diary entry is not a search box. */
+                />
+
+                {/* In the field's own top-right corner rather than in a row
+                    beneath it: it acts on this text and nothing else, and the
+                    corner is the one part of a multiline field that stays empty
+                    however much is typed — text fills from the top left.
+
+                    Absent while there is nothing to copy, rather than present
+                    and disabled. A control that cannot act is a question the
+                    reader has to answer before ignoring it. */}
+                {text.trim().length > 0 ? (
+                  <Pressable
+                    onPress={() => {
+                      void copyText(text).then((ok) => setCopied(ok));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={copied ? 'Copied' : 'Copy this note'}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.copy, pressed && styles.pressed]}
+                  >
+                    <Ionicons
+                      name={copied ? 'checkmark' : 'copy-outline'}
+                      size={16}
+                      color={copied ? colors.success : colors.textMuted}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
 
               {/* Under the writing, not beside it. The order is the argument:
                   a note is words, and this is another way to put words in it —
@@ -484,6 +529,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     marginTop: spacing.sm,
+  },
+  bodyField: { position: 'relative' },
+  copy: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    padding: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
   },
   input: {
     ...typography.body,
