@@ -258,3 +258,43 @@ describe('sound on a video', () => {
     expect(player.muted).toBe(false);
   });
 });
+
+/**
+ * A clip that plays out goes back to its start and stays stopped.
+ *
+ * `loop` is false, so without this it sits on its last frame with the scrubber
+ * hard against the right-hand end, and the next press of play resumes from
+ * there and finishes instantly — a button that appears to do nothing, twice,
+ * before the third press starts the clip.
+ *
+ * The event is fired directly rather than waited for: there is no real video to
+ * play out, so reaching the end is something a test states.
+ */
+describe('the end of a clip', () => {
+  /** Invoke whatever the component subscribed to `playToEnd` with. */
+  function reachTheEnd(player: { addListener: jest.Mock }): void {
+    const subscription = player.addListener.mock.calls.find(([event]) => event === 'playToEnd');
+    expect(subscription).toBeDefined();
+    (subscription![1] as () => void)();
+  }
+
+  it('rewinds to the start and stays paused', async () => {
+    await render(gallery([media(1, 'video')]));
+    await act(async () => {});
+
+    const player = (useVideoPlayer as jest.Mock).mock.results.at(-1)?.value as {
+      addListener: jest.Mock;
+      pause: jest.Mock;
+      seekBy: jest.Mock;
+      currentTime: number;
+    };
+    player.currentTime = 12;
+
+    await act(async () => reachTheEnd(player));
+
+    expect(player.pause).toHaveBeenCalled();
+    // Back to zero, by the method rather than by assigning `currentTime` —
+    // seeking is the API and the immutability rule is right about it.
+    expect(player.seekBy).toHaveBeenCalledWith(-12);
+  });
+});
