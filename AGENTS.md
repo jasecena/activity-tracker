@@ -143,6 +143,16 @@ a day than a count of rows, and each section heading carries its own count now.
 **That one bar is sticky.** It holds the only way to change day and the page is
 long; arrows that scroll off the top mean scrolling back up to use them.
 
+**It is three cells that cannot wrap, and the gaps belong to nobody.** Arrow,
+date, arrow, with `flexWrap: 'nowrap'`, arrows that never shrink and a date that
+gives up its width first — so a long date truncates rather than pushing a
+control onto a second line, which is what was reported from a phone. The arrows
+are 44 points with `ARROW_SLOP` beyond that, and the date keeps `DEAD_STRIP`
+either side: **the slop must stay smaller than the strip**, so an enlarged
+target never reaches into the date's. The asymmetry of the mistake is the
+reason — a press that walks a day by accident is one press back, and a press
+that opens the day list by accident is a page in your face.
+
 **The Day screen goes map, player, notes, timeline — in that order, and the
 player is against the map.** The player drives the map, so anything between them
 detaches the scrubber from the thing it scrubs, which is what a notes section

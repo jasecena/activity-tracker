@@ -20,6 +20,24 @@ import { useSealedImages } from '@/features/media/hooks/useSealedImages';
 
 import { SPEEDS, useReplay } from './hooks/useReplay';
 
+/**
+ * How far past its own edges an arrow will answer a press.
+ *
+ * The buttons are already 44 points, which is the smallest target iOS considers
+ * reliable; the slop is for the press aimed at the arrow that lands beside it.
+ * It must stay under `DEAD_STRIP`, or the enlarged target reaches into the
+ * date's and a nudged press opens the day list instead of walking a day.
+ */
+const ARROW_SLOP = spacing.sm;
+
+/**
+ * The gap either side of the date, belonging to neither button.
+ *
+ * Twice the slop, so there is still dead ground between the arrow's enlarged
+ * target and the date's real one.
+ */
+const DEAD_STRIP = spacing.md;
+
 interface ReplayScreenProps {
   /** Every day with something in it, newest first. Today is the first entry. */
   readonly days: readonly DayGroup[];
@@ -149,13 +167,22 @@ export function ReplayScreen({
             disabled={!older}
             accessibilityRole="button"
             accessibilityLabel="Previous day"
+            hitSlop={ARROW_SLOP}
             style={({ pressed }) => [styles.navButton, !older && styles.navDisabled, pressed && styles.pressed]}
           >
-            <Ionicons name="chevron-back" size={18} color={older ? colors.textPrimary : colors.textMuted} />
+            <Ionicons name="chevron-back" size={20} color={older ? colors.textPrimary : colors.textMuted} />
           </Pressable>
 
           {/* The date is the button. A calendar icon beside a date is the same
-              thing twice, and the date is a bigger target than an icon. */}
+              thing twice, and the date is a bigger target than an icon.
+
+              **It keeps a margin, and the margin belongs to neither button.**
+              The three controls do different things and one of them opens a
+              page, so an arrow pressed slightly off its centre must not become
+              "choose another day" — a mis-tap that walks a day is invisible and
+              a mis-tap that opens the day list is a page in your face. The dead
+              strip is wide enough to hold the arrows' `hitSlop` inside it, so
+              the enlarged targets stop before the date's begins. */}
           <Pressable
             onPress={onOpenAllDays}
             accessibilityRole="button"
@@ -172,9 +199,10 @@ export function ReplayScreen({
             disabled={!newer}
             accessibilityRole="button"
             accessibilityLabel="Next day"
+            hitSlop={ARROW_SLOP}
             style={({ pressed }) => [styles.navButton, !newer && styles.navDisabled, pressed && styles.pressed]}
           >
-            <Ionicons name="chevron-forward" size={18} color={newer ? colors.textPrimary : colors.textMuted} />
+            <Ionicons name="chevron-forward" size={20} color={newer ? colors.textPrimary : colors.textMuted} />
           </Pressable>
         </View>
 
@@ -441,18 +469,39 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
   dayNav: {
     flexDirection: 'row',
+    // **Spelled out rather than left to the default.** The bar is one line —
+    // an arrow, the date, an arrow — and it was reported stacking into three.
+    // `nowrap` and a shrinkable middle are what make that impossible whatever
+    // the date says or how wide the type is: there is no second line to wrap
+    // onto, so a long date truncates instead of pushing an arrow down.
+    flexWrap: 'nowrap',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     // The bar is sticky, so it needs a ground of its own — without one the
     // content scrolls visibly underneath it.
     backgroundColor: colors.background,
   },
-  dayNavLabelButton: { flex: 1, paddingVertical: spacing.xs },
+  dayNavLabelButton: {
+    // Takes what is left over and gives it all back under pressure, so the
+    // arrows keep their size and the date is what gets shorter.
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    marginHorizontal: DEAD_STRIP,
+    paddingVertical: spacing.sm,
+  },
   navButton: {
-    width: 36,
-    height: 36,
+    // 44 points, which is the smallest target iOS considers reliable — these
+    // are pressed repeatedly to walk back through a week.
+    width: 44,
+    height: 44,
+    // Never shrink: an arrow squeezed to nothing by a long date is a control
+    // that disappears on exactly the days with the longest names.
+    flexGrow: 0,
+    flexShrink: 0,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
