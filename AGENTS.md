@@ -137,8 +137,22 @@ saying overlapping things, above a map that is the reason for the page.
 Everything the header did now lives where it was already implied: **the date is
 the title**, **tapping the date is the calendar** (an icon beside a date is the
 same thing twice, and the date is the bigger target), and **pressing the Day tab
-is the Today button**. The subtitle went entirely — the stats row says more about
-a day than a count of rows, and each section heading carries its own count now.
+is the Today button**. The subtitle went entirely, and each section heading
+carries its own count now.
+
+**The three stat tiles went too — distance, moving time and calories.** They
+were the last of the chrome above the map, and they answered a question this
+app is not for: a day is where you were and what you wrote about it, not a
+score out of three. A watch already counts these, counts them better, and
+counts them all day rather than only while an app is open. What they cost was
+the top of the page on the one screen whose reason for existing is below them.
+
+The consequence to keep in view: `core/energy` and `settings.weightKg` now have
+no reader. Both are kept rather than deleted — `core/energy` is pure and has a
+coverage gate, and the weight is one number in a store that would be awkward to
+put back — but the Settings row still says the weight is "used for the calorie
+estimate", which is now nothing. That is a claim about the app that is no
+longer true, which this file has an unhappy history of.
 
 **That one bar is sticky.** It holds the only way to change day and the page is
 long; arrows that scroll off the top mean scrolling back up to use them.

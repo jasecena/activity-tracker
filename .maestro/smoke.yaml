@@ -65,12 +65,15 @@ appId: ${APP_ID}
 # difference between "the component renders that string" and "a person can see
 # it" — which is exactly the job this file exists to do.
 - tapOn: 'TIMELINE'
-- assertVisible: 'Nothing recorded yet today.'
 
 # The vault generated a key and the store round-tripped. If the keychain call or
-# the cipher threw, the app would be stuck before this renders.
-- assertVisible: 'Distance: 0 m'
-- assertVisible: 'Calories: 0'
+# the cipher threw, the app would be stuck before this renders — the timeline is
+# derived from the fix buffer, which comes out of the sealed store.
+#
+# This carries a job that used to belong to a row of stat tiles reading
+# `Distance: 0 m` and `Calories: 0`. Those are gone: the Day screen is the map
+# and what happened on it, not a scoreboard.
+- assertVisible: 'Nothing recorded yet today.'
 
 # --- Nothing is conjured out of nothing -----------------------------------
 #
@@ -246,4 +249,11 @@ appId: ${APP_ID}
 # merely arriving somewhere.
 - tapOn: 'Day tab'
 - assertVisible: 'Today. Choose another day'
-- assertVisible: 'Distance: 0 m'
+
+# And the timeline is *still open* from the tap near the top of this flow. A
+# `Section`'s open state is local and deliberately not persisted, so it survives
+# only as long as the component does — which makes this the assertion that the
+# Day tab was never unmounted while every other tab was visited. That is the
+# guarantee that stops a timeline just derived, or a half-typed name, being
+# thrown away because you glanced somewhere else.
+- assertVisible: 'Nothing recorded yet today.'
