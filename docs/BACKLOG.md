@@ -889,6 +889,123 @@ costs one file to delete once the question above is settled.
 
 ---
 
+## 18. "I was here the whole time": merging a stretch into one stay
+
+**Status:** not started, asked for 13 August 2026. Designed here rather than
+built because the obvious implementation is a trap this codebase has already
+paid for once, and because it revives a feature that was withdrawn — both of
+which want the reasoning settled before code.
+
+### What is wanted
+
+Point at two moments on a day and say **"I was in one place between these."**
+Everything between them becomes a single stay at that location. The middle
+readings are of no interest and may go. Irreversible is acceptable, **provided
+nothing else happened in between** — and if there _was_ real movement between
+the two points, the app should refuse rather than flatten it.
+
+The need is real and the fold cannot meet it on its own: a phone sitting still
+for three hours produces drift, drift produces spurious short moves, and a
+single afternoon at a desk comes out as stay/move/stay/move rather than one
+stop. `minMoveDistanceM` absorbs some of that and not all of it.
+
+### The trap: deleting the middle produces a hole, not a stay
+
+**This is the part to read before writing any code.** "Delete the fixes in
+between and keep the ends" sounds like exactly the right move and is the
+documented way to lose an afternoon:
+
+> delete the middle of a three-hour stay and the fold sees two lonely fixes an
+> hour apart, so the stay becomes a hole and the cleanup has eaten an afternoon.
+> Naive deletion is not a smaller buffer, it is a different day.
+
+That is `core/compact`'s own note, and it is why compaction keeps a **skeleton**
+— one reading per `gapMs / 3` — rather than just the endpoints. The rule it
+protects is § 2's: no fix for `gapMs` closes whatever is open and the timeline
+stops until the next reading. Two fixes three hours apart do not describe a stay;
+they describe two moments with a hole between them.
+
+So a merge that deletes the middle must keep a skeleton dense enough that no gap
+exceeds `gapMs`, exactly as compaction does. At which point the interesting
+question is whether it should delete anything at all.
+
+### Two shapes, and the second is probably right
+
+**A. Thin the run, keep it honest.** Remove middle readings down to a skeleton,
+changing nothing else. Stays within the existing rule that compaction _only ever
+removes_ — nothing is rewritten or invented, so the raw CSV export remains a true
+record of what the phone reported. But it only works when the drift is already
+small enough for the fold to read the result as one stay; it cannot make a
+stretch stationary that the readings say was not.
+
+**B. A stored claim over a time range, like every other correction here.** The
+app already has this shape twice: a `JourneyLabel` is a name over a time range,
+and a mode correction is an override, both **re-cut against a timeline that is
+re-derived from the fixes every time**. A "stationary claim" would be a third:
+`{ from, to, at }`, applied by the fold, collapsing whatever it covers into one
+stay. Nothing is deleted, the raw export stays true, a preset change re-cuts it
+correctly, and it is reversible for free.
+
+**B is the shape this codebase is built for**, and it is worth noticing that the
+asked-for irreversibility is not a requirement but a permission — offered to make
+it simpler. Here it does not: keeping the fixes is _less_ work than safely
+removing them, because safe removal means reimplementing compaction's skeleton
+rule.
+
+### What "significant movement" means, and where that check lives
+
+The refusal is the interesting half. Candidate rule, all of it pure and testable
+in `core`:
+
+- Take every fix between the two instants.
+- If the furthest is more than **`minMoveDistanceM`** (60 m, the same threshold
+  the segmenter already calls movement) from the centre, refuse.
+- Otherwise the claim is allowed, and the stay's centre is the **centroid** of
+  those fixes — which `core/geo` already computes, and which is what "at that
+  location" should mean rather than picking an arbitrary endpoint.
+
+The refusal should say _what it found_ — "you moved 400 m in the middle of this"
+— rather than merely declining. A control that silently does nothing is the
+failure the transcription button already taught this app.
+
+### The other precondition: nothing else in between
+
+"As long as there is no other activity between the two points" needs a
+definition, because two of the things that can sit in that window are not
+segments:
+
+- **A named journey** (`JourneyLabel`) covering part of the range. Flattening it
+  would silently discard something typed by hand.
+- **A note or a capture** stamped inside the range. Neither is derived and
+  neither should be touched — but a note _about_ a journey that no longer exists
+  is a loose end worth deciding about rather than discovering.
+
+Simplest defensible rule: **refuse if a journey label overlaps the range**, and
+leave notes and captures alone entirely, since they are stamped with instants
+rather than owned by segments.
+
+### It revives something that was withdrawn
+
+`docs/ARCHITECTURE.md` records that joining rows into one journey was built and
+removed:
+
+> a merge could only ever be a span, so "these two but not the middle" was
+> inexpressible, and undoing meant finding the label behind a row by its id.
+> Half a feature is worse than none.
+
+That objection was about **merging journeys into a named journey**, and it does
+not carry over cleanly: "these two but not the middle" is not a thing anybody
+wants from _"I was standing here"_, since a stay is by definition contiguous. But
+the second half — undoing meant finding the label behind a row — is a live
+warning, and shape B answers it: a stationary claim is a row in a store that can
+be listed and removed, the way named journeys already are under Settings.
+
+**Do not build this without re-reading that section.** It is the one place in
+this repository where a feature of this exact name was shipped and taken back
+out.
+
+---
+
 Turned up while building the diary, not done:
 
 - **Searching it.** Reading a note back means walking to its day. That is fine
