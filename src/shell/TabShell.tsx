@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,6 +33,7 @@ import { NotesScreen } from '@/features/notes/NotesScreen';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
+import { silenceAudio } from '@/services/audioFocus';
 import { now as readNow } from '@/services/clock';
 import { noteAudioUri } from '@/services/noteAudio';
 import { transcribe } from '@/services/transcribe';
@@ -271,6 +272,27 @@ export function TabShell() {
    * looking at — recoverable in one tap through the date, which is now the
    * picker.
    */
+  /**
+   * **Leaving a tab stops what it was playing.**
+   *
+   * Every tab stays mounted with the inactive ones hidden — that is deliberate,
+   * so switching away cannot throw away a running recording or a timeline just
+   * derived — and the cost is that a player keeps playing behind a screen
+   * nobody is looking at. A recording talking on from the Notes tab while you
+   * read Settings is the app doing something you cannot see the control for:
+   * the pause button is one tab away, and the sound has outlived the reason it
+   * was started.
+   *
+   * In the cleanup rather than the body, because it belongs to the tab being
+   * *left*: React runs this as the old tab goes, before the new one arrives.
+   * Nothing happens on the first mount, when there is nothing to silence.
+   *
+   * Only a tab change. Opening a note in the sheet, or a segment over the day,
+   * is a page above the same tab — still the screen you were on, still the
+   * thing you were listening to.
+   */
+  useEffect(() => () => silenceAudio(), [tab]);
+
   const pressTab = (key: Tab) => {
     const alreadyHere = tab === key;
     setTab(key);
