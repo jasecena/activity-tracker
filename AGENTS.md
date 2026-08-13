@@ -147,12 +147,18 @@ score out of three. A watch already counts these, counts them better, and
 counts them all day rather than only while an app is open. What they cost was
 the top of the page on the one screen whose reason for existing is below them.
 
-The consequence to keep in view: `core/energy` and `settings.weightKg` now have
-no reader. Both are kept rather than deleted — `core/energy` is pure and has a
-coverage gate, and the weight is one number in a store that would be awkward to
-put back — but the Settings row still says the weight is "used for the calorie
-estimate", which is now nothing. That is a claim about the app that is no
-longer true, which this file has an unhappy history of.
+**So the weight went with them.** Its only purpose was the calorie estimate, and
+the Settings row said so — "used for the calorie estimate" — which became a
+claim about the app that was no longer true the moment the tile went. A stale
+sentence in Settings is the same class of mistake as the microphone permission
+string that promised recordings were never uploaded, and this file has an
+unhappy history with exactly that.
+
+What stays is the **stored value**: `settings.weightKg` is still read, still
+normalized, still defaulted, and `core/energy` is still pure and still has its
+coverage gate. Only the control and its setter are gone. That is the cheap
+direction to be wrong in — a calorie readout can come back as a screen without a
+migration, whereas dropping the field would need one to put it back.
 
 **That one bar is sticky.** It holds the only way to change day and the page is
 long; arrows that scroll off the top mean scrolling back up to use them.
