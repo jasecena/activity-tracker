@@ -23,8 +23,8 @@ const AWS_EXAMPLE = {
 
 const THEIR_MOMENT = Date.UTC(2013, 4, 24, 0, 0, 0);
 
-function signatureOf(authorization: string): string {
-  return authorization.split('Signature=')[1] ?? '';
+function signatureOf(authorization: string | undefined): string {
+  return (authorization ?? '').split('Signature=')[1] ?? '';
 }
 
 it("matches AWS's published example signature", () => {
