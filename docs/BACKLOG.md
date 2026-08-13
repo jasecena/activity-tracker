@@ -891,10 +891,76 @@ costs one file to delete once the question above is settled.
 
 ## 18. "I was here the whole time": merging a stretch into one stay
 
-**Status:** not started, asked for 13 August 2026. Designed here rather than
-built because the obvious implementation is a trap this codebase has already
-paid for once, and because it revives a feature that was withdrawn — both of
-which want the reasoning settled before code.
+**Status:** designed and **decided**, not built. Asked for 13 August 2026;
+shape settled the same day. Written down here rather than built because the
+obvious implementation is a trap this codebase has already paid for once, and
+because it revives a feature that was withdrawn — both of which wanted the
+reasoning settled before code.
+
+### Decided
+
+**Shape B: a stored claim over a time range.** Nothing is deleted. The reasoning
+is below and it held up, but the argument that settled it was not
+reversibility — it was that **A needs two implementations and B needs one**. On
+a frozen day the raw fixes have been archived and the day's _segments_ are what
+is stored, so anything that works by deleting fixes works only on today, and
+looking back at a finished afternoon is exactly when somebody wants this.
+
+That points at the formulation to build: **decide from segments, apply to
+segments.**
+
+- `applyStationaryClaims(segments, claims)` in `core`, collapsing whatever a
+  claim covers into one stay. A freshly folded day and a frozen one are both a
+  `Segment[]` by the time anything draws them, so one function serves both and
+  neither needs the fixes.
+- The refusal is decided the same way — a `move` inside the range carrying more
+  than the threshold, or two stays whose centres are further apart than it. No
+  fix access, no archive read, pure and testable.
+
+**"Significant movement" is measured from the anchor, not along the path and not
+end to end.** The three candidates disagree on exactly one case, a walk that
+returns to where it started:
+
+| Test                         | 600 m round the block | Pacing round the house |
+| ---------------------------- | --------------------- | ---------------------- |
+| **Furthest from the anchor** | refuses ✓             | allows ✓               |
+| Total path length            | refuses ✓             | **refuses ✗**          |
+| Straight line, first to last | **allows ✗**          | allows ✓               |
+
+"I was there" is a claim about a _place_, so what matters is how far you got from
+it — not how much you moved, and not where you happened to end up.
+
+### What can sit between the two points
+
+| In the middle                                  | Merge?  | Why                                                       |
+| ---------------------------------------------- | ------- | --------------------------------------------------------- |
+| A short wander — tens of metres of drift       | **yes** | This is the feature                                       |
+| A hole — no fixes for two hours, phone indoors | **yes** | See below                                                 |
+| A real drive                                   | no      | It happened                                               |
+| A walk round the block and back                | no      | Returning does not unmake it                              |
+| A capture                                      | no      | It carries its own position, and would contradict the pin |
+| A named journey                                | no      | It contradicts something typed by hand                    |
+| Two different named places                     | no      | They are two places                                       |
+| A note                                         | **yes** | A sentence is not evidence of movement                    |
+| Midnight                                       | no      | The day is the unit everywhere else                       |
+
+**The hole is the strongest case, and it is worth stating on its own.** "A gap
+is a hole, never a straight line" is a rule about what the _app_ may infer: it
+refuses to draw a line through two hours indoors, and it should. But the owner
+knows they were at home. This feature is the one place where somebody can state
+what the app is forbidden to guess — which is a better justification for it than
+tidying drift, and it is the case to design the wording around.
+
+### Still open
+
+- **How the two points are chosen.** Long-press a stay and pick the row to
+  extend to is the obvious candidate, since the anchor then has a place and
+  "where I was" needs no second answer — but no gesture is settled.
+- **The threshold itself.** `minMoveDistanceM` (60 m) is the natural reuse and
+  may be too tight for a large building.
+- **Where a claim is listed and removed.** Named journeys already have a page
+  under Settings; this wants the same, and that is what answers the withdrawn
+  feature's real objection.
 
 ### What is wanted
 

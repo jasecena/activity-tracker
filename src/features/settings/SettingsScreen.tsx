@@ -240,8 +240,10 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
           The second thing that talks to the internet, and the only one that sends anything you recorded.{' '}
           <Text style={styles.footnoteStrong}>Nothing is transcribed automatically.</Text> When you press Transcribe on
           a note, that one recording is uploaded to ElevenLabs and the text comes back and is added to the end of the
-          note. Nothing else goes with it — not what you typed, not the title, not the day, not where you were. Clear
-          the key and the button disappears. Your key is stored encrypted on this phone and never leaves it.
+          note. Nothing else goes with it — not what you typed, not the title, not the day, not where you were. The
+          request also asks them not to keep the recording, though whether they honour that is theirs to decide, not
+          this app&apos;s. Clear the key and the button disappears. Your key is stored encrypted on this phone and never
+          leaves it.
         </Text>
 
         <Text style={styles.sectionLabel}>HISTORY</Text>

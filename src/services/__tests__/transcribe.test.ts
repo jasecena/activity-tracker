@@ -110,13 +110,34 @@ describe('the request', () => {
 
   /**
    * The privacy claim in Settings, as an assertion. The request carries the
-   * audio, the model and the language — the note's words, its title, its day and
-   * the position on it all stay on the phone.
+   * audio, the model, the language and a request not to keep any of it — the
+   * note's words, its title, its day and the position on it all stay on the
+   * phone.
+   *
+   * A whole-list comparison rather than four `toContain`s, on purpose: what
+   * this is defending against is a *fifth* field being added, and only an
+   * equality can fail for that.
    */
   it('sends the audio and nothing about the note it belongs to', async () => {
     await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' });
 
-    expect(Object.keys(parts(sent().form)).sort()).toEqual(['file', 'language_code', 'model_id']);
+    expect(Object.keys(parts(sent().form)).sort()).toEqual(['enable_logging', 'file', 'language_code', 'model_id']);
+  });
+
+  /**
+   * Zero Retention Mode, as far as a request can ask for it. Their default is
+   * to retain the audio and the text, with backups for up to thirty days after
+   * a deletion; this is the field that asks them not to.
+   *
+   * Asserted because it is a privacy property rather than a detail — the same
+   * reason the list above is an equality. Whether the account is entitled to it
+   * is the other end's business and cannot be checked from here, which is why
+   * nothing in the app claims it worked.
+   */
+  it('asks for the recording not to be retained', async () => {
+    await transcribe({ uri: URI, apiKey: 'sk-real', languageCode: 'fa' });
+
+    expect(parts(sent().form).enable_logging).toBe('false');
   });
 
   it('trims a key pasted with whitespace on it', async () => {

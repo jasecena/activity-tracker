@@ -454,9 +454,21 @@ properties hold it down, and all three are asserted in tests rather than merely
 intended: **an empty `settings.transcriptionKey` is the only gate**, so a fresh
 install cannot transcribe at all and clearing the field withdraws the feature;
 **nothing is automatic**, so a recording is uploaded on a press and never by a
-queue, a launch or a retry; and **the request carries the audio, the model and
-the language and nothing else** — not the note's words, its title, its day or the
-position on it.
+queue, a launch or a retry; and **the request carries the audio, the model, the
+language and `enable_logging=false`, and nothing else** — not the note's words,
+its title, its day or the position on it. The list is asserted as an
+_equality_, because what that test defends against is a fifth field appearing.
+
+**`enable_logging=false` asks them not to keep it, and asking is all it is.**
+It is how Zero Retention Mode is requested on the speech-to-text endpoints;
+their default retains both the audio and the text, with backups for up to thirty
+days after a deletion. Their documentation describes ZRM as an enterprise
+arrangement, so an ordinary account may ignore the field entirely — which is why
+it is sent unconditionally and why **nothing in the app claims it worked**. The
+Settings text says what the app _sends_ and never what the other end does with
+it: a claim about somebody else's servers is not ours to print, and this file
+has an unhappy history with strings that promised more protection than existed.
+There is no account-level retention switch to set instead; that was checked.
 
 App Transport Security stays fully enforced for both.
 
