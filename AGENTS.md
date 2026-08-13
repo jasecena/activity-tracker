@@ -157,6 +157,27 @@ longer true, which this file has an unhappy history of.
 **That one bar is sticky.** It holds the only way to change day and the page is
 long; arrows that scroll off the top mean scrolling back up to use them.
 
+**A sticky header's style is applied to a wrapper, not to the element you wrote
+it on, and this shipped a broken bar to a phone.** React Native's
+`ScrollViewStickyHeader` puts `child.props.style` on its own `Animated.View` and
+clones the child with `style={styles.fill}` — its comment says so: _"We transfer
+the child style to the wrapper."_ So a `flexDirection: 'row'` written on the
+sticky child lands one level **above** the children it was meant to arrange, and
+the element actually holding them falls back to the default, **column**. The day
+bar rendered as an arrow, a date and an arrow stacked down the screen, out of a
+file whose style said `row` the whole time — and every cosmetic part of that
+style worked, which is what made it look like anything but a layout bug.
+
+So the sticky child is a plain wrapper carrying the ground and the padding, and
+the row lives in a `View` inside it. **Anything laid out inside a sticky header
+needs that extra level.** `flexWrap: 'nowrap'` does not help, because nothing is
+wrapping — it is stacking, which is what a column does with three children.
+
+The transfer is plain JavaScript, so it happens identically under Jest. The
+regression test asserts on **the element that contains the controls** rather
+than on a named style, which is the only version that could have caught this:
+the style was real, correct, and attached to the wrong node.
+
 **It is three cells that cannot wrap, and the gaps belong to nobody.** Arrow,
 date, arrow, with `flexWrap: 'nowrap'`, arrows that never shrink and a date that
 gives up its width first — so a long date truncates rather than pushing a
@@ -591,6 +612,12 @@ how a transcript reaches anything else.
 `clipboard.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
+`audioFocus.ts` is in the same directory and imports nothing at all. It is here
+because it is the same **kind** of thing — the app's one handle on a device
+resource, in a single file so there is one place to look for what can make a
+sound — not because it wraps a module. The rule above still enumerates every
+file that touches a native one.
+
 The exception is a native module that _is_ a view, or a hook over a native
 object a service cannot build and hand over: `expo-camera` in `CaptureScreen`,
 `expo-maps` in `MapCanvas`, `@react-native-community/datetimepicker` in
@@ -791,6 +818,33 @@ a session running behind three hidden screens costs battery and leaves the
 recording indicator lit. `MediaGalleryScreen` opens a capture only while Media is
 visible, so a video cannot play out of sight and no decrypted file sits in the
 cache for a tab nobody is looking at.
+
+**One thing makes a noise at a time, and `services/audioFocus.ts` is the whole
+of it.** A recording on a note row, the same recording in the sheet above it, a
+clip in the gallery — they are deliberately unaware of each other and they are
+mounted in different tabs that all stay alive at once, because the shell hides
+inactive tabs rather than unmounting them. So two of them playing together is
+the **default** behaviour rather than an edge case, and there is no common
+ancestor to fix it in that is not the whole app. The module is one variable and
+three functions: take it, release it, silence whoever holds it.
+
+**The holder is identified by the function itself**, which is what makes
+releasing exact. Silencing the previous holder runs its own cleanup, and that
+cleanup arrives _after_ the new holder is in place — so a release that does not
+check identity would have the interrupted player clear the claim of the one that
+just interrupted it, leaving nothing to stop next time.
+
+**Only what is audible takes the focus, and the caller judges that** rather than
+this module inspecting a player. A muted clip is a moving picture: it starts on
+its own when you swipe to it, and if that counted, swiping through the gallery
+would silently stop a recording playing on the Notes tab and put nothing in its
+place. The gallery derives `playing && !muted` from the player's own events
+rather than wiring the buttons, so the transport, the speaker, the end of a clip
+and the autoplay are all covered by one rule.
+
+**Recording silences playback outright**, after the permission prompt rather
+than before it — the microphone would otherwise record the other recording, and
+a refused prompt should not stop playback for a recording that never starts.
 
 **A video in the gallery starts muted, and the speaker is a first-class
 control.** It plays as soon as you swipe to it, which is right — you swiped to

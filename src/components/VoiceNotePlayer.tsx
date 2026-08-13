@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useCallback, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { NoteVoice } from '@/core/day';
 import { formatDuration } from '@/core/format';
+import { releaseAudioFocus, takeAudioFocus } from '@/services/audioFocus';
 import { noteAudioUri } from '@/services/noteAudio';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -66,6 +68,20 @@ export function VoiceNotePlayer({ voice, onForget }: VoiceNotePlayerProps) {
    */
   const atEnd = status.duration > 0 && status.currentTime >= status.duration;
 
+  /**
+   * What the rest of the app calls to shut this one up.
+   *
+   * Stable across renders, because it is also the identity the focus is held
+   * under — a function rebuilt every render would claim the focus afresh each
+   * time and could never be found again to release it.
+   */
+  const silence = useCallback(() => player.pause(), [player]);
+
+  // A row scrolled away, a sheet closed, a tab that finally unmounts: a
+  // component that vanishes holding the focus leaves a dead function as the
+  // thing the next player would interrupt.
+  useEffect(() => () => releaseAudioFocus(silence), [silence]);
+
   if (!uri) {
     return (
       <View style={styles.pill}>
@@ -81,9 +97,15 @@ export function VoiceNotePlayer({ voice, onForget }: VoiceNotePlayerProps) {
         onPress={() => {
           if (playing) {
             player.pause();
+            // Paused by hand, so it is not making a noise and has no claim on
+            // being the one thing that is.
+            releaseAudioFocus(silence);
             return;
           }
           if (atEnd) void player.seekTo(0);
+          // Before `play`, so nothing is ever briefly audible over the thing it
+          // is replacing.
+          takeAudioFocus(silence);
           player.play();
         }}
         accessibilityRole="button"

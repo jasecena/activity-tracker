@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -26,6 +27,7 @@ import {
 } from '@/core/media';
 import type { Position } from '@/core/replay';
 import { MapCanvas } from '@/components/MapCanvas';
+import { releaseAudioFocus, takeAudioFocus } from '@/services/audioFocus';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { ClipControls } from '@/components/ClipControls';
@@ -731,6 +733,35 @@ function VideoPlaying({
     instance.muted = true;
     instance.play();
   });
+  /**
+   * **Audible, which is not the same as playing.**
+   *
+   * A clip starts on its own and starts muted, and a silent moving picture has
+   * no claim on being the one thing making a noise — if it did, swiping through
+   * the gallery would stop a recording playing on the Notes tab and put nothing
+   * in its place. So the focus follows *sound*: unmuting takes it, muting or
+   * pausing gives it back.
+   *
+   * Derived from the player's own events rather than wired into the buttons, so
+   * every route to the same state is covered — the transport's play, the
+   * speaker, a clip reaching its end, and the autoplay above.
+   */
+  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const { muted } = useEvent(player, 'mutedChange', { muted: player.muted });
+  const audible = isPlaying && !muted;
+
+  const silence = useCallback(() => player.pause(), [player]);
+
+  useEffect(() => {
+    if (audible) takeAudioFocus(silence);
+    else releaseAudioFocus(silence);
+
+    // Swiping to the next capture unmounts this one mid-play, so the focus has
+    // to go with it: otherwise the next thing to play interrupts a player that
+    // no longer exists, and nothing is listening.
+    return () => releaseAudioFocus(silence);
+  }, [audible, silence]);
+
   /**
    * The app's own transport, in an unturned layer above the picture.
    *

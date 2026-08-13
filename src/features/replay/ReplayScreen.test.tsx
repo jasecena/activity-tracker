@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { useState } from 'react';
 
 import type { DayGroup } from '@/core/day';
@@ -294,4 +295,36 @@ describe('the day bar', () => {
 
     expect(screen.queryByText(/journeys ·/)).not.toBeOnTheScreen();
   });
+});
+
+/**
+ * The day bar is one line, and this is the assertion that it still is.
+ *
+ * It shipped stacked into three rows — arrow, date, arrow — from a source file
+ * whose style said `flexDirection: 'row'` the whole time. React Native's sticky
+ * header is why: `ScrollViewStickyHeader` moves its child's style onto its own
+ * wrapper and hands the child `{flex: 1}` instead, so the direction landed one
+ * level above the children it was meant to arrange and the element holding them
+ * fell back to the default, column.
+ *
+ * That transfer is plain JavaScript, so it happens in this renderer exactly as
+ * it does on a phone — which makes this catchable here, where it was not
+ * catchable by reading. Asserting on the element that actually *contains* the
+ * controls, rather than on a named style, is the whole point: the bug was that
+ * the style was real and attached to the wrong node.
+ */
+it('lays the day bar out as one row, under whatever the sticky header does to it', async () => {
+  await renderScreen(WHOLE_DAY);
+
+  const back = screen.getByLabelText('Previous day');
+  const row = back.parent!;
+
+  // The three controls are siblings...
+  const labels = row.children
+    .filter((child): child is ReturnType<typeof screen.getByLabelText> => typeof child !== 'string')
+    .map((child) => child.props.accessibilityLabel as string | undefined);
+  expect(labels).toEqual(['Previous day', expect.stringContaining('Choose another day'), 'Next day']);
+
+  // ...and the element holding them lays them out across, not down.
+  expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row' });
 });

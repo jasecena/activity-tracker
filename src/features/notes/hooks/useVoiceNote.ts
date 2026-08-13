@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { NoteVoice } from '@/core/day';
 import type { Fix } from '@/core/geo';
+import { silenceAudio } from '@/services/audioFocus';
 import { now as readNow } from '@/services/clock';
 import { appendFixes } from '@/services/fixBuffer';
 import { keepNoteAudio } from '@/services/noteAudio';
@@ -109,6 +110,13 @@ export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNo
         // app asking on its own behalf.
         const granted = await AudioModule.requestRecordingPermissionsAsync();
         if (!granted.granted) return;
+
+        // **Nothing else is playing while this records.** Everywhere else in
+        // the app the rule is one sound at a time because two at once is a
+        // mess; here it is because the microphone would record the other one.
+        // After the permission, so a refused prompt does not stop playback for
+        // a recording that never starts.
+        silenceAudio();
         await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
 
         await recorder.prepareToRecordAsync();
