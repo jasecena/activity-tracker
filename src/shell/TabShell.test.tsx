@@ -159,7 +159,9 @@ describe('the shell', () => {
     await render(<TabShell />);
 
     const labels = screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel);
-    expect(labels).toEqual(['Day tab', 'Capture tab', 'Media tab', 'Settings tab']);
+    // Five is the ceiling: iOS collapses a sixth into a "More" list, which is
+    // why Places is a page under Settings rather than a tab of its own.
+    expect(labels).toEqual(['Day tab', 'Capture tab', 'Media tab', 'Notes tab', 'Settings tab']);
   });
 
   // Places lost its tab to Replay and Capture; it is a reference list you

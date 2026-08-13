@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { TabShell } from '@/shell/TabShell';
@@ -12,12 +13,20 @@ import { TabShell } from '@/shell/TabShell';
  * a fresh install cannot produce what it repaired — so the pass, its marker key
  * and the launch gate have gone together, which is what the note on it always
  * asked for.
+ *
+ * `GestureHandlerRootView` has to be the outermost view rather than wrapped
+ * around the one screen that uses a gesture: the library installs its touch
+ * handling at the root of the tree, and a gesture inside a subtree it does not
+ * own simply never fires. It exists for the swipe-to-delete on the Notes tab —
+ * see `AGENTS.md` on why that is a library rather than a `PanResponder`.
  */
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <StatusBar style="light" />
-      <TabShell />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <TabShell />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

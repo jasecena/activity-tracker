@@ -3,6 +3,7 @@ import {
   dayNoteId,
   daysWorthOpening,
   freeInstant,
+  groupNotesByDay,
   normalizeDayNotes,
   noteAt,
   notesForDay,
@@ -427,5 +428,55 @@ describe('appending a transcript', () => {
 
   it('trims the transcript, because leading whitespace is not content', () => {
     expect(appendTranscript('', '  spoken  ')).toBe('spoken');
+  });
+});
+
+/**
+ * The diary as a timeline. A day reads forwards — `notesForDay` is oldest-first
+ * for that reason — but a diary reads backwards: what you want is almost always
+ * what you wrote most recently.
+ */
+describe('the diary, newest first', () => {
+  const DAY_BEFORE = T0 - 24 * HOUR;
+
+  it('puts the newest day first and the newest note first inside it', () => {
+    const notes = [note(DAY_BEFORE, 'the day before'), note(T0, 'morning'), note(T0 + 3 * HOUR, 'afternoon')];
+
+    const days = groupNotesByDay(notes, UTC);
+
+    expect(days.map((day) => day.key)).toEqual(['2026-01-05', '2026-01-04']);
+    expect(days[0]?.notes.map((one) => one.text)).toEqual(['afternoon', 'morning']);
+  });
+
+  it('does not depend on the order it was handed', () => {
+    const forwards = groupNotesByDay([note(T0), note(T0 + HOUR)], UTC);
+    const backwards = groupNotesByDay([note(T0 + HOUR), note(T0)], UTC);
+
+    expect(forwards).toEqual(backwards);
+  });
+
+  it('dates each day from local midnight, so a heading can be drawn from it', () => {
+    const [day] = groupNotesByDay([note(T0 + 9 * HOUR)], UTC);
+
+    expect(day?.startedAt).toBe(Date.UTC(2026, 0, 5));
+  });
+
+  /**
+   * Unlike the Day screen, where a day exists whether or not anything happened
+   * so there is somewhere to write. A diary is made of what was written, and an
+   * empty date is not an entry.
+   */
+  it('has no empty days in it', () => {
+    expect(groupNotesByDay([], UTC)).toEqual([]);
+  });
+
+  it('splits a day at the local boundary, not the UTC one', () => {
+    // 23:30 in Sydney on the 5th is 13:30 UTC; both notes are the same local day.
+    const sydney = 600;
+    const lateEvening = Date.UTC(2026, 0, 5, 13, 30);
+    const days = groupNotesByDay([note(lateEvening, 'late'), note(lateEvening - 6 * HOUR, 'earlier')], sydney);
+
+    expect(days).toHaveLength(1);
+    expect(days[0]?.notes.map((one) => one.text)).toEqual(['late', 'earlier']);
   });
 });

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { daysWorthOpening, groupByDay, whereToWrite, type DayNote, type NoteVoice } from '@/core/day';
+import { dayKeyOf, daysWorthOpening, groupByDay, whereToWrite, type DayNote, type NoteVoice } from '@/core/day';
 import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
@@ -29,6 +29,7 @@ import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { NoteSheet } from '@/features/notes/components/NoteSheet';
 import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptures';
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
+import { NotesScreen } from '@/features/notes/NotesScreen';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
@@ -40,7 +41,7 @@ import { colors, spacing } from '@/theme/tokens';
 import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
 
-type Tab = 'replay' | 'capture' | 'gallery' | 'settings';
+type Tab = 'replay' | 'capture' | 'gallery' | 'notes' | 'settings';
 
 /**
  * The tabs that can have a detail page over them.
@@ -77,6 +78,12 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   // the only one you would ever open one-handed in a hurry.
   { key: 'capture', label: 'Capture', icon: 'camera-outline' },
   { key: 'gallery', label: 'Media', icon: 'images-outline' },
+  // **The diary is a tab now, not a section of the Day screen.** A note used to
+  // be filed under the day it was about and reached by walking to that day,
+  // which the backlog already called "fine for a week and not for a year". Five
+  // tabs is the ceiling: iOS collapses a sixth into a "More" list, which is why
+  // Places stays a page under Settings.
+  { key: 'notes', label: 'Notes', icon: 'book-outline' },
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
@@ -156,6 +163,9 @@ export function TabShell() {
   const stacks: Record<PagedTab, ReturnType<typeof usePageStack<Page>>> = {
     replay: usePageStack<Page>(),
     gallery: usePageStack<Page>(),
+    // The diary has no page above it: a note opens in the sheet, over whatever
+    // is showing, rather than pushing a screen.
+    notes: usePageStack<Page>(),
     settings: usePageStack<Page>(),
   };
 
@@ -416,9 +426,6 @@ export function TabShell() {
             onOpenMedia={openMedia}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
             onCorrectMode={setCorrecting}
-            notes={notes.notes}
-            onWriteNote={(dayKey, segments) => setWritingNote({ kind: 'new', dayKey, segments })}
-            onOpenNote={(note) => setWritingNote({ kind: 'edit', note })}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -440,6 +447,26 @@ export function TabShell() {
           {stacks.gallery.current ? (
             <SwipeBackPage onBack={stacks.gallery.pop}>{renderPage('gallery')}</SwipeBackPage>
           ) : null}
+        </View>
+
+        <View style={[styles.screen, tab !== 'notes' && styles.hidden]}>
+          <NotesScreen
+            notes={notes.notes}
+            tzOffsetMinutes={timeline.tzOffsetMinutes}
+            // A new note from here is about *today*, at now. The sheet's date
+            // and time pickers are how it becomes about any other day — which
+            // is the same affordance that already existed, now reached from the
+            // diary rather than from the day.
+            onWrite={() =>
+              setWritingNote({
+                kind: 'new',
+                dayKey: dayKeyOf(readNow(), timeline.tzOffsetMinutes),
+                segments: timeline.today,
+              })
+            }
+            onOpen={(note) => setWritingNote({ kind: 'edit', note })}
+            onForget={notes.forget}
+          />
         </View>
 
         <View style={[styles.screen, tab !== 'settings' && styles.hidden]}>
@@ -526,7 +553,6 @@ export function TabShell() {
         // Only over a note that exists. Deleting is also what emptying the
         // field does, so this is the explicit way rather than the only one.
         onTranscribe={onTranscribe}
-        onForget={writingNote?.kind === 'edit' ? () => notes.forget(writingNote.note.id) : undefined}
         onClose={() => setWritingNote(null)}
       />
 

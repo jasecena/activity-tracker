@@ -34,7 +34,6 @@ interface NoteSheetProps {
    */
   readonly defaultAt: number;
   readonly onSave: (at: number, title: string, text: string, voice: NoteVoice | null) => void;
-  readonly onForget?: () => void;
   readonly onClose: () => void;
   /**
    * Turn this note's recording into text, or absent when there is no API key.
@@ -80,7 +79,7 @@ const TRANSCRIPTION_MESSAGES: Readonly<Record<TranscriptionFailure, string>> = {
  * true: a transcript belongs *on the note*, beside what was typed, and that is
  * only a simple thing to build if the recording was never a row of its own.
  */
-export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTranscribe }: NoteSheetProps) {
+export function NoteSheet({ target, defaultAt, onSave, onClose, onTranscribe }: NoteSheetProps) {
   const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   /**
@@ -478,27 +477,6 @@ export function NoteSheet({ target, defaultAt, onSave, onForget, onClose, onTran
               >
                 <Text style={styles.saveText}>Save</Text>
               </Pressable>
-
-              {onForget ? (
-                <Pressable
-                  onPress={() =>
-                    confirmDestructive({
-                      title: 'Delete this note?',
-                      message: 'The words and any recording on it go, and cannot be recovered.',
-                      confirmLabel: 'Delete',
-                      onConfirm: () => {
-                        onForget();
-                        close();
-                      },
-                    })
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel="Delete this note"
-                  style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
-                >
-                  <Text style={styles.forgetText}>Delete this note</Text>
-                </Pressable>
-              ) : null}
             </>
           ) : null}
         </View>

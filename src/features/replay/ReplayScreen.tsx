@@ -2,14 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { notesForDay, summarizeDay, type DayGroup, type DayNote } from '@/core/day';
+import { summarizeDay, type DayGroup } from '@/core/day';
 import { activeCalories } from '@/core/energy';
 import { formatClockTime, formatDayTitle, formatDistance, formatDuration, formatSpeed, modeLabel } from '@/core/format';
 import { mediaForDay, placeMedia, type MediaItem } from '@/core/media';
 import { matchPlace, type Place } from '@/core/places';
 import type { MoveSegment, Segment } from '@/core/segments';
 import { MapCanvas, type MapMark, type MapTrack } from '@/components/MapCanvas';
-import { NoteRow } from '@/components/NoteRow';
 import { Section } from '@/components/Section';
 import { Scrubber } from '@/components/Scrubber';
 import { SegmentRow } from '@/components/SegmentRow';
@@ -45,18 +44,6 @@ interface ReplayScreenProps {
    * this is how you say so.
    */
   readonly onCorrectMode?: (segment: MoveSegment) => void;
-  /**
-   * What you wrote about your days — all of them, cut to this one here.
-   *
-   * Passed whole rather than pre-filtered because the day on screen is this
-   * screen's own state: it is the thing the arrows change, and handing the
-   * caller the job of keeping a filtered list in step with it would be a second
-   * source of truth for which day is showing.
-   */
-  readonly notes?: readonly DayNote[];
-  /** Absent where the timeline is read-only, which is what hides the writing controls. */
-  readonly onWriteNote?: (dayKey: string, segments: readonly Segment[]) => void;
-  readonly onOpenNote?: (note: DayNote) => void;
 }
 
 /**
@@ -92,9 +79,6 @@ export function ReplayScreen({
   onOpenMedia,
   onOpenAllDays,
   onCorrectMode,
-  notes,
-  onWriteNote,
-  onOpenNote,
 }: ReplayScreenProps) {
   // Today is `days[0]` — `groupByDay` sorts newest first — so "nothing chosen"
   // and "today" are the same state, and there is no date arithmetic here.
@@ -106,14 +90,6 @@ export function ReplayScreen({
   const isToday = index === 0;
 
   const segments = useMemo<readonly Segment[]>(() => day?.segments ?? [], [day]);
-
-  // Cut to the day on screen here rather than by the caller: which day is
-  // showing is this screen's own state, and a filtered list passed in would be
-  // a second answer to it that could fall out of step with the arrows.
-  const dayNotes = useMemo(
-    () => (day ? notesForDay(notes ?? [], day.key, tzOffsetMinutes) : []),
-    [day, notes, tzOffsetMinutes],
-  );
 
   const replay = useReplay(segments);
 
@@ -369,53 +345,15 @@ export function ReplayScreen({
           </>
         ) : null}
 
-        {/* **Below the player, not above it.** The player drives the map and has
-            to sit against it: anything between the two detaches the scrubber
-            from the thing it scrubs, which is what a section of notes wedged in
-            there did.
+        {/* Collapsed by default: a day of errands is dozens of rows, and a page
+            that opens on all of them is a page you scroll rather than read. The
+            count in the heading is what makes that safe — it hides the rows
+            without hiding that there are any.
 
-            Its own section rather than rows in the timeline — a timeline is a
-            record of where the phone was minute by minute, and a sentence
-            threaded into it arrives as another reading the app took. What a
-            diary is indexed by is the date; the time is a detail within the day,
-            which is why these still sort by it.
-
-            The pen lives in the heading, on the right, where it is next to the
-            thing it adds to rather than floating above the page. It stays
-            outside the player's `segments.length` guard: a day the app recorded
-            nothing on is the day most worth writing about. */}
-        <Section
-          label="NOTES"
-          count={dayNotes.length}
-          action={
-            onWriteNote && day ? (
-              <Pressable
-                onPress={() => onWriteNote(day.key, segments)}
-                accessibilityRole="button"
-                accessibilityLabel="Write a note about this day"
-                style={({ pressed }) => [styles.dayAction, pressed && styles.pressed]}
-              >
-                <Ionicons name="create-outline" size={20} color={colors.textPrimary} />
-              </Pressable>
-            ) : null
-          }
-        >
-          {dayNotes.length > 0 ? (
-            <View style={styles.timeline}>
-              {dayNotes.map((note) => (
-                <NoteRow key={note.id} note={note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpenNote} />
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.empty}>Nothing written about this day yet.</Text>
-          )}
-        </Section>
-
-        {/* Collapsed like the notes above it, and for the same reason: a day of
-            errands is dozens of rows, and a page that opens on all of them is a
-            page you scroll rather than read. The count in the heading is what
-            makes collapsing safe — it hides the rows without hiding that there
-            are any. */}
+            The diary used to sit above this in a section of its own. It is a tab
+            now: a note was filed under the day it was about and reached by
+            walking to that day, which is fine for a week and not for a year. The
+            same rows in two places would be two things to keep in step. */}
         <Section label="TIMELINE" count={segments.length}>
           <View style={styles.timeline}>
             {segments.length === 0 ? (
