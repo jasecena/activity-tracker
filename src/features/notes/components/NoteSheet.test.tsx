@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
+import { copyText } from '@/services/clipboard';
+
 import { dayNoteId, type DayNote, type NoteVoice } from '@/core/day';
 
 import { NoteSheet } from './NoteSheet';
@@ -10,6 +12,8 @@ import { NoteSheet } from './NoteSheet';
  * true: one entry, one instant, one Save, and the microphone under the fields
  * rather than on the screen behind them.
  */
+
+jest.mock('@/services/clipboard', () => ({ copyText: jest.fn(async () => true) }));
 
 jest.mock('@/services/noteAudio', () => ({
   keepNoteAudio: jest.fn(() => ({ fileName: 'voice-1.m4a', byteLength: 2048 })),
@@ -338,5 +342,50 @@ describe('transcribing the recording', () => {
     await fireEvent.press(screen.getByLabelText('Save this note'));
 
     expect(onSave).toHaveBeenCalledWith(T0, '', 'typed already', expect.anything());
+  });
+});
+
+/**
+ * Copying the note out. There is no LLM pass yet — item 17 — so this is how a
+ * transcript reaches anything else, and a pasteboard write is completely
+ * invisible without an acknowledgement.
+ */
+describe('copying a note', () => {
+  it('offers nothing to copy while the field is empty', async () => {
+    await render(sheet());
+
+    expect(screen.queryByLabelText('Copy this note')).toBeNull();
+  });
+
+  it('copies exactly what is in the field', async () => {
+    await render(sheet({ target: { kind: 'edit', note: note({ text: 'what I said about today' }) } }));
+
+    await fireEvent.press(screen.getByLabelText('Copy this note'));
+
+    expect(copyText).toHaveBeenCalledWith('what I said about today');
+  });
+
+  it('says it copied, since nothing else on screen changes', async () => {
+    await render(sheet({ target: { kind: 'edit', note: note({ text: 'typed' }) } }));
+
+    await fireEvent.press(screen.getByLabelText('Copy this note'));
+    await act(async () => undefined);
+
+    expect(screen.getByLabelText('Copied')).toBeTruthy();
+  });
+
+  /**
+   * The tick means "this text is on the pasteboard", so editing makes it false
+   * — which is also why it needs no timer to undo it.
+   */
+  it('stops saying so once the text has changed', async () => {
+    await render(sheet({ target: { kind: 'edit', note: note({ text: 'typed' }) } }));
+
+    await fireEvent.press(screen.getByLabelText('Copy this note'));
+    await act(async () => undefined);
+    await fireEvent.changeText(screen.getByLabelText('Note'), 'typed some more');
+
+    expect(screen.queryByLabelText('Copied')).toBeNull();
+    expect(screen.getByLabelText('Copy this note')).toBeTruthy();
   });
 });

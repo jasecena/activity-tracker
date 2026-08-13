@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 790
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 794
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -520,9 +520,18 @@ and nowhere to write — failing on a fresh install and on a day spent somewhere
 with no signal, which are the two days most worth a sentence rather than a
 measurement.
 
+**A note can be copied out, and the pasteboard is write-only.**
+`services/clipboard.ts` writes and never reads — reading raises a system prompt
+on iOS and hands the app whatever its owner last copied from somewhere else,
+which is a thing a diary has no business seeing. The button sits in the body
+field's own top-right corner, absent rather than disabled while there is nothing
+to copy, and the tick means "this text is on the pasteboard" — so editing makes
+it false, which is why it needs no timer to undo it. Until item 17 exists this is
+how a transcript reaches anything else.
+
 **Native modules live behind `src/services`.** `location.ts`, `vault.ts`,
-`storage.ts`, `battery.ts` and `mediaStore.ts` are the only files importing an
-Expo native module.
+`storage.ts`, `battery.ts`, `mediaStore.ts`, `noteAudio.ts`, `transcribe.ts` and
+`clipboard.ts` are the only files importing an Expo native module.
 Feature code builds values and hands them over.
 
 The exception is a native module that _is_ a view, or a hook over a native
