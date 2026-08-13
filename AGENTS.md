@@ -874,6 +874,20 @@ happens on first mount. Only a tab change counts: a note opened in the sheet, or
 a segment over the day, is a page above the same tab — still the screen you were
 on, still the thing you were listening to.
 
+**A clip that plays out rewinds and stays stopped, and that is the opposite of
+what the voice-note player does.** `loop` is false, so a finished clip otherwise
+sits on its last frame with the scrubber hard against the right-hand end, and
+the next press of play resumes from there and finishes instantly — a control
+that appears to do nothing twice before the third press starts the clip, which
+is the exact bug the audio player's `atEnd` rewind exists to prevent.
+
+The difference is the **scrubber**. A position nobody can see is a decision that
+can wait until somebody asks for it again, which is why the pill rewinds on the
+press; a bar pinned against the end is the screen saying the clip is over and
+stuck, so that reset happens the moment it finishes and play means play from the
+start. `seekBy` rather than assigning `currentTime`, per the immutability rule —
+muting remains the one property assignment, because it has no method.
+
 **A video in the gallery starts muted, and the speaker is a first-class
 control.** It plays as soon as you swipe to it, which is right — you swiped to
 it — but sound arriving unasked is a different thing from a picture that does:

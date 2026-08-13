@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEvent } from 'expo';
+import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -751,6 +751,31 @@ function VideoPlaying({
   const audible = isPlaying && !muted;
 
   const silence = useCallback(() => player.pause(), [player]);
+
+  /**
+   * **A finished clip goes back to the start and stays stopped.**
+   *
+   * `loop` is false, so without this a clip that plays out sits at its last
+   * frame with the scrubber hard against the right-hand end — and the next
+   * press of play resumes from there, which finishes instantly and looks like a
+   * button that does nothing. Two more presses get you back to the beginning,
+   * neither of them doing what it says.
+   *
+   * Rewinding here rather than on the press, which is the opposite of what the
+   * voice-note player does, and the difference is that this one has a
+   * **scrubber**. A position nobody can see is a decision that can wait until
+   * somebody asks for it again; a bar pinned to the end is the screen saying
+   * the clip is over and stuck. So the reset is visible the moment it happens,
+   * and play means play from the start.
+   *
+   * `seekBy` rather than assigning `currentTime`, per the immutability rule: a
+   * method is the API, and the one property assignment in this file is muting,
+   * which has no method to call.
+   */
+  useEventListener(player, 'playToEnd', () => {
+    player.pause();
+    player.seekBy(-player.currentTime);
+  });
 
   useEffect(() => {
     if (audible) takeAudioFocus(silence);
