@@ -232,10 +232,21 @@ appId: ${APP_ID}
 # button that looked pressable here would be one that fails after a tap rather
 # than one that says why beforehand.
 #
+# **Scrolled to, and that is not a detail.** This assertion shipped as a bare
+# `assertVisible` and failed the v0.9.0 release: the section sits below the
+# counts, so the button was rendered and off screen — which is precisely the
+# distinction this file exists to draw, and precisely the mistake the note above
+# on 'Raw data & export' already records from v0.2.0. Jest cannot tell rendered
+# from visible. Maestro can, and did, twice.
+#
 # Deliberately not pressed. It would make a real request to a real bucket, which
 # a smoke test has no business doing — and with nothing configured it cannot
 # anyway. What the request itself does is asserted in the Jest suite and against
 # AWS's own published signing vector.
+- scrollUntilVisible:
+    element:
+      text: 'Back up now'
+    direction: DOWN
 - assertVisible: 'Back up now'
 - tapOn: 'Back'
 # Asserted on the erase button, not on 'Track my day': the flow is scrolled to
