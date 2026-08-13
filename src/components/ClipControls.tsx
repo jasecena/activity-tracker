@@ -74,28 +74,6 @@ export function ClipControls({ player, durationMs, onScrubbing, onToggleMute }: 
         <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color={colors.textPrimary} />
       </Pressable>
 
-      {/* **Sound is a control, not a surprise.** A clip starts muted because it
-          starts on its own, so this is how it gets a voice — which makes it a
-          primary control rather than an afterthought, and it is sized like one.
-          In the bar and in line with the scrubber, because it belongs to this
-          clip and this moment rather than to the app. */}
-      <Pressable
-        onPress={onToggleMute}
-        accessibilityRole="button"
-        accessibilityState={{ selected: !muted }}
-        accessibilityLabel={muted ? 'Turn sound on' : 'Mute'}
-        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-      >
-        <Ionicons
-          // Different glyphs, not one glyph in two colours — the same rule the
-          // record button follows, so the state reads at a glance and survives
-          // a greyscale screen.
-          name={muted ? 'volume-mute' : 'volume-high'}
-          size={26}
-          color={colors.textPrimary}
-        />
-      </Pressable>
-
       <Text style={styles.time}>{formatDuration(Math.max(0, atMs))}</Text>
 
       <View style={styles.track}>
@@ -115,6 +93,33 @@ export function ClipControls({ player, durationMs, onScrubbing, onToggleMute }: 
 
       {/* Remaining, not total: the question mid-clip is "how much longer". */}
       <Text style={styles.time}>-{formatDuration(Math.max(0, totalMs - atMs))}</Text>
+
+      {/* **Sound is a control, not a surprise.** A clip starts muted because it
+          starts on its own, so this is how it gets a voice — a primary control
+          rather than an afterthought, and sized like one.
+
+          At the far end of the bar, opposite play. The two are the row's
+          bookends: the thing you press to start it on the left, the thing you
+          press to hear it on the right, with the clip's own time and position
+          between them. In line with the scrubber rather than floating over the
+          picture, because it belongs to this clip and this moment rather than
+          to the app. */}
+      <Pressable
+        onPress={onToggleMute}
+        accessibilityRole="button"
+        accessibilityState={{ selected: !muted }}
+        accessibilityLabel={muted ? 'Turn sound on' : 'Mute'}
+        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      >
+        <Ionicons
+          // Different glyphs, not one glyph in two colours — the same rule the
+          // record button follows, so the state reads at a glance and survives
+          // a greyscale screen.
+          name={muted ? 'volume-mute' : 'volume-high'}
+          size={26}
+          color={colors.textPrimary}
+        />
+      </Pressable>
     </View>
   );
 }
