@@ -891,8 +891,18 @@ costs one file to delete once the question above is settled.
 
 ## 18. "I was here the whole time": merging a stretch into one stay
 
-**Status:** designed and **decided**, not built. Asked for 13 August 2026;
-shape settled the same day. Written down here rather than built because the
+**Status:** **built**, 13 August 2026 — asked for, designed, decided and shipped
+the same day. What follows is the reasoning as it was settled; the code is
+`core/segments/stationary.ts`, `features/activities/hooks/useStationaryClaims.ts`
+and the row gesture in `features/replay/ReplayScreen.tsx`.
+
+Two things were deliberately left for when they are wanted rather than built on
+spec. **Retention does not reach the claims**: deleting a day leaves any claim
+over it stored and inert, which is harmless because a claim covering nothing
+emits nothing, but it is a store with no upper bound on it. And there is **no
+list of claims** anywhere — undo is the long press on the row, which is the
+thing somebody actually reaches for; a page under Settings would be for seeing
+them all at once, and nothing has wanted that yet. Written down here rather than built because the
 obvious implementation is a trap this codebase has already paid for once, and
 because it revives a feature that was withdrawn — both of which wanted the
 reasoning settled before code.

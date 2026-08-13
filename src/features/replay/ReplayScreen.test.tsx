@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { useState } from 'react';
 
 import type { DayGroup } from '@/core/day';
@@ -111,7 +111,7 @@ function renderTwoDays(overrides: { onOpenAllDays?: () => void } = {}) {
   return render(<Harness />);
 }
 
-function renderScreen(day: DayGroup) {
+function renderScreen(day: DayGroup, overrides: Partial<React.ComponentProps<typeof ReplayScreen>> = {}) {
   return render(
     <ReplayScreen
       days={[day]}
@@ -126,6 +126,7 @@ function renderScreen(day: DayGroup) {
       onOpenSegment={() => undefined}
       onOpenMedia={() => undefined}
       onOpenAllDays={() => undefined}
+      {...overrides}
     />,
   );
 }
@@ -327,4 +328,155 @@ it('lays the day bar out as one row, under whatever the sticky header does to it
 
   // ...and the element holding them lays them out across, not down.
   expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row' });
+});
+
+/**
+ * "I was here the whole time": long-press a stay, tap the row you were still
+ * until.
+ *
+ * The gesture is a long press for the reason the mode correction already is —
+ * a horizontal drag on a vertically scrolling list has to be handed back to the
+ * scroller often enough to be unreliable — and the three meanings it carries
+ * are told apart by what the row *is*, not by a menu. What this file asserts is
+ * that separation and the mode it opens; whether a given stretch may be called
+ * one stop is decided in `core/segments/stationary.ts`, where it is pure.
+ */
+describe('claiming a stretch was one stop', () => {
+  /** Two sittings with a short drift between them: a desk afternoon. */
+  const DESK = dayOf([
+    stay(T0, T0 + 30 * MINUTE, 0),
+    move(T0 + 30 * MINUTE, T0 + 32 * MINUTE, 0, 20),
+    stay(T0 + 32 * MINUTE, T0 + 90 * MINUTE, 20),
+  ]);
+
+  async function longPressFirstStay() {
+    const [first] = screen.getAllByLabelText(/^Unnamed place/);
+    await fireEvent(first!, 'longPress');
+  }
+
+  it('says what a tap means now, once a row has been picked', async () => {
+    await renderScreen(DESK, { onMerge: jest.fn() });
+    await openTimeline();
+
+    expect(screen.queryByText(/Now tap the row/)).toBeNull();
+
+    await longPressFirstStay();
+
+    expect(screen.getByText('Now tap the row you were still until.')).toBeOnTheScreen();
+  });
+
+  it('hands both rows over in time order, however they were picked', async () => {
+    const onMerge = jest.fn();
+    await renderScreen(DESK, { onMerge });
+    await openTimeline();
+
+    // Picked backwards: the later row first, then the earlier one.
+    const stays = screen.getAllByLabelText(/^Unnamed place/);
+    await fireEvent(stays[1]!, 'longPress');
+    await fireEvent.press(stays[0]!);
+
+    const [from, to] = onMerge.mock.calls[0] as [Segment, Segment];
+    expect(from.startedAt).toBe(T0);
+    expect(to.endedAt).toBe(T0 + 90 * MINUTE);
+  });
+
+  it('gives the rows back to opening once the pick is over', async () => {
+    const onOpenSegment = jest.fn();
+    await renderScreen(DESK, { onMerge: jest.fn(), onOpenSegment });
+    await openTimeline();
+
+    await longPressFirstStay();
+    // A tap means "and this one" while the mode is up, so nothing opens.
+    await fireEvent.press(screen.getAllByLabelText(/^Unnamed place/)[1]!);
+    expect(onOpenSegment).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getAllByLabelText(/^Unnamed place/)[0]!);
+    expect(onOpenSegment).toHaveBeenCalled();
+  });
+
+  it('cancels from the banner', async () => {
+    const onMerge = jest.fn();
+    await renderScreen(DESK, { onMerge });
+    await openTimeline();
+    await longPressFirstStay();
+
+    await fireEvent.press(screen.getByLabelText('Cancel merging'));
+
+    expect(screen.queryByText(/Now tap the row/)).toBeNull();
+    expect(onMerge).not.toHaveBeenCalled();
+  });
+
+  /** Pressing the row you started from is the obvious way out of the mode. */
+  it('cancels when the same row is pressed again', async () => {
+    const onMerge = jest.fn();
+    await renderScreen(DESK, { onMerge });
+    await openTimeline();
+    await longPressFirstStay();
+
+    await fireEvent.press(screen.getAllByLabelText(/^Unnamed place/)[0]!);
+
+    expect(screen.queryByText(/Now tap the row/)).toBeNull();
+    expect(onMerge).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A journey keeps the meaning it already had. A stay has no activity type, so
+   * the two never compete for the same row.
+   */
+  it('still corrects a journey, and never starts a merge from one', async () => {
+    const onCorrectMode = jest.fn();
+    const onMerge = jest.fn();
+    await renderScreen(DESK, { onMerge, onCorrectMode });
+    await openTimeline();
+
+    await fireEvent(screen.getByLabelText(/^Walk, /), 'longPress');
+
+    expect(onCorrectMode).toHaveBeenCalled();
+    expect(screen.queryByText(/Now tap the row/)).toBeNull();
+  });
+
+  /**
+   * Undo is a long press on the merged row, which is what the withdrawn merge
+   * feature could not do: its recorded objection was that undoing meant finding
+   * the label behind a row by its id. The row *is* the claim's id here.
+   */
+  describe('undoing it', () => {
+    const claim = {
+      id: 's-merged',
+      startedAt: T0,
+      endedAt: T0 + 90 * MINUTE,
+      at: { lat: 0, lon: 0 },
+    };
+    const MERGED = dayOf([{ ...stay(T0, T0 + 90 * MINUTE, 10), id: claim.id }]);
+
+    beforeEach(() => {
+      jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      (Alert.alert as jest.Mock).mockClear();
+    });
+
+    it('asks before separating, and does nothing until answered', async () => {
+      const onUnmerge = jest.fn();
+      await renderScreen(MERGED, { claims: [claim], onUnmerge, onMerge: jest.fn() });
+      await openTimeline();
+
+      await fireEvent(screen.getByLabelText(/^Unnamed place/), 'longPress');
+
+      expect(onUnmerge).not.toHaveBeenCalled();
+      expect(Alert.alert).toHaveBeenCalledWith('Separate this stretch again?', expect.any(String), expect.anything());
+
+      const buttons = (Alert.alert as jest.Mock).mock.calls.at(-1)?.[2] as
+        { style?: string; onPress?: () => void }[] | undefined;
+      await act(async () => buttons?.find((button) => button.style === 'destructive')?.onPress?.());
+      expect(onUnmerge).toHaveBeenCalledWith(claim);
+    });
+
+    it('does not start a new merge from a row that is already one', async () => {
+      await renderScreen(MERGED, { claims: [claim], onUnmerge: jest.fn(), onMerge: jest.fn() });
+      await openTimeline();
+
+      await fireEvent(screen.getByLabelText(/^Unnamed place/), 'longPress');
+
+      expect(screen.queryByText(/Now tap the row/)).toBeNull();
+    });
+  });
 });

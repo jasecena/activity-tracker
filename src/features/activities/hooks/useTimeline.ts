@@ -3,7 +3,14 @@ import { AppState } from 'react-native';
 
 import { groupByDay, type DayGroup } from '@/core/day';
 import type { Fix, RejectionReason } from '@/core/geo';
-import { applyJourneyLabels, segmentFixes, type JourneyLabel, type Segment } from '@/core/segments';
+import {
+  applyJourneyLabels,
+  applyStationaryClaims,
+  segmentFixes,
+  type JourneyLabel,
+  type Segment,
+  type StationaryClaim,
+} from '@/core/segments';
 import { monotonicNow, now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { freezeFinishedDays } from '@/services/dayLog';
 import { readBuffer } from '@/services/fixBuffer';
@@ -53,7 +60,12 @@ const REFRESH_MS = 20_000;
  * The second matters more: coming back is exactly when the buffer has grown by
  * everything that happened while you were out.
  */
-export function useTimeline(settings: Settings, labels: readonly JourneyLabel[], settingsReady: boolean): Timeline {
+export function useTimeline(
+  settings: Settings,
+  labels: readonly JourneyLabel[],
+  claims: readonly StationaryClaim[],
+  settingsReady: boolean,
+): Timeline {
   const [today, setToday] = useState<readonly Segment[]>([]);
   const [history, setHistory] = useState<readonly DayGroup[]>([]);
   const [rejected, setRejected] = useState<Timeline['rejected']>(null);
@@ -117,19 +129,29 @@ export function useTimeline(settings: Settings, labels: readonly JourneyLabel[],
       const labelled = applyJourneyLabels(liveSegments, labels);
       const labelledLog = applyJourneyLabels(log, labels);
 
+      // **Claims last, and over the labelled timeline rather than the raw one.**
+      // Naming a journey and saying you never left are two different sentences,
+      // and the order matters in one direction only: a claim collapses rows,
+      // so applying it first would leave a label re-cutting a stay that no
+      // longer has the journey it was about inside it. Both halves for the same
+      // reason the labels take both — a merge on a frozen day that was stored
+      // faithfully and never shown is a merge that looks broken.
+      const merged = applyStationaryClaims(labelled, claims);
+      const mergedLog = applyStationaryClaims(labelledLog, claims);
+
       setNow(at);
       setTzOffset(offset);
       setRejected(dropped);
       setFixes(buffered);
-      setToday(labelled);
-      setHistory(groupByDay(labelledLog, offset));
+      setToday(merged);
+      setHistory(groupByDay(mergedLog, offset));
       setReady(true);
     })();
 
     return () => {
       live = false;
     };
-  }, [settings.segmentation, settings.retentionDays, labels, settingsReady, tick]);
+  }, [settings.segmentation, settings.retentionDays, labels, claims, settingsReady, tick]);
 
   useEffect(() => {
     const timer = setInterval(refresh, REFRESH_MS);

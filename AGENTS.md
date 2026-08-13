@@ -281,6 +281,51 @@ happened are routinely different. Ids come from the instant, so `freeInstant`
 nudges a collision forward a millisecond — without it the second note about a
 finished day would silently replace the first, since both want the same default.
 
+**"I was here the whole time" is a claim over a time range, and nothing is
+deleted to honour it.** `core/segments/stationary.ts`. A phone sitting still
+produces drift, drift produces spurious short moves, and an afternoon at one
+desk comes out as stay/move/stay/move — but the case that justifies the feature
+is the **hole**, where the phone reported nothing for two hours indoors. The
+fold is forbidden to guess across a gap and should be; this is the one place
+where the person who was there can say what the app may not infer.
+
+**Decide from segments, apply to segments**, and that is what settled the shape
+against deleting the middle fixes. Deleting is a documented trap on its own —
+two fixes three hours apart describe a hole, not a stay, which is why
+`core/compact` keeps a skeleton — but the argument that decided it is that a
+**frozen day has no fixes left**: its segments are its record, so anything
+working on fixes works only on today, and looking back at a finished afternoon
+is exactly when somebody wants this. A folded day and a frozen one are both a
+`Segment[]`, so one function serves both and neither reads the archive.
+
+**The refusal is measured from the anchor, net of the reading error**, and both
+halves of that matter. Not total path length: a phone jittering in one place for
+an hour accumulates hundreds of metres without having been anywhere, which would
+refuse the exact case the feature exists for. Not the straight line from first
+to last: a walk round the block returns to where it started and is still a walk.
+And the error comes off before the comparison — a stay carries its own measured
+error in `radiusM`, a move gets the **effective** preset's `readingErrorM`, so a
+battery-saver day is more forgiving than a balanced one. A fix seventy metres out
+from a reading worth ±20 m is not evidence anybody walked seventy metres.
+
+**A refusal says what it found.** "You went about 400 m away in the middle of
+this" is an answer; a control that quietly does nothing is the failure the
+transcription button already taught this app.
+
+**Long-press a stay to start, tap the row you were still until; long-press the
+merged row to undo.** One gesture, three meanings, told apart by what the row
+_is_ rather than by a menu — a claim's row unmerges, a stay starts a merge, a
+journey still corrects its activity type. A stay has no activity type, so the
+last two never compete. The merged row **carries the claim's own id**, which is
+the direct answer to the withdrawn merge feature's recorded objection that
+"undoing meant finding the label behind a row by its id".
+
+**The pick is a mode, so it says so and can be escaped**, by the banner's Cancel
+or by pressing the anchor again. And it is **derived from the day on screen**
+rather than cleared by an effect: `react-hooks/set-state-in-effect` is an error
+here, and clearing on a day change would draw the new day once with the old
+day's selection over it.
+
 **Naming a journey is retrospective.** Tap a journey the app already recorded
 and say what it was, the same way you name a stay. A `JourneyLabel` is made
 _from_ a segment, so it has both ends and always has something behind it —

@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { dayKeyOf, daysWorthOpening, groupByDay, whereToWrite, type DayNote, type NoteVoice } from '@/core/day';
 import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
-import { modeLabel } from '@/core/format';
-import { ACTIVITY_MODES, journeyLabelId } from '@/core/segments';
-import type { MoveSegment, Segment, StaySegment } from '@/core/segments';
+import { formatDistance, modeLabel } from '@/core/format';
+import { ACTIVITY_MODES, journeyLabelId, judgeStationaryClaim, stationaryCentre } from '@/core/segments';
+import type { MergeRefusal, MoveSegment, Segment, StationaryClaim, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
 import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
 import { useTimeline } from '@/features/activities/hooks/useTimeline';
@@ -26,6 +26,8 @@ import { NamedJourneysScreen } from '@/features/labels/NamedJourneysScreen';
 import { MenuSheet } from '@/components/MenuSheet';
 import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
 import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
+import { useStationaryClaims } from '@/features/activities/hooks/useStationaryClaims';
+import { readingErrorFor } from '@/services/location';
 import { NoteSheet } from '@/features/notes/components/NoteSheet';
 import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptures';
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
@@ -146,10 +148,16 @@ export function TabShell() {
 
   const settings = useSettings();
   const journeys = useJourneyLabels();
+  const stationary = useStationaryClaims();
   const notes = useDayNotes();
   const places = usePlaces();
   const media = useMedia();
-  const timeline = useTimeline(settings.settings, journeys.labels, settings.ready && journeys.ready);
+  const timeline = useTimeline(
+    settings.settings,
+    journeys.labels,
+    stationary.claims,
+    settings.ready && journeys.ready && stationary.ready,
+  );
 
   // Voice notes made while a voice note was still a capture, moved into the
   // diary. Hoisted here because it is the one place that holds both stores, and
@@ -302,6 +310,50 @@ export function TabShell() {
     if (key === 'replay') setReplayDayKey(null);
   };
 
+  /**
+   * "I was here the whole time", judged.
+   *
+   * Here rather than in the screen because this is the layer that holds what
+   * the judgement needs and `core` refuses to read: the segmentation
+   * thresholds, the *effective* preset — so a day recorded on battery saver is
+   * appropriately more forgiving than one on balanced — and the day's captures,
+   * which know where they were taken from a reading the fold never saw.
+   *
+   * **A refusal says what it found.** "You moved 400 m in the middle of this"
+   * is an answer; a control that quietly does nothing is the failure the
+   * transcription button already taught this app.
+   */
+  const mergeStretch = (from: Segment, to: Segment, shown: readonly Segment[]) => {
+    const startedAt = from.startedAt;
+    const endedAt = to.endedAt;
+
+    const verdict = judgeStationaryClaim({
+      segments: shown,
+      startedAt,
+      endedAt,
+      thresholdM: settings.settings.segmentation.minMoveDistanceM,
+      readingErrorM: readingErrorFor(settings.runningPreset),
+      labels: journeys.labels,
+      captures: captures
+        .filter((item) => item.capturedAt >= startedAt && item.capturedAt <= endedAt)
+        .flatMap((item) => (item.at ? [item.at] : [])),
+    });
+
+    if (!verdict.ok) {
+      Alert.alert('These cannot be one stop', refusalText(verdict.refusal, verdict.excursionM));
+      return;
+    }
+
+    const inside = shown.filter((segment) => segment.endedAt > startedAt && segment.startedAt < endedAt);
+    const at = stationaryCentre(inside) ?? (from.kind === 'stay' ? from.center : null);
+    // Only reachable if the range holds no stay at all and the anchor was a
+    // journey, which the screen does not offer — but a claim with nowhere to be
+    // is not a thing to write down.
+    if (!at) return;
+
+    stationary.claim(startedAt, endedAt, at);
+  };
+
   const openSegment = (which: PagedTab) => (segment: Segment) => stacks[which].push({ kind: 'segment', segment });
   /**
    * Opening a capture goes to the Media tab, focused on it — there is no
@@ -448,6 +500,9 @@ export function TabShell() {
             onOpenMedia={openMedia}
             onOpenAllDays={() => stacks.replay.push({ kind: 'alldays' })}
             onCorrectMode={setCorrecting}
+            claims={stationary.claims}
+            onMerge={mergeStretch}
+            onUnmerge={(claim: StationaryClaim) => stationary.forget(claim.id)}
           />
           {stacks.replay.current ? (
             <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
@@ -617,6 +672,26 @@ export function TabShell() {
 
 /** Everything except `unknown`, which is what the classifier says when it cannot tell, not an answer you give. */
 const CORRECTABLE = ACTIVITY_MODES.filter((mode) => mode !== 'unknown');
+
+/**
+ * Why a stretch cannot be called one stop, in words.
+ *
+ * Each one names the thing it found rather than the rule it broke: what somebody
+ * wants to know is that there is a drive in there, not that a threshold was
+ * exceeded.
+ */
+function refusalText(refusal: MergeRefusal | null, excursionM: number): string {
+  switch (refusal) {
+    case 'moved':
+      return `You went about ${formatDistance(excursionM)} away in the middle of this, so it was not one stop. Nothing has been changed.`;
+    case 'named':
+      return 'One of these journeys has a name you gave it. Remove the name first if it really was one stop.';
+    case 'capture-elsewhere':
+      return 'Something you photographed in here was taken somewhere else, so the app has a position that disagrees.';
+    default:
+      return 'Pick two different rows, the first one earlier than the second.';
+  }
+}
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
