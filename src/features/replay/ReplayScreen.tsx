@@ -156,19 +156,30 @@ export function ReplayScreen({
           page is long — arrows that scroll off the top mean scrolling back up to
           use them, on a screen whose whole job is moving between days. */}
       <ScrollView contentContainerStyle={styles.content} stickyHeaderIndices={[0]}>
-        <View style={styles.dayNav}>
-          <Pressable
-            onPress={() => older && onSelectDay(older.key)}
-            disabled={!older}
-            accessibilityRole="button"
-            accessibilityLabel="Previous day"
-            hitSlop={ARROW_SLOP}
-            style={({ pressed }) => [styles.navButton, !older && styles.navDisabled, pressed && styles.pressed]}
-          >
-            <Ionicons name="chevron-back" size={20} color={older ? colors.textPrimary : colors.textMuted} />
-          </Pressable>
+        {/* **Two Views, and the outer one is not decoration.** React Native's
+            sticky header moves its child's style onto its own wrapper and hands
+            the child `{flex: 1}` in place of it — `ScrollViewStickyHeader.js`,
+            "We transfer the child style to the wrapper". So a `flexDirection`
+            written on the sticky child lands one level above the children it was
+            meant to arrange, and the element actually holding them falls back to
+            the default: column. That is what put the arrows above and below the
+            date on a phone while every style looked right in the source.
+            The outer View exists to be eaten by the wrapper. The row lives
+            inside it, where nothing rewrites it. */}
+        <View style={styles.dayNavSticky}>
+          <View style={styles.dayNav}>
+            <Pressable
+              onPress={() => older && onSelectDay(older.key)}
+              disabled={!older}
+              accessibilityRole="button"
+              accessibilityLabel="Previous day"
+              hitSlop={ARROW_SLOP}
+              style={({ pressed }) => [styles.navButton, !older && styles.navDisabled, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-back" size={20} color={older ? colors.textPrimary : colors.textMuted} />
+            </Pressable>
 
-          {/* The date is the button. A calendar icon beside a date is the same
+            {/* The date is the button. A calendar icon beside a date is the same
               thing twice, and the date is a bigger target than an icon.
 
               **It keeps a margin, and the margin belongs to neither button.**
@@ -178,27 +189,28 @@ export function ReplayScreen({
               a mis-tap that opens the day list is a page in your face. The dead
               strip is wide enough to hold the arrows' `hitSlop` inside it, so
               the enlarged targets stop before the date's begins. */}
-          <Pressable
-            onPress={onOpenAllDays}
-            accessibilityRole="button"
-            accessibilityLabel={`${isToday ? 'Today' : title}. Choose another day`}
-            style={({ pressed }) => [styles.dayNavLabelButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.dayNavLabel} numberOfLines={1}>
-              {isToday ? 'Today' : title}
-            </Text>
-          </Pressable>
+            <Pressable
+              onPress={onOpenAllDays}
+              accessibilityRole="button"
+              accessibilityLabel={`${isToday ? 'Today' : title}. Choose another day`}
+              style={({ pressed }) => [styles.dayNavLabelButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.dayNavLabel} numberOfLines={1}>
+                {isToday ? 'Today' : title}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => onSelectDay(newer ? newer.key : null)}
-            disabled={!newer}
-            accessibilityRole="button"
-            accessibilityLabel="Next day"
-            hitSlop={ARROW_SLOP}
-            style={({ pressed }) => [styles.navButton, !newer && styles.navDisabled, pressed && styles.pressed]}
-          >
-            <Ionicons name="chevron-forward" size={20} color={newer ? colors.textPrimary : colors.textMuted} />
-          </Pressable>
+            <Pressable
+              onPress={() => onSelectDay(newer ? newer.key : null)}
+              disabled={!newer}
+              accessibilityRole="button"
+              accessibilityLabel="Next day"
+              hitSlop={ARROW_SLOP}
+              style={({ pressed }) => [styles.navButton, !newer && styles.navDisabled, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-forward" size={20} color={newer ? colors.textPrimary : colors.textMuted} />
+            </Pressable>
+          </View>
         </View>
 
         {/* Only for today. A day already recorded cannot be affected by what
@@ -456,21 +468,24 @@ const styles = StyleSheet.create({
   },
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
-  dayNav: {
-    flexDirection: 'row',
-    // **Spelled out rather than left to the default.** The bar is one line —
-    // an arrow, the date, an arrow — and it was reported stacking into three.
-    // `nowrap` and a shrinkable middle are what make that impossible whatever
-    // the date says or how wide the type is: there is no second line to wrap
-    // onto, so a long date truncates instead of pushing an arrow down.
-    flexWrap: 'nowrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  // Everything here ends up on React Native's sticky wrapper rather than on
+  // this View — which is fine for a ground and some padding, and is exactly why
+  // the row itself cannot live here. See the comment at the call site.
+  dayNavSticky: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     // The bar is sticky, so it needs a ground of its own — without one the
     // content scrolls visibly underneath it.
     backgroundColor: colors.background,
+  },
+  dayNav: {
+    flexDirection: 'row',
+    // **Spelled out rather than left to the default.** The bar is one line —
+    // an arrow, the date, an arrow. `nowrap` and a shrinkable middle mean a
+    // long date truncates rather than pushing a control onto a second line.
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   dayNavLabelButton: {
     // Takes what is left over and gives it all back under pressure, so the
