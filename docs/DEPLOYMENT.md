@@ -189,6 +189,16 @@ git push origin v0.1.0
 That is the whole procedure. Watch the run in Actions. To rehearse without a
 tag, use **workflow_dispatch** on `ios-release.yml`.
 
+**The tag is the only source of truth for the version.** `app.config.ts` reads
+`APP_VERSION`, which the workflow sets from the tag, and the build number comes
+from the run number. Nothing anywhere reads `package.json`'s `version` field.
+
+Bump it with the tag anyway, in the same commit. It drifted to `0.4.2` while
+the tags reached `v0.9.1` — five releases apart — precisely because nothing
+breaks when it is wrong, and a number that is never right is worse than no
+number: the first place anyone looks to answer "what version is this" is the
+one file that had no idea.
+
 If it fails at `-exportArchive`, the cause is almost always signing: the App ID
 does not exist, the bundle id in `IOS_BUNDLE_IDENTIFIER` does not match it, or
 the API key lacks the App Manager role.
