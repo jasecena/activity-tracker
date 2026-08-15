@@ -3,12 +3,25 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
-import { formatDayTitle } from '@/core/format';
-import { groupNotesByDay, splitAtNow, type DayNote, type NoteDay } from '@/core/day';
+import { formatDayTitle, formatDuration } from '@/core/format';
+import { groupNotesByDay, splitAtNow, type DayNote, type NoteDay, type NoteVoice } from '@/core/day';
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
+
+import { RecordButton } from './components/RecordButton';
+import { MAX_VOICE_MS, useVoiceNote } from './hooks/useVoiceNote';
+
+/**
+ * Bigger than the sheet's, on purpose.
+ *
+ * It is the only control on this screen that is an *action* rather than a way
+ * of reading what is already there, and it is meant to be found without
+ * looking — the pen is for when you have sat down, and this is for when you
+ * have not.
+ */
+const QUICK_MIC_SIZE = 76;
 
 interface NotesScreenProps {
   readonly notes: readonly DayNote[];
@@ -22,8 +35,25 @@ interface NotesScreenProps {
    */
   readonly now: number;
   readonly onWrite: () => void;
+  /**
+   * File a recording as a note of its own, at the instant the talking started.
+   *
+   * The whole of the quick microphone: there is no sheet, no fields and no
+   * Save, because a recording alone is already a note — the same rule that lets
+   * a title alone be one, or a paragraph nobody wanted to name.
+   */
+  readonly onSpeak: (voice: NoteVoice, startedAt: number) => void;
   readonly onOpen: (note: DayNote) => void;
   readonly onForget: (id: string) => void;
+  /**
+   * The thumbnail of the capture a note is about, or null.
+   *
+   * A function rather than a list of captures, so this screen never has to know
+   * what a `MediaItem` is: the shell holds both stores and the one thumbnail
+   * cache, and hands down the only question the diary asks of the media
+   * library.
+   */
+  readonly thumbFor?: (mediaId: string | null) => string | null;
 }
 
 /**
@@ -49,7 +79,16 @@ interface NotesScreenProps {
  * full entries is a wall of text to scroll past, and "which note is which" is
  * what a list is for.
  */
-export function NotesScreen({ notes, tzOffsetMinutes, now, onWrite, onOpen, onForget }: NotesScreenProps) {
+export function NotesScreen({
+  notes,
+  tzOffsetMinutes,
+  now,
+  onWrite,
+  onSpeak,
+  onOpen,
+  onForget,
+  thumbFor,
+}: NotesScreenProps) {
   /**
    * What has happened and what has not, read in opposite directions.
    *
@@ -62,6 +101,22 @@ export function NotesScreen({ notes, tzOffsetMinutes, now, onWrite, onOpen, onFo
   const { ahead, behind } = useMemo(() => splitAtNow(notes, now), [notes, now]);
   const upcoming = useMemo(() => groupNotesByDay(ahead, tzOffsetMinutes, 'soonest'), [ahead, tzOffsetMinutes]);
   const days = useMemo(() => groupNotesByDay(behind, tzOffsetMinutes), [behind, tzOffsetMinutes]);
+
+  /**
+   * The quick microphone's recorder.
+   *
+   * A second instance of the same hook the sheet uses rather than a second way
+   * of recording: the permission, the position read at the *start*, the screen
+   * held awake across the save, the twenty-minute cap and the audio mode given
+   * back afterwards are all things that were expensive to get right once. The
+   * two are kept from recording at the same time inside the hook — see its
+   * `holder` — because they are mounted together whichever tab is showing.
+   *
+   * `onSpeak` is passed straight through, so the recording lands as a note
+   * without a render in between. The list is what says it worked: the new entry
+   * appears at the top of today, which is where the eye already is.
+   */
+  const recorder = useVoiceNote(onSpeak);
 
   return (
     <View style={styles.screen}>
@@ -82,21 +137,71 @@ export function NotesScreen({ notes, tzOffsetMinutes, now, onWrite, onOpen, onFo
           <View style={styles.ahead}>
             <Text style={styles.aheadLabel}>COMING UP</Text>
             {upcoming.map((day) => (
-              <Day key={day.key} day={day} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpen} onForget={onForget} />
+              <Day
+                key={day.key}
+                day={day}
+                tzOffsetMinutes={tzOffsetMinutes}
+                onOpen={onOpen}
+                onForget={onForget}
+                thumbFor={thumbFor}
+              />
             ))}
           </View>
         ) : null}
 
         {days.length === 0 && upcoming.length === 0 ? (
           <Text style={styles.empty}>
-            Nothing written yet. Tap the pen to write about today, or to say it out loud.
+            Nothing written yet. Tap the microphone to say something, or the pen to write it.
           </Text>
         ) : (
           days.map((day) => (
-            <Day key={day.key} day={day} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpen} onForget={onForget} />
+            <Day
+              key={day.key}
+              day={day}
+              tzOffsetMinutes={tzOffsetMinutes}
+              onOpen={onOpen}
+              onForget={onForget}
+              thumbFor={thumbFor}
+            />
           ))
         )}
       </ScrollView>
+
+      {/* **The microphone is the screen's lower edge, and the pen is in the
+          header.** They are not two features to choose between: they are the
+          two ways of putting words in the same diary, and the reason this one
+          is bigger and lower is that it is the one reached for with something
+          to say and no time to sit down. The pen leads to a sheet with fields
+          and a Save; this leads to a note, already written.
+
+          `box-none` on the dock, so the list scrolls behind it everywhere
+          except on the button itself. A floating control that ate a strip of
+          the screen's own scrolling would be worse than one that was simply
+          in the way. */}
+      <View style={styles.dock} pointerEvents="box-none">
+        <View style={styles.dockLabel}>
+          {recorder.recording ? (
+            <>
+              <Text style={styles.clock}>{formatDuration(recorder.elapsedMs)}</Text>
+              {/* The ceiling, said while there is still time to act on it. The
+                  recorder stops itself there and says so, but being told
+                  afterwards is a worse place to find out. */}
+              <Text style={styles.hint}>Stops at {formatDuration(MAX_VOICE_MS)}</Text>
+            </>
+          ) : recorder.saving ? (
+            <Text style={styles.hint}>Saving…</Text>
+          ) : (
+            <Text style={styles.hint}>Tap to say something</Text>
+          )}
+        </View>
+
+        <RecordButton
+          size={QUICK_MIC_SIZE}
+          recording={recorder.recording}
+          onStart={recorder.start}
+          onStop={recorder.stop}
+        />
+      </View>
     </View>
   );
 }
@@ -107,11 +212,13 @@ function Day({
   tzOffsetMinutes,
   onOpen,
   onForget,
+  thumbFor,
 }: {
   readonly day: NoteDay;
   readonly tzOffsetMinutes: number;
   readonly onOpen: (note: DayNote) => void;
   readonly onForget: (id: string) => void;
+  readonly thumbFor?: (mediaId: string | null) => string | null;
 }) {
   return (
     <View style={styles.day}>
@@ -125,6 +232,7 @@ function Day({
             tzOffsetMinutes={tzOffsetMinutes}
             onOpen={onOpen}
             onForget={onForget}
+            thumbUri={thumbFor?.(note.mediaId) ?? null}
           />
         ))}
       </View>
@@ -157,11 +265,13 @@ function SwipeToDelete({
   tzOffsetMinutes,
   onOpen,
   onForget,
+  thumbUri,
 }: {
   readonly note: DayNote;
   readonly tzOffsetMinutes: number;
   readonly onOpen: (note: DayNote) => void;
   readonly onForget: (id: string) => void;
+  readonly thumbUri: string | null;
 }) {
   return (
     <Swipeable
@@ -188,7 +298,7 @@ function SwipeToDelete({
       rightThreshold={40}
     >
       <View style={styles.row}>
-        <NoteRow note={note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpen} />
+        <NoteRow note={note} tzOffsetMinutes={tzOffsetMinutes} onOpen={onOpen} thumbUri={thumbUri} />
       </View>
     </Swipeable>
   );
@@ -196,7 +306,26 @@ function SwipeToDelete({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
+  // Deep enough that the last row clears the microphone rather than sitting
+  // under it: a list whose final entry can never be read is a list missing an
+  // entry, as far as anybody scrolling to the bottom can tell.
+  content: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: QUICK_MIC_SIZE + spacing.xxl + spacing.lg,
+    gap: spacing.md,
+  },
+  dock: { position: 'absolute', left: 0, right: 0, bottom: spacing.md, alignItems: 'center', gap: spacing.xs },
+  // Its own ground, because it floats over whatever the list happens to have
+  // scrolled under it.
+  dockLabel: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  clock: { ...typography.clock, color: colors.danger },
+  hint: { ...typography.caption, color: colors.textMuted },
   ahead: {
     gap: spacing.sm,
     padding: spacing.sm,

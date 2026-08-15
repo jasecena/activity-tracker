@@ -18,7 +18,7 @@ export interface UseDayNotes {
    * The recording, when there is one, is already on disk: the sheet records
    * first and saves after, so this stores a name rather than bytes.
    */
-  write: (at: number, title: string, text: string, voice?: NoteVoice | null) => void;
+  write: (at: number, title: string, text: string, voice?: NoteVoice | null, mediaId?: string | null) => void;
   /**
    * Change one already written: its words, its time, or both.
    *
@@ -26,7 +26,14 @@ export interface UseDayNotes {
    * another date moves it to another day — which is how a note written in the
    * wrong place gets put right. Emptying it entirely deletes it.
    */
-  edit: (note: DayNote, at: number, title: string, text: string, voice?: NoteVoice | null) => void;
+  edit: (
+    note: DayNote,
+    at: number,
+    title: string,
+    text: string,
+    voice?: NoteVoice | null,
+    mediaId?: string | null,
+  ) => void;
   forget: (id: string) => void;
 }
 
@@ -89,23 +96,30 @@ export function useDayNotes(): UseDayNotes {
   }, []);
 
   const write = useCallback(
-    (at: number, title: string, text: string, voice: NoteVoice | null = null) => {
+    (at: number, title: string, text: string, voice: NoteVoice | null = null, mediaId: string | null = null) => {
       // Every note added to a finished day wants the same default instant — the
       // end of its last segment — and an id is derived from that instant, so
       // without this the second note about a Tuesday would replace the first.
       // A minute chosen by hand collides just as easily.
-      const next = noteAt(freeInstant(notes, at), title, text, voice);
+      const next = noteAt(freeInstant(notes, at), title, text, voice, mediaId);
       if (next) persist([...notes, next]);
     },
     [notes, persist],
   );
 
   const edit = useCallback(
-    (note: DayNote, at: number, title: string, text: string, voice: NoteVoice | null = null) => {
+    (
+      note: DayNote,
+      at: number,
+      title: string,
+      text: string,
+      voice: NoteVoice | null = null,
+      mediaId: string | null = null,
+    ) => {
       const without = notes.filter((existing) => existing.id !== note.id);
       // Against the others rather than against all of them: a note keeping its
       // own instant must not be nudged off it by its own reflection.
-      const next = noteAt(freeInstant(without, at), title, text, voice);
+      const next = noteAt(freeInstant(without, at), title, text, voice, mediaId);
       // Emptying a note is how you delete one, so there is no separate confirm
       // for the case where somebody selected all and pressed backspace.
       persist(next ? [...without, next] : without);

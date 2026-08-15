@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { formatClockTime, formatDistance, formatDuration, formatPace, formatSpeed, modeLabel } from '@/core/format';
 import { matchPlace, type Place } from '@/core/places';
@@ -18,6 +19,15 @@ interface SegmentScreenProps {
   readonly onNamePlace?: () => void;
   /** Moves only: opens the journey sheet. The counterpart to naming a place. */
   readonly onNameJourney?: () => void;
+  /**
+   * Stays only: say why you were here, or pass empty to stop saying it.
+   *
+   * Absent where the timeline is read-only. In place rather than behind a sheet
+   * — unlike naming the place, which is a picker over a list of candidates,
+   * this is one line of free text about one stop, and the page it belongs to is
+   * the page you are already on.
+   */
+  readonly onSetPurpose?: (purpose: string) => void;
 }
 
 /** Every field the app holds for one row of the timeline. */
@@ -29,6 +39,7 @@ export function SegmentScreen({
   onBack,
   onNamePlace,
   onNameJourney,
+  onSetPurpose,
 }: SegmentScreenProps) {
   const span = `${formatClockTime(segment.startedAt, tzOffsetMinutes)}–${formatClockTime(segment.endedAt, tzOffsetMinutes)}`;
   const elapsed = durationMs(segment);
@@ -53,7 +64,17 @@ export function SegmentScreen({
               : undefined
           }
         />
-        <ScrollView contentContainerStyle={styles.content}>
+        {/* iOS's own inset, so the field is scrolled clear of the keyboard
+            rather than typed into from behind it. A plain scrolling page needs
+            this and not the `KeyboardAvoidingView` the sheets need — those are
+            anchored to the bottom rather than scrolling. */}
+        <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
+          {/* **First on the page, above the measurements.** Everything below is
+              something the app worked out; this is the only thing here that
+              nobody but you could supply, and it is what you came back to this
+              stop to read. */}
+          {onSetPurpose ? <Purpose value={segment.purpose} onSet={onSetPurpose} /> : null}
+
           <View style={styles.stats}>
             <StatTile label="Duration" value={formatDuration(elapsed)} accent={colors.stay} />
             <StatTile label="Wander" value={formatDistance(segment.radiusM)} />
@@ -174,6 +195,57 @@ export function SegmentScreen({
   );
 }
 
+/**
+ * Why you were here.
+ *
+ * **Saved on blur rather than by a button**, which is the difference between a
+ * field and a form. There is one thing to type and nothing to confirm: leaving
+ * the field is the whole gesture, and a Save button beside a single line would
+ * be a second decision to make about a sentence you have already finished
+ * writing.
+ *
+ * **Emptying it deletes it, with nothing asked.** The bar `confirmDestructive`
+ * draws is data its owner made that nothing can reconstruct — a note, a
+ * recording, a name. This is one line, in a field, undone by retyping it in the
+ * place you are already standing. A dialog there would be a dialog in front of
+ * the thing the field is for.
+ *
+ * The draft is `null` until something is typed, so the field starts at what is
+ * stored and a purpose changed elsewhere is not held stale behind a copy of
+ * itself — the same reason `NoteSheet` keeps nullable drafts rather than seeding
+ * state in an effect.
+ */
+function Purpose({ value, onSet }: { readonly value: string | null; readonly onSet: (purpose: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = draft ?? value ?? '';
+
+  return (
+    <View style={styles.purpose}>
+      <Text style={styles.purposeLabel}>WHY YOU WERE HERE</Text>
+      <TextInput
+        value={text}
+        onChangeText={setDraft}
+        placeholder="Groceries, haircut, waiting for the train…"
+        placeholderTextColor={colors.textMuted}
+        style={styles.purposeInput}
+        accessibilityLabel="Why you were here"
+        multiline
+        onBlur={() => {
+          if (draft === null) return;
+          onSet(draft);
+          // Back to reading whatever was stored, so the field shows the
+          // trimmed, saved version rather than the keystrokes that made it.
+          setDraft(null);
+        }}
+      />
+      <Text style={styles.purposeNote}>
+        Kept with this stop, not with the place — so the next visit here can have a reason of its own. Clear the field
+        to remove it.
+      </Text>
+    </View>
+  );
+}
+
 function Field({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <View style={styles.field} accessible accessibilityLabel={`${label}: ${value}`}>
@@ -189,6 +261,18 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
   stats: { flexDirection: 'row', gap: spacing.sm },
+  purpose: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs },
+  purposeLabel: { ...typography.label, fontSize: 10, color: colors.textMuted },
+  purposeInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: 44,
+  },
+  purposeNote: { ...typography.caption, color: colors.textSecondary },
   sectionLabel: { ...typography.label, fontSize: 11, color: colors.textMuted, marginTop: spacing.md },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md },
   field: {

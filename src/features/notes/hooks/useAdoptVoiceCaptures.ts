@@ -46,7 +46,9 @@ export function useAdoptVoiceCaptures(media: UseMedia, notes: UseDayNotes): void
       // Whatever was typed on the capture. It was the only place a voice note
       // could hold words, so it is the note's body now.
       stray.note,
-      kept ? { ...kept, durationMs: stray.durationMs ?? 0, at: stray.at } : null,
+      // Unlocked, like every recording arrives: adopting one from an older
+      // build is not the moment to decide its owner wanted it kept.
+      kept ? { ...kept, durationMs: stray.durationMs ?? 0, at: stray.at, locked: false } : null,
     );
     media.forget(stray.id);
   }, [media, notes]);

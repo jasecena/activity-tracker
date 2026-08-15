@@ -63,8 +63,13 @@ export const SegmentRow = memo(function SegmentRow({
   // through the row's own label instead.
   const named = !isStay && segment.modeIsManual ? ', named by you' : '';
 
+  // Read out after the duration, because it is the part only its author could
+  // have supplied and the part a screen reader would otherwise never reach: the
+  // line below is a second `Text`, and a labelled row collapses its children.
+  const purpose = isStay ? segment.purpose : null;
+
   const label = isStay
-    ? `${title}, ${elapsed}, from ${startedAt}`
+    ? `${title}, ${elapsed}, from ${startedAt}${purpose ? `, ${purpose}` : ''}`
     : `${title}, ${formatDistance(segment.distanceM)}, ${elapsed}, averaging ${formatSpeed(averageSpeedMps(segment))}, from ${startedAt}${named}`;
 
   const body = isStay ? (
@@ -76,6 +81,20 @@ export const SegmentRow = memo(function SegmentRow({
           {title}
         </Text>
         <Text style={styles.detail}>{elapsed}</Text>
+        {/* **Why you were here, under how long you were.** The place name is
+            the same every time you go; this is the line that makes one visit
+            different from the last, so it belongs on the row rather than
+            behind a tap — being able to read down a day and see *groceries*,
+            *haircut*, *waited for the train* is the whole point of writing it.
+
+            One line, ellipsised. A row is a heading, and anything longer than
+            a heading belongs on the stop's own page, which is also the only
+            place it can be edited. */}
+        {purpose ? (
+          <Text style={styles.purpose} numberOfLines={1}>
+            {purpose}
+          </Text>
+        ) : null}
       </View>
       {!place && onOpen ? <Ionicons name="pricetag-outline" size={16} color={colors.textMuted} /> : null}
     </>
@@ -156,5 +175,8 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   title: { ...typography.body, color: colors.textPrimary, flexShrink: 1 },
   untitled: { color: colors.textSecondary, fontStyle: 'italic' },
+  // The stay colour, so the eye reads it as belonging to the stop rather than
+  // as another measurement — every number on this row is grey.
+  purpose: { ...typography.caption, color: colors.stay },
   detail: { ...typography.caption, color: colors.textSecondary },
 });

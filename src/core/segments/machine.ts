@@ -184,6 +184,9 @@ function finalize(open: OpenSegment): Segment {
   if (open.kind === 'stay') {
     const stay: StaySegment = {
       kind: 'stay',
+      // Nothing the fold can know. `applyVisitPurposes` fills it in afterwards
+      // from what you told the app, over a timeline derived without it.
+      purpose: null,
       id,
       startedAt: open.startedAt,
       endedAt: open.endedAt,

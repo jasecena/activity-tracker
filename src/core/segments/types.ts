@@ -42,6 +42,31 @@ export interface StaySegment extends SegmentBase {
    * differ by less than the accuracy of the readings that produced them.
    */
   readonly radiusM: number;
+  /**
+   * Why you were here, or null.
+   *
+   * **The stay's counterpart to a journey's `label`, and it answers the question
+   * the place name cannot.** A place is an identity — "the shopping centre" — and
+   * it is the same identity every time you go. This is what *this* visit was
+   * for: groceries on Tuesday, a haircut on Saturday, at the same coordinates
+   * under the same name. Putting it on the place would make the second visit
+   * overwrite the first's reason for happening.
+   *
+   * It is also not a `DayNote`. A diary entry is about the day and lives in the
+   * diary, indexed by the date, several per day, with a title and a recording. A
+   * purpose is one line attached to one stop, and its whole value is that it
+   * shows up beside that stop wherever the stop appears — on the timeline row, on
+   * the visit list under the place, in the export's `label` column beside a
+   * journey's name.
+   *
+   * Null rather than empty, matching `MoveSegment.label`: nothing was said, as
+   * opposed to something empty having been said.
+   *
+   * **Never stored on the segment**, like every other thing you told the app.
+   * `applyVisitPurposes` puts it here over a freshly folded timeline, out of
+   * records kept as time ranges — see `visits.ts` for why an id would not do.
+   */
+  readonly purpose: string | null;
 }
 
 /** Somewhere you went. */

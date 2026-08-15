@@ -4,6 +4,9 @@ import { Alert } from 'react-native';
 import { copyText } from '@/services/clipboard';
 
 import { dayNoteId, type DayNote, type NoteVoice } from '@/core/day';
+import type { MediaItem } from '@/core/media';
+
+import { expectSheetIsBoundedAndScrolls } from '@/__tests__/sheetLayout';
 
 import { NoteSheet } from './NoteSheet';
 
@@ -23,11 +26,11 @@ jest.mock('@/services/noteAudio', () => ({
 const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
 
 function voice(): NoteVoice {
-  return { fileName: 'voice-1.m4a', durationMs: 30_000, byteLength: 2048, at: null };
+  return { fileName: 'voice-1.m4a', durationMs: 30_000, byteLength: 2048, at: null, locked: false };
 }
 
 function note(overrides: Partial<DayNote> = {}): DayNote {
-  return { id: dayNoteId(T0), at: T0, title: '', text: 'typed', voice: null, ...overrides };
+  return { id: dayNoteId(T0), at: T0, title: '', text: 'typed', voice: null, mediaId: null, ...overrides };
 }
 
 function sheet(props: Partial<React.ComponentProps<typeof NoteSheet>> = {}) {
@@ -85,6 +88,7 @@ it('saves a recording made here as part of the note', async () => {
     '',
     '',
     expect.objectContaining({ fileName: 'voice-1.m4a', byteLength: 2048 }),
+    null,
   );
 });
 
@@ -122,7 +126,7 @@ it('drops the recording without touching what was typed, once confirmed', async 
   await act(async () => confirmTheAlert());
   await fireEvent.press(screen.getByLabelText('Save this note'));
 
-  expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', null);
+  expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', null, null);
 });
 
 /**
@@ -139,7 +143,7 @@ it('keeps the recording when the confirmation is dismissed', async () => {
   await fireEvent.press(screen.getByLabelText('Save this note'));
 
   expect(Alert.alert).toHaveBeenCalled();
-  expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', expect.objectContaining({ fileName: 'voice-1.m4a' }));
+  expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', expect.objectContaining({ fileName: 'voice-1.m4a' }), null);
 });
 
 /**
@@ -330,7 +334,7 @@ describe('transcribing the recording', () => {
     await act(async () => undefined);
     await fireEvent.press(screen.getByLabelText('Save this note'));
 
-    expect(onSave).toHaveBeenCalledWith(T0, '', 'typed already', expect.anything());
+    expect(onSave).toHaveBeenCalledWith(T0, '', 'typed already', expect.anything(), null);
   });
 });
 
@@ -376,5 +380,158 @@ describe('copying a note', () => {
 
     expect(screen.queryByLabelText('Copied')).toBeNull();
     expect(screen.getByLabelText('Copy this note')).toBeTruthy();
+  });
+});
+
+/**
+ * **The sheet cannot run off the top of the screen, whatever the keyboard does.**
+ *
+ * It used to be able to. The backdrop and the `KeyboardAvoidingView` were
+ * siblings, and nothing capped their sum: with the fields, the recorder and the
+ * Transcribe row all showing, content plus a keyboard came to more than the
+ * screen, the backdrop was squeezed to nothing, and the sheet was laid out from
+ * y = 0 — its title over the status bar and its lower half spilling past a
+ * background that had stopped at the wrong height. It was reported as a glitch
+ * on returning from the lock screen, which is only where the arithmetic is
+ * briefly at its worst.
+ *
+ * `expectSheetIsBoundedAndScrolls` carries the reasoning and the walk; all three
+ * sheets in the app assert the same thing through it.
+ */
+describe('the sheet', () => {
+  it('scrolls inside a bounded container rather than growing past the screen', async () => {
+    // The tallest it ever gets: a recording to play, and a key, so the
+    // Transcribe button and its sentence are both showing.
+    await render(sheet({ target: { kind: 'edit', note: note({ voice: voice() }) }, onTranscribe: jest.fn() }));
+
+    expectSheetIsBoundedAndScrolls(screen.toJSON(), ['Close without saving', 'Save this note']);
+  });
+});
+
+describe('a note about a capture', () => {
+  const CAPTURE: MediaItem = {
+    id: 'media-7',
+    kind: 'photo',
+    capturedAt: T0,
+    fileName: 'capture-7.jpg',
+    thumbFileName: 'capture-7-thumb.jpg',
+    byteLength: 4096,
+    durationMs: null,
+    at: null,
+    orientation: null,
+    note: '',
+  };
+
+  it('saves the picture it was started from', async () => {
+    const onSave = jest.fn();
+    await render(sheet({ target: { kind: 'new', mediaId: 'media-7' }, onSave }));
+
+    await fireEvent.changeText(screen.getByLabelText('Note'), 'The light on the water');
+    await fireEvent.press(screen.getByLabelText('Save this note'));
+
+    expect(onSave).toHaveBeenCalledWith(T0, '', 'The light on the water', null, 'media-7');
+  });
+
+  it('offers a way to the picture, and says which note it belongs to', async () => {
+    const onOpenMedia = jest.fn();
+    await render(
+      sheet({
+        target: { kind: 'edit', note: note({ mediaId: 'media-7' }) },
+        attached: CAPTURE,
+        attachedThumbUri: 'file:///mock/thumb.jpg',
+        onOpenMedia,
+      }),
+    );
+
+    await fireEvent.press(screen.getByLabelText('Open the photo this note is about'));
+
+    expect(onOpenMedia).toHaveBeenCalledWith('media-7');
+  });
+
+  /**
+   * The two have separate lives: forgetting the photograph leaves the note. So
+   * a note whose picture has gone is a normal state, and drawing an empty
+   * square would read as the app having mislaid something.
+   */
+  it('says the picture has been deleted rather than drawing nothing', async () => {
+    await render(sheet({ target: { kind: 'edit', note: note({ mediaId: 'media-gone' }) }, attached: null }));
+
+    expect(screen.getByText(/has been deleted/)).toBeTruthy();
+    expect(screen.queryByLabelText('Open the photo this note is about')).toBeNull();
+  });
+
+  it('shows nothing at all for a note with no picture', async () => {
+    await render(sheet({ target: { kind: 'edit', note: note() } }));
+
+    expect(screen.queryByText(/has been deleted/)).toBeNull();
+    expect(screen.queryByLabelText('Open the photo this note is about')).toBeNull();
+  });
+});
+
+/**
+ * **Locking a recording, for the one somebody is not willing to lose.**
+ *
+ * Recording over one already on a note has asked first since the feature
+ * shipped, and that prompt is asserted above. This is the stronger answer,
+ * because a dialog is only ever as good as the attention paid to it and the
+ * audio is the one thing on a note that nothing can reconstruct — the words
+ * survive a bad transcription, a voice survives nothing.
+ *
+ * It closes both doors at once. A lock that left a one-tap delete behind it
+ * would be decorative.
+ */
+describe('keeping a recording', () => {
+  const locked = () => note({ voice: { ...voice(), locked: true } });
+
+  it('will not start the microphone while it is locked', async () => {
+    await render(sheet({ target: { kind: 'edit', note: locked() } }));
+
+    // The reason is the label, so it reaches a screen reader and anybody
+    // pressing the button and waiting for something to happen.
+    const mic = screen.getByLabelText('This recording is locked. Unlock it to record over it.');
+    await fireEvent.press(mic);
+
+    // Not even the dialog: there is nothing to confirm, because nothing may
+    // happen.
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Stop recording')).toBeNull();
+  });
+
+  it('offers no way to delete it while it is locked', async () => {
+    await render(sheet({ target: { kind: 'edit', note: locked() } }));
+
+    expect(screen.queryByLabelText('Delete the recording')).toBeNull();
+  });
+
+  /**
+   * One tap, nothing asked. The lock is what makes the destruction deliberate,
+   * and a confirmation on *undoing* a guard is a dialog in front of the thing
+   * the control is for.
+   */
+  it('gives both back the moment it is unlocked', async () => {
+    await render(sheet({ target: { kind: 'edit', note: locked() } }));
+
+    await fireEvent.press(screen.getByLabelText('Unlock this recording so it can be replaced'));
+
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Record a voice note')).toBeTruthy();
+    expect(screen.getByLabelText('Delete the recording')).toBeTruthy();
+  });
+
+  it('saves the lock with the note', async () => {
+    const onSave = jest.fn();
+    await render(sheet({ target: { kind: 'edit', note: note({ voice: voice() }) }, onSave }));
+
+    await fireEvent.press(screen.getByLabelText('Keep this recording'));
+    await fireEvent.press(screen.getByLabelText('Save this note'));
+
+    expect(onSave).toHaveBeenCalledWith(T0, '', 'typed', expect.objectContaining({ locked: true }), null);
+  });
+
+  it('has nothing to lock on a note with no recording', async () => {
+    await render(sheet({ target: { kind: 'edit', note: note() } }));
+
+    expect(screen.queryByLabelText('Keep this recording')).toBeNull();
+    expect(screen.getByLabelText('Record a voice note')).toBeTruthy();
   });
 });

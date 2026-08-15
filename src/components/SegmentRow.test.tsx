@@ -33,6 +33,7 @@ const restaurant: StaySegment = {
   fixCount: 120,
   center: { lat: 0, lon: 0 },
   radiusM: 15,
+  purpose: null,
 };
 
 const PLACES: Place[] = [{ id: 'place-0-0', name: 'abc restaurant', lat: 0, lon: 0, radiusM: 120 }];

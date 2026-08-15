@@ -19,6 +19,7 @@ import { NotesScreen } from './NotesScreen';
 
 jest.mock('@/services/noteAudio', () => ({
   noteAudioUri: jest.fn(() => 'file:///mock/documents/note-audio/voice-1.m4a'),
+  keepNoteAudio: jest.fn(() => ({ fileName: 'voice-1.m4a', byteLength: 2048 })),
 }));
 
 const UTC = 0;
@@ -27,7 +28,7 @@ const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
 const NOW = T0 + 12 * HOUR; // late on the 5th, so the fixtures above are behind it
 
 function note(at: number, title: string): DayNote {
-  return { id: dayNoteId(at), at, title, text: '', voice: null };
+  return { id: dayNoteId(at), at, title, text: '', voice: null, mediaId: null };
 }
 
 function confirmTheAlert(): void {
@@ -43,6 +44,7 @@ function notesScreen(props: Partial<React.ComponentProps<typeof NotesScreen>> = 
       tzOffsetMinutes={UTC}
       now={NOW}
       onWrite={jest.fn()}
+      onSpeak={jest.fn()}
       onOpen={jest.fn()}
       onForget={jest.fn()}
       {...props}
@@ -167,5 +169,64 @@ describe('what has not happened yet', () => {
 
     expect(screen.queryByText(/Nothing written yet/)).toBeNull();
     expect(screen.getByText('the meeting')).toBeTruthy();
+  });
+});
+
+/**
+ * **The quick microphone writes the note itself.**
+ *
+ * Press it, talk, press it again, and the entry exists — no sheet, no fields
+ * and no Save. That is not a shortcut around the sheet so much as the sheet's
+ * own rule taken at its word: any one of a title, a paragraph and a recording
+ * is a note, so a recording on its own needs nothing else collected before it
+ * can be filed.
+ *
+ * The pen stays where it was. The two are not a choice between features — they
+ * are the two ways of putting words in the same diary, and this one is the one
+ * reached for with something to say and no time to sit down.
+ */
+describe('the microphone on the tab', () => {
+  it('files a recording as a note without opening the sheet', async () => {
+    const onSpeak = jest.fn();
+    const onWrite = jest.fn();
+    await render(notesScreen({ onSpeak, onWrite }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    // The glyph is what says it is recording — a square, not a microphone in
+    // another colour — so this is also the assertion that the state is legible.
+    expect(screen.getByLabelText('Stop recording')).toBeTruthy();
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+
+    expect(onSpeak).toHaveBeenCalledWith(
+      expect.objectContaining({ fileName: 'voice-1.m4a', durationMs: expect.any(Number) }),
+      expect.any(Number),
+    );
+    // Nothing was opened on the way. The sheet is the pen's route, not this one.
+    expect(onWrite).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Dated to when the talking began rather than to when the file landed. Those
+   * differ by however long the recording ran, and "when I said this" is the
+   * honest answer for an entry in a diary.
+   */
+  it('dates the note to the start of the recording', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    const onSpeak = jest.fn();
+    await render(notesScreen({ onSpeak }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    await act(async () => {
+      jest.setSystemTime(NOW + 90_000);
+      jest.advanceTimersByTime(250);
+    });
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+
+    expect(onSpeak.mock.calls[0]?.[1]).toBe(NOW);
+    jest.useRealTimers();
   });
 });

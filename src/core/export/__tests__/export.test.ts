@@ -35,6 +35,7 @@ const STAY: StaySegment = {
   fixCount: 12,
   center: { lat: 0.0002, lon: 0.0001 },
   radiusM: 14.2,
+  purpose: null,
 };
 
 const PLACES: Place[] = [{ id: 'place-20-10', name: 'abc restaurant', lat: 0.0002, lon: 0.0001, radiusM: 120 }];
@@ -163,13 +164,20 @@ describe('CSV quoting', () => {
  * full of commas, quotes and paragraph breaks as a matter of course.
  */
 describe('notesToCsv', () => {
-  const note = (at: number, text: string, title = '') => ({ id: `note-${at}`, at, title, text, voice: null });
+  const note = (at: number, text: string, title = '') => ({
+    id: `note-${at}`,
+    at,
+    title,
+    text,
+    voice: null,
+    mediaId: null,
+  });
 
   it('writes the instant, the day it belongs to, and the words', () => {
     const [header, first] = rows(notesToCsv([note(T0, 'Walked there with Sam', 'Market day')], 0));
 
-    expect(header).toBe('timestamp,epoch_ms,day,title,text,voice_file,voice_seconds');
-    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Market day,Walked there with Sam,,`);
+    expect(header).toBe('timestamp,epoch_ms,day,title,text,voice_file,voice_seconds,capture_id');
+    expect(first).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,Market day,Walked there with Sam,,,`);
   });
 
   // The day column is the local day, so a note written late in Sydney files
@@ -195,8 +203,21 @@ describe('notesToCsv', () => {
     expect(notesToCsv([note(T0, 'Sam said "later", so we went')], 0)).toContain('"Sam said ""later"", so we went"');
   });
 
+  /**
+   * The only place the link between the notes file and the media file is
+   * visible outside the app. Without it a note about a photograph exports as a
+   * note about nothing in particular — and an id naming a capture since
+   * forgotten still exports, because it says the note was about a picture,
+   * which is true.
+   */
+  it('names the capture a note is about', () => {
+    const about = { ...note(T0, 'The light on the water'), mediaId: 'media-7' };
+
+    expect(rows(notesToCsv([about], 0))[1]?.endsWith(',media-7')).toBe(true);
+  });
+
   it('writes a header and nothing else for an empty diary', () => {
-    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,title,text,voice_file,voice_seconds\n');
+    expect(notesToCsv([], 0)).toBe('timestamp,epoch_ms,day,title,text,voice_file,voice_seconds,capture_id\n');
   });
 
   /**
@@ -207,10 +228,10 @@ describe('notesToCsv', () => {
   it('names the recording behind a note that was spoken', () => {
     const spoken = {
       ...note(T0, ''),
-      voice: { fileName: 'voice-99.m4a', durationMs: 42_400, byteLength: 96_000, at: null },
+      voice: { fileName: 'voice-99.m4a', durationMs: 42_400, byteLength: 96_000, at: null, locked: false },
     };
 
-    expect(rows(notesToCsv([spoken], 0))[1]).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,,,voice-99.m4a,42`);
+    expect(rows(notesToCsv([spoken], 0))[1]).toBe(`2026-01-05T22:30:00+00:00,${T0},2026-01-05,,,voice-99.m4a,42,`);
   });
 });
 

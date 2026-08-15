@@ -8,6 +8,7 @@ import {
   normalizeDayNotes,
   noteAt,
   notesForDay,
+  notesForMedia,
   TRANSCRIPT_SEPARATOR,
   voiceFilesOf,
   whereToWrite,
@@ -31,11 +32,11 @@ const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
 const HOUR = 3_600_000;
 
 function note(at: number, text = 'something', title = ''): DayNote {
-  return { id: dayNoteId(at), at, title, text, voice: null };
+  return { id: dayNoteId(at), at, title, text, voice: null, mediaId: null };
 }
 
 function voice(startedAt: number): NoteVoice {
-  return { fileName: `voice-${startedAt}.m4a`, durationMs: 42_000, byteLength: 96_000, at: null };
+  return { fileName: `voice-${startedAt}.m4a`, durationMs: 42_000, byteLength: 96_000, at: null, locked: false };
 }
 
 function stay(startedAt: number, endedAt: number): Segment {
@@ -47,6 +48,7 @@ function stay(startedAt: number, endedAt: number): Segment {
     fixCount: 4,
     center: { lat: 0, lon: 0 },
     radiusM: 5,
+    purpose: null,
   };
 }
 
@@ -58,6 +60,7 @@ describe('writing one', () => {
       title: 'Market day',
       text: 'Walked there with Sam',
       voice: null,
+      mediaId: null,
     });
   });
 
@@ -237,7 +240,7 @@ describe('the days you can open', () => {
 describe('reading the store back', () => {
   it('keeps a note whose id no build ever wrote, rebuilding it from the instant', () => {
     expect(normalizeDayNotes([{ id: 'whatever-this-is', at: T0, text: 'kept' }])).toEqual([
-      { id: dayNoteId(T0), at: T0, title: '', text: 'kept', voice: null },
+      { id: dayNoteId(T0), at: T0, title: '', text: 'kept', voice: null, mediaId: null },
     ]);
   });
 
@@ -283,7 +286,9 @@ describe('reading the store back', () => {
   it('keeps a note that is a recording and nothing else', () => {
     const stored = [{ id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0) }];
 
-    expect(normalizeDayNotes(stored)).toEqual([{ id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0) }]);
+    expect(normalizeDayNotes(stored)).toEqual([
+      { id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0), mediaId: null },
+    ]);
   });
 
   it('reads a note written before recordings existed as one without', () => {
@@ -325,6 +330,10 @@ describe('reading the store back', () => {
       durationMs: 0,
       byteLength: 0,
       at: null,
+      // Unlocked is the safe direction to default: every recording written
+      // before the lock existed was unlocked, and a library that silently
+      // became read-only on upgrade would be the worse failure.
+      locked: false,
     });
   });
 
@@ -538,5 +547,70 @@ describe('notes about what has not happened yet', () => {
     const days = daysWorthOpening([], [note(T0, 'last Monday')], now, UTC);
 
     expect(days.map((day) => day.key)).toEqual(['2026-01-09', '2026-01-05']);
+  });
+});
+
+/**
+ * **A note and the capture it is about have separate lives.**
+ *
+ * The link lives on the note rather than on the `MediaItem`, and that one
+ * choice is what makes both halves true without any code to enforce them.
+ * Forgetting the photograph touches the media index and the file on disk;
+ * nothing in the diary is on that path, so the note simply stays, holding an id
+ * that now names nothing. Deleting the note touches the diary and its own audio
+ * directory; `sweepOrphans` and `filesOf` never hear about it, so the
+ * photograph stays too.
+ *
+ * A dangling id is therefore an ordinary state and every reader expects it —
+ * which is what these assert, since the alternative would be a normalizer that
+ * quietly edited somebody's diary to tidy up after a deletion.
+ */
+describe('a note about a capture', () => {
+  it('keeps the link through a store round trip', () => {
+    const written = noteAt(T0, '', 'The light on the water', null, 'media-7');
+
+    expect(written?.mediaId).toBe('media-7');
+    expect(normalizeDayNotes([written])).toEqual([expect.objectContaining({ mediaId: 'media-7' })]);
+  });
+
+  /**
+   * The capture is deliberately not part of the "is this a note" test. A title
+   * says the day, so does a paragraph, so does half a minute of talking — and a
+   * bare pointer at a photograph says only what opening the photograph says.
+   */
+  it('is not a note when the picture is all there is', () => {
+    expect(noteAt(T0, '', '', null, 'media-7')).toBeNull();
+  });
+
+  /**
+   * Nothing validates that the capture still exists, on purpose: the picture
+   * being forgotten is how this is *meant* to end up, and dropping the id would
+   * be the app deciding the note had stopped being about a photograph.
+   */
+  it('survives the capture being forgotten, id and all', () => {
+    const orphan = {
+      id: dayNoteId(T0),
+      at: T0,
+      title: '',
+      text: 'about a photo that has gone',
+      voice: null,
+      mediaId: 'media-gone',
+    };
+
+    expect(normalizeDayNotes([orphan])).toEqual([expect.objectContaining({ mediaId: 'media-gone' })]);
+  });
+
+  it('gathers every note about one capture, oldest first', () => {
+    const later = noteAt(T0 + HOUR, 'That evening', '', null, 'media-7');
+    const sooner = noteAt(T0, 'In the moment', '', null, 'media-7');
+    const elsewhere = noteAt(T0 + 2 * HOUR, 'A different picture', '', null, 'media-9');
+    const plain = noteAt(T0 + 3 * HOUR, 'No picture at all', '');
+
+    const found = notesForMedia(
+      [later, sooner, elsewhere, plain].flatMap((one) => (one ? [one] : [])),
+      'media-7',
+    );
+
+    expect(found.map((note) => note.title)).toEqual(['In the moment', 'That evening']);
   });
 });

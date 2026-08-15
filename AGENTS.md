@@ -31,7 +31,7 @@ indoors, a replayed fix older than the last one, and a cold-start position from
 40 km away stamped `now` — are each capable of inventing a journey that never
 happened. A rejected fix must never become the reference for the next one.
 
-**Run `npm run verify` before finishing.** Typecheck, lint, format check and 804
+**Run `npm run verify` before finishing.** Typecheck, lint, format check and 929
 tests, in well under a minute. Watch the test _time_ as well as the result: a
 byte-for-byte `toEqual` over a megabyte-scale `Uint8Array` costs tens of seconds
 in Jest's structural equality, and a loop with an early exit costs milliseconds.
@@ -253,6 +253,57 @@ list of days the Day screen can walk, `days[0]` is what that screen calls
 today, and a note about next Thursday would otherwise make next Thursday
 today — an app claiming to have data from a day that has not happened.
 
+**A note can be about a photograph, and the link lives on the note.**
+`DayNote.mediaId`. Swipe up on a capture and the panel that already held its
+facts, its map and Forget now holds what you wrote about it and a button to
+write more; the note itself goes into the diary, under its own day, beside
+everything else written that day. It is not stored on the capture and it is not
+a second copy — this is the other end of one link.
+
+**The two have separate lives, and putting the pointer on the note is what
+makes that free.** Forget the photograph and the note stays; delete the note and
+the photograph stays. No code enforces either: forgetting a capture touches the
+media index and the file, and nothing in the diary is on that path; deleting a
+note touches the diary and its own audio directory, and `sweepOrphans` and
+`filesOf` never hear about it. Pointing the other way — a note id on the
+`MediaItem` — would have made a note's existence a fact the sweep had to know.
+
+So **a dangling id is an ordinary state rather than corruption**, and every
+reader expects it. `normalizeDayNotes` neither validates nor repairs it, because
+the picture being forgotten is how this is _meant_ to end up and dropping the id
+would be the app deciding the note had stopped being about a photograph. The
+sheet says the picture has been deleted rather than drawing an empty square, and
+Forget's dialog says what survives — otherwise it reads as taking the words too.
+
+**It cannot make a note on its own.** A title says the day, so does a paragraph,
+so does half a minute of talking; a bare pointer at a photograph says only what
+opening the photograph says. `noteAt` is unchanged, and a link-only note would
+be a blank row in the diary with a thumbnail on it.
+
+**Several notes per capture.** A line in the moment and a paragraph that evening
+are two notes about one picture, which is how somebody actually uses this — one
+note per capture would mean the second thing you wrote overwrote the first.
+
+**The way there and back is two parameters, not a page.** The row in the diary
+carries the thumbnail; the sheet carries it larger with a chevron; tapping it
+sets the Media tab's focus and remembers the note, and the gallery grows a Back
+chip for exactly as long as it is remembered. No stack entry, no route — the day
+is already a parameter of one screen and a capture of another, which is the same
+reasoning that keeps `usePageStack` an array and three functions. The chip is
+the only chrome on that screen that comes and goes, which is what lets it exist
+at all on a screen whose whole argument is that it has no header. Pressing any
+tab abandons the journey, in the handler rather than an effect.
+
+**There is no full-size picture inside the sheet**, deliberately: a second place
+that draws a photograph is a second place to keep in step with the gallery's
+gestures, orientation and transport. That drift is what retired `MediaScreen`.
+
+**`MediaItem.note` is the superseded version of this and nothing writes it.**
+It was a caption on the media row from the old detail page — visible in one
+place, in no list, no export and no search. It is kept only because
+`useAdoptVoiceCaptures` still reads it and dropping the field would silently
+discard what an early build's owner typed. Do not build on it.
+
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
@@ -334,6 +385,47 @@ or by pressing the anchor again. And it is **derived from the day on screen**
 rather than cleared by an effect: `react-hooks/set-state-in-effect` is an error
 here, and clearing on a day change would draw the new day once with the old
 day's selection over it.
+
+**Why you were somewhere is the stay's counterpart to a journey's name.**
+`core/segments/visits.ts`. The engine knows you were at a coordinate for fifty
+minutes; the place list knows the coordinate is called the shopping centre, and
+it knows that _every time you go_. Only you can say this visit was for
+groceries — which is precisely why it cannot live on the `Place`: Saturday's
+haircut would overwrite Tuesday's groceries. So it is per-visit, and the visit
+list under a place stops being a column of identical rows distinguished only by
+date.
+
+**It is not a `DayNote`, and the line is worth keeping sharp.** A diary entry is
+about a _day_: filed in the diary by date, several per day, with a title, a
+recording, a picture and a life of its own. A purpose is one line about one
+stop, and its whole value is appearing beside that stop wherever the stop
+appears — the timeline row, the visit list, the `label` column of the export.
+Filing it in the diary would put it somewhere you have to go and look for it.
+
+**Stored as a time range, applied over a re-derived timeline**, exactly as a
+`JourneyLabel` is, and for the same reason: a different preset folds the same
+fixes into different stays, so an id would be orphaned by a settings change.
+`applyVisitPurposes` runs **after** the labels and the claims — it reshapes
+nothing, so it has no opinion about their order and everything to gain from
+seeing the final shape.
+
+**The match is on the purpose's midpoint.** Three ordinary things re-cut the
+timeline underneath a stored range — a claim merges stops, a label splits one, a
+preset re-folds the lot — and an end-to-end comparison breaks under all three. A
+midpoint lands inside exactly one of whatever the stays have become.
+
+**Several purposes on one stay are joined, never dropped**, because that is what
+a merge leaves behind: an afternoon that was three stops with three reasons.
+And **writing one replaces everything the stop covers**, not just the record
+with the matching id — otherwise the merged row would read as the new text with
+the two old ones still joined onto it, and typing again would never clear it.
+What a merge joins, an edit collapses.
+
+**Edited in place on the stop's own page, saved on blur, deleted by emptying
+the field.** No sheet: naming a place is a picker over candidates, this is one
+line of free text, and the page it belongs to is the page you are already on.
+No confirmation either — `confirmDestructive`'s bar is data nothing can
+reconstruct, and the undo here is retyping the line where you are standing.
 
 **Naming a journey is retrospective.** Tap a journey the app already recorded
 and say what it was, the same way you name a stay. A `JourneyLabel` is made
@@ -881,6 +973,33 @@ colourblind reader. Colour moves with it as a second signal and nothing depends
 on it. `RecordButton` is deliberately dumb: it renders the state it is handed
 and calls one of two callbacks.
 
+**A recording can be locked, and the lock closes both doors at once.**
+`NoteVoice.locked`. Recording over one already on a note has asked first since
+the feature shipped — but a dialog is only ever as good as the attention paid to
+it, and the audio is the one thing on a note that nothing can reconstruct: the
+words survive a bad transcription, a voice survives nothing. So the padlock beside
+the player is the stronger answer for the recording somebody is not willing to
+lose. Locked, the microphone will not start **and** the delete button is not
+offered — a lock that left a one-tap delete behind it would be decorative.
+
+**Unlocking asks nothing**, and that asymmetry is the design: the lock is what
+makes the destruction deliberate, so a confirmation on _undoing_ a guard would
+be a dialog in front of the thing the control is for. Two acts to destroy, one
+to allow — the shape swipe-to-delete on a note row already uses.
+
+**The cost is stated and accepted: a locked note cannot gain a new recording.**
+Nothing stands between anybody and saying something, because the microphone on
+the Notes tab files a note of its own.
+
+Two smaller rules travel with it. The record button is **disabled with a
+reason** rather than absent — a string, so it reaches a screen reader — which
+departs from the copy button's "absent rather than disabled" only because the
+control that disabled it is lit directly beside it; a mic that vanished would
+not explain itself. And `disabledReason` is ignored while recording, so nothing
+can ever trap a running recording with no way to stop it. Everything arrives
+**unlocked**, adopted captures included: a library that silently became
+read-only on upgrade is the worse failure.
+
 **Stopping is synchronous to the eye.** `stop` flips `recording` before its
 first `await`, and the file is written behind the change. A control that waits
 for a file system before admitting it was pressed is a control people press
@@ -891,6 +1010,101 @@ the note has no `voice` until the file lands.
 **The recorder sits on the right of the row and playback on the left.** The
 right is where the thumb is, and the recorder is the button reached for with
 something to say; the player is only ever reached afterwards.
+
+**There are two microphones and they are the same act.** The one in the sheet
+is for a note you are already writing; the one on the **Notes tab, bottom
+centre and larger**, is for the moment you have something to say and no time to
+sit down. It records and files the note itself — no sheet, no fields, no Save —
+which is not a shortcut around the sheet but the sheet's own rule taken at its
+word: any one of a title, a paragraph and a recording is a note, so a recording
+alone needs nothing else collected before it can be filed. The pen stays in the
+header for the other half. The list is the confirmation: the entry appears at
+the top of today, where the eye already is.
+
+The note is dated to **when the talking started**, not when the file landed —
+those differ by however long the recording ran, and "when I said this" is the
+honest answer. `useVoiceNote` hands the start instant to its callback for that;
+the sheet ignores it, because there the instant belongs to the pickers.
+
+**One recorder at a time, claimed inside `useVoiceNote` by an object identity.**
+Both hooks are mounted at once — the shell hides inactive tabs rather than
+unmounting them — so two recordings at once is the _default_ behaviour rather
+than an edge case, exactly as two players were before `services/audioFocus.ts`.
+The claim is taken **before the permission prompt**, since everything after it
+is asynchronous, and given back on a refusal, a throw, a stop and an unmount.
+The identity check on release is the same one the audio focus needs and for the
+same reason. It is not a second module because this file is already the only
+thing in the app that touches a recorder.
+
+**A voice note stops itself after twenty minutes, and the cap is on recording
+rather than on playback.** `MAX_VOICE_MS`, one number for both microphones. The distinction is the whole point of
+the number: a limit applied where audio is read back is a silent truncation —
+you talk for two hours, the app looks like it is listening for two hours, and
+the loss is found afterwards, when there is nothing left to recover from. A
+recording is unreconstructable in exactly the way a note is. So the recorder
+stops at the limit, everything up to that point is kept and handed back through
+the same `stop` a press goes through, and a dialog says it happened while its
+owner is still in the room. The sheet also prints the ceiling while recording,
+because being told before is better than being told after.
+
+Twenty rather than none: a recorder with no ceiling, left running by accident, is
+a phone filling its own disk with a pocket. Twenty rather than the video cap's
+one: sixty seconds is the answer to forty megabytes a minute of 1080p, voice at
+this preset is a fraction of that, and tying the two numbers together would be
+one constraint answering somebody else's question.
+
+The limit iOS imposes is separate and is **not** twenty minutes:
+`UIBackgroundModes` holds `location` alone, deliberately, so backgrounding the
+app ends a recording. The screen is held awake while recording, which covers the
+auto-lock; it cannot cover the home gesture.
+
+**Every sheet with a field in it is bounded, scrolls, and gets out of the
+keyboard's way — and all three shipped without.** `NoteSheet`, `PlacePicker`,
+`JourneyLabelSheet`. The last two had no `KeyboardAvoidingView` at all, so they
+sat at the bottom of the screen with nothing between them and the keyboard:
+naming a place meant typing a name you could not read, which is the worst
+possible place for it, since a text field is the only reason that sheet opens.
+
+**The shapes differ and the difference is deliberate.** `NoteSheet` and
+`JourneyLabelSheet` are forms read top to bottom, so everything scrolls
+together. `PlacePicker` is a list with the field pinned _beneath_ it — the thing
+you are typing into must not be able to scroll away under your thumb — so only
+the candidates scroll, which means the list needs `flexShrink: 1` and the field
+block `flexShrink: 0`. Without that second half the sheet rides up correctly and
+the candidate list, refusing to give up its height, pushes the name box out
+through the bottom instead. That is the same bug wearing a different hat, and
+fixing only the first looks like fixing both until somebody has a dozen named
+places nearby.
+
+**A plain scrolling page needs neither.** `SettingsScreen` has eight fields down
+a long list and takes `automaticallyAdjustKeyboardInsets` — iOS's own inset,
+which scrolls the focused field into view. The wrapper is for sheets, which are
+anchored to the bottom rather than scrolling.
+
+`src/__tests__/sheetLayout.ts` carries the rule and the tree walk for all of
+them; each test asserts **containment**, and `PlacePicker`'s asserts the inverse
+— that the field is _outside_ the scroller.
+
+**The note sheet is bounded and it scrolls, and it shipped without either.** The
+backdrop and the `KeyboardAvoidingView` were siblings and nothing capped their
+sum, so once the fields, the recorder and the Transcribe row were all showing,
+content plus a keyboard came to more than the screen: the backdrop was squeezed
+to nothing, the sheet was laid out from y = 0 with its title over the status bar,
+and its lower half spilled past a background that had stopped at the wrong
+height, with the Notes list showing through the gaps.
+
+It was reported as a glitch on returning from the lock screen, and that is
+where the arithmetic is briefly at its worst rather than where the bug was —
+iOS re-shows the keyboard and reports its frame before the window has settled,
+so the padding is momentarily too large and then corrected. **The correction is
+what made it look transient, and a layout that cannot overflow does not need
+one.** The avoider fills the screen, the backdrop shrinks inside it, and the
+sheet carries `maxHeight` with a `ScrollView` under it — which is the shape
+`PlacePicker` has had all along.
+
+The regression test asserts **containment**: the rows are inside the scroller
+and something above it is capped. Same reasoning as the sticky day bar — a
+correct style attached to the wrong node is what this class of test is for.
 
 **The two things that were hard-won on the camera screen survive both moves:**
 the position is read at the **start** and kept in a **ref** (`stop` resolves

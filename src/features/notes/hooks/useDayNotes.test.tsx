@@ -29,7 +29,7 @@ const END_OF_DAY = T0 + 9 * HOUR;
 // The hook reads no clock — the instant is chosen in the sheet and passed in —
 // so there is nothing here to freeze.
 function voice(startedAt: number): NoteVoice {
-  return { fileName: `voice-${startedAt}.m4a`, durationMs: 30_000, byteLength: 48_000, at: null };
+  return { fileName: `voice-${startedAt}.m4a`, durationMs: 30_000, byteLength: 48_000, at: null, locked: false };
 }
 
 beforeEach(async () => {

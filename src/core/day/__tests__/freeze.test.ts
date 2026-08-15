@@ -13,6 +13,7 @@ function stay(startedAt: number, endedAt: number): StaySegment {
     fixCount: 30,
     center: { lat: 0, lon: 0 },
     radiusM: 6,
+    purpose: null,
   };
 }
 

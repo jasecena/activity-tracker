@@ -211,6 +211,7 @@ export function applyStationaryClaims(
 
     const stay: StaySegment = {
       kind: 'stay',
+      purpose: null,
       // From the claim, so the row is the same row every fold and the id is
       // what carries "this one was merged" back to the screen.
       id: claim.id,

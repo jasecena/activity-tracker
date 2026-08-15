@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { formatClockTime, formatDistance, formatDuration } from '@/core/format';
 import { isAmbiguous, rankPlaceCandidates, type Place, type PlaceVisits } from '@/core/places';
@@ -57,92 +57,106 @@ export function PlacePicker({
 
   return (
     <Modal visible={stay !== null} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <Text style={styles.title} accessibilityRole="header">
-            Name this place
-          </Text>
-          {stay ? (
-            <Text style={styles.subtitle}>
-              {formatClockTime(stay.startedAt, tzOffsetMinutes)}–{formatClockTime(stay.endedAt, tzOffsetMinutes)} ·{' '}
-              {formatDuration(stay.endedAt - stay.startedAt)}
+      {/* **The field is what the sheet is for, so the keyboard must not cover
+          it.** This sat at the bottom of the screen with nothing between it and
+          the keyboard, so naming a place meant typing a name you could not
+          read — reported from a phone, and the worst possible place for it: the
+          one control here whose entire job is to be looked at while it is being
+          typed into.
+
+          `padding` on a full-height wrapper, and the sheet is already capped
+          and already anchored to the bottom of it, so the whole thing simply
+          rides up. Same shape as `NoteSheet` — see the note there on why a
+          bounded, scrolling sheet is the version that cannot go wrong. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Text style={styles.title} accessibilityRole="header">
+              Name this place
             </Text>
-          ) : null}
-
-          {/* Only shown when the automatic answer really is a coin toss. */}
-          {ambiguous ? (
-            <View style={styles.warning}>
-              <Text style={styles.warningText}>
-                More than one place you have named covers this spot. The timeline is showing the nearest — pick the
-                right one below.
+            {stay ? (
+              <Text style={styles.subtitle}>
+                {formatClockTime(stay.startedAt, tzOffsetMinutes)}–{formatClockTime(stay.endedAt, tzOffsetMinutes)} ·{' '}
+                {formatDuration(stay.endedAt - stay.startedAt)}
               </Text>
-            </View>
-          ) : null}
-
-          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-            {candidates.map(({ place, distanceM, withinRadius }) => {
-              const context = contextFor(place, visits);
-              return (
-                <Pressable
-                  key={place.id}
-                  onPress={() => onPickExisting(place)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`This is ${place.name}, ${formatDistance(distanceM)} away`}
-                  style={({ pressed }) => [styles.candidate, pressed && styles.pressed]}
-                >
-                  <View style={styles.candidateText}>
-                    <Text style={styles.candidateName}>{place.name}</Text>
-                    <Text style={styles.candidateDetail}>
-                      {formatDistance(distanceM)} away
-                      {/* The distinction that decides what tapping does: an
-                          inside match relabels, an outside one widens. */}
-                      {withinRadius ? ' · already covers this spot' : ' · just outside'}
-                    </Text>
-                    {context ? <Text style={styles.candidateDetail}>{context}</Text> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-
-            {candidates.length === 0 ? (
-              <Text style={styles.empty}>No named places nearby. Give this one a name.</Text>
             ) : null}
-          </ScrollView>
 
-          <View style={styles.newPlace}>
-            <Text style={styles.newLabel}>{candidates.length > 0 ? 'Or name it something new' : 'Name'}</Text>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="e.g. abc restaurant"
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              accessibilityLabel="Place name"
-              returnKeyType="done"
-              onSubmitEditing={() => {
-                if (draft.trim().length > 0) onCreate(draft.trim());
-                setDraft('');
-              }}
-            />
-            <Pressable
-              onPress={() => {
-                if (draft.trim().length > 0) onCreate(draft.trim());
-                setDraft('');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Save place"
-              style={({ pressed }) => [styles.save, pressed && styles.pressed]}
-            >
-              <Text style={styles.saveText}>Save</Text>
-            </Pressable>
-          </View>
+            {/* Only shown when the automatic answer really is a coin toss. */}
+            {ambiguous ? (
+              <View style={styles.warning}>
+                <Text style={styles.warningText}>
+                  More than one place you have named covers this spot. The timeline is showing the nearest — pick the
+                  right one below.
+                </Text>
+              </View>
+            ) : null}
+
+            <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+              {candidates.map(({ place, distanceM, withinRadius }) => {
+                const context = contextFor(place, visits);
+                return (
+                  <Pressable
+                    key={place.id}
+                    onPress={() => onPickExisting(place)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`This is ${place.name}, ${formatDistance(distanceM)} away`}
+                    style={({ pressed }) => [styles.candidate, pressed && styles.pressed]}
+                  >
+                    <View style={styles.candidateText}>
+                      <Text style={styles.candidateName}>{place.name}</Text>
+                      <Text style={styles.candidateDetail}>
+                        {formatDistance(distanceM)} away
+                        {/* The distinction that decides what tapping does: an
+                          inside match relabels, an outside one widens. */}
+                        {withinRadius ? ' · already covers this spot' : ' · just outside'}
+                      </Text>
+                      {context ? <Text style={styles.candidateDetail}>{context}</Text> : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              {candidates.length === 0 ? (
+                <Text style={styles.empty}>No named places nearby. Give this one a name.</Text>
+              ) : null}
+            </ScrollView>
+
+            <View style={styles.newPlace}>
+              <Text style={styles.newLabel}>{candidates.length > 0 ? 'Or name it something new' : 'Name'}</Text>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="e.g. abc restaurant"
+                placeholderTextColor={colors.textMuted}
+                style={styles.input}
+                accessibilityLabel="Place name"
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (draft.trim().length > 0) onCreate(draft.trim());
+                  setDraft('');
+                }}
+              />
+              <Pressable
+                onPress={() => {
+                  if (draft.trim().length > 0) onCreate(draft.trim());
+                  setDraft('');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Save place"
+                style={({ pressed }) => [styles.save, pressed && styles.pressed]}
+              >
+                <Text style={styles.saveText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  avoider: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.surface,
@@ -163,7 +177,12 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   warningText: { ...typography.caption, color: colors.textSecondary },
-  list: { flexGrow: 0 },
+  // **`flexShrink` is the half that matters once the keyboard is up.** The
+  // sheet is capped, so something inside it has to give — and it must be this
+  // and never the field below it. Without it the list keeps its full height and
+  // pushes the name box out through the bottom of the sheet, which is the same
+  // bug wearing a different hat.
+  list: { flexGrow: 0, flexShrink: 1 },
   candidate: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -176,7 +195,9 @@ const styles = StyleSheet.create({
   candidateName: { ...typography.body, color: colors.textPrimary },
   candidateDetail: { ...typography.caption, color: colors.textSecondary },
   empty: { ...typography.caption, color: colors.textMuted, paddingVertical: spacing.sm },
-  newPlace: { gap: spacing.sm },
+  // Never shrinks: the label, the field and Save are the reason the sheet is
+  // open, and they are the last thing that should give up room.
+  newPlace: { gap: spacing.sm, flexShrink: 0 },
   newLabel: { ...typography.label, fontSize: 11, color: colors.textMuted },
   input: {
     ...typography.body,

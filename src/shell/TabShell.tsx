@@ -3,7 +3,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { dayKeyOf, daysWorthOpening, groupByDay, whereToWrite, type DayNote, type NoteVoice } from '@/core/day';
+import {
+  dayKeyOf,
+  daysWorthOpening,
+  groupByDay,
+  notesForMedia,
+  whereToWrite,
+  type DayNote,
+  type NoteVoice,
+} from '@/core/day';
 import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
@@ -27,11 +35,13 @@ import { MenuSheet } from '@/components/MenuSheet';
 import { JourneyLabelSheet } from '@/features/labels/components/JourneyLabelSheet';
 import { useJourneyLabels } from '@/features/labels/hooks/useJourneyLabels';
 import { useStationaryClaims } from '@/features/activities/hooks/useStationaryClaims';
+import { useVisitPurposes } from '@/features/labels/hooks/useVisitPurposes';
 import { configFrom, useBackup } from '@/features/data/hooks/useBackup';
 import { readingErrorFor } from '@/services/location';
 import { NoteSheet } from '@/features/notes/components/NoteSheet';
 import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptures';
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
+import { useNoteThumbnails } from '@/features/notes/hooks/useNoteThumbnails';
 import { NotesScreen } from '@/features/notes/NotesScreen';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
@@ -72,7 +82,13 @@ type Page =
  * own instant.
  */
 type NoteTarget =
-  | { readonly kind: 'new'; readonly dayKey: string; readonly segments: readonly Segment[] }
+  | {
+      readonly kind: 'new';
+      readonly dayKey: string;
+      readonly segments: readonly Segment[];
+      /** The capture it is about, when it was begun from one. */
+      readonly mediaId?: string | null;
+    }
   | { readonly kind: 'edit'; readonly note: DayNote };
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -87,7 +103,12 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   // which the backlog already called "fine for a week and not for a year". Five
   // tabs is the ceiling: iOS collapses a sixth into a "More" list, which is why
   // Places stays a page under Settings.
-  { key: 'notes', label: 'Notes', icon: 'book-outline' },
+  //
+  // A journal rather than a book: a book is something you read, and this is the
+  // one tab whose contents nobody else wrote. The icon is also now the only
+  // thing in the bar that has to survive being next to a camera and a gallery
+  // without reading as a third way of consuming something.
+  { key: 'notes', label: 'Notes', icon: 'journal-outline' },
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
@@ -146,10 +167,33 @@ export function TabShell() {
    * timeline here would mean answering "which day is showing" twice.
    */
   const [writingNote, setWritingNote] = useState<NoteTarget | null>(null);
+  /**
+   * The note a capture was opened from, or null.
+   *
+   * The whole of the way back. Tapping the picture inside a note goes to the
+   * Media tab focused on that capture, and this is what lets the gallery offer
+   * a way home to the thing you were reading — the one piece of chrome on that
+   * screen that is not always there.
+   *
+   * Cleared in the handlers rather than by an effect: `react-hooks/set-state-in-effect`
+   * is an error here, and clearing on a tab change in an effect would draw the
+   * new screen once with the old journey still attached to it.
+   */
+  const [cameFromNote, setCameFromNote] = useState<DayNote | null>(null);
 
   const settings = useSettings();
   const journeys = useJourneyLabels();
   const stationary = useStationaryClaims();
+  /**
+   * Why you were where you stopped.
+   *
+   * Beside the journey labels and the stationary claims because it is the same
+   * kind of thing — something you told the app, kept as its own record and
+   * applied over a re-derived timeline — and because a stop can be described
+   * from the Day screen or from any day in History, so one copy rather than two
+   * that might drift.
+   */
+  const purposes = useVisitPurposes();
   const backup = useBackup(settings.settings);
   const notes = useDayNotes();
   const places = usePlaces();
@@ -158,7 +202,8 @@ export function TabShell() {
     settings.settings,
     journeys.labels,
     stationary.claims,
-    settings.ready && journeys.ready && stationary.ready,
+    purposes.purposes,
+    settings.ready && journeys.ready && stationary.ready && purposes.ready,
   );
 
   // Voice notes made while a voice note was still a capture, moved into the
@@ -200,6 +245,14 @@ export function TabShell() {
    * three screens ask the same question.
    */
   const captures = useMemo(() => capturesOnly(media.items), [media.items]);
+
+  /**
+   * Thumbnails for the captures the diary points at, held once and shared.
+   *
+   * The list and the sheet both draw them, and two caches would decrypt the
+   * same files twice and disagree about which had arrived.
+   */
+  const noteThumbs = useNoteThumbnails(notes.notes, captures);
 
   /**
    * Turning a recording into text, or undefined when there is no key.
@@ -261,6 +314,13 @@ export function TabShell() {
     return whereToWrite(writingNote.dayKey, writingNote.segments, readNow(), timeline.tzOffsetMinutes);
   }, [writingNote, timeline.tzOffsetMinutes]);
 
+  /** The capture the open note is about, if any — what the sheet draws above the fields. */
+  const noteMediaId = writingNote
+    ? writingNote.kind === 'edit'
+      ? writingNote.note.mediaId
+      : (writingNote.mediaId ?? null)
+    : null;
+
   /**
    * Pressing the tab you are already on goes home.
    *
@@ -306,6 +366,9 @@ export function TabShell() {
   const pressTab = (key: Tab) => {
     const alreadyHere = tab === key;
     setTab(key);
+    // Going somewhere by hand ends the journey that brought you here. The chip
+    // is for the trip you are on, not a bookmark that outlives it.
+    setCameFromNote(null);
     if (!alreadyHere) return;
 
     if (key !== 'capture') stacks[key].reset();
@@ -366,8 +429,43 @@ export function TabShell() {
    */
   const [galleryFocus, setGalleryFocus] = useState<string | null>(null);
   const openMedia = (item: MediaItem) => {
+    // Arrived from the Day timeline, so there is no note to go back to. Cleared
+    // rather than left, or the chip would offer a way home to whatever note was
+    // last read.
+    setCameFromNote(null);
     setGalleryFocus(item.id);
     setTab('gallery');
+  };
+
+  /**
+   * From a note to the picture it is about, and back again.
+   *
+   * The sheet closes, because it is a modal over everything and the picture is
+   * on another tab — leaving it open would put the gallery behind a sheet that
+   * covers it. The note is remembered instead, and the gallery grows a Back
+   * chip for as long as it is.
+   *
+   * There is deliberately no page pushed and no stack entry: the day is a
+   * parameter of one screen, a capture is a parameter of another, and this is
+   * two parameters being set rather than a place being navigated to. That is
+   * the same reasoning that keeps `usePageStack` an array and three functions.
+   */
+  const openMediaFromNote = (note: DayNote, mediaId: string) => {
+    setWritingNote(null);
+    setCameFromNote(note);
+    setGalleryFocus(mediaId);
+    setTab('gallery');
+  };
+
+  const backToNote = () => {
+    if (!cameFromNote) return;
+    // Looked up fresh, so a note edited in between comes back as it is now
+    // rather than as it was when the picture was opened — the same reasoning
+    // the place page uses against holding a stale copy in the stack.
+    const current = notes.notes.find((candidate) => candidate.id === cameFromNote.id) ?? cameFromNote;
+    setCameFromNote(null);
+    setTab('notes');
+    setWritingNote({ kind: 'edit', note: current });
   };
 
   /**
@@ -405,6 +503,14 @@ export function TabShell() {
           onBack={back}
           onNamePlace={page.segment.kind === 'stay' ? () => setNaming(page.segment as StaySegment) : undefined}
           onNameJourney={page.segment.kind === 'move' ? () => setNamingJourney(page.segment as MoveSegment) : undefined}
+          // The stay held in the stack rather than a fresh one: `set` needs the
+          // segment's own range to know which records this stop covers, and the
+          // range is what the page was opened with.
+          onSetPurpose={
+            page.segment.kind === 'stay'
+              ? (purpose: string) => purposes.set(page.segment as StaySegment, purpose)
+              : undefined
+          }
         />
       );
     }
@@ -526,6 +632,19 @@ export function TabShell() {
             onRotate={(id) => void media.rotate(id)}
             focusId={galleryFocus}
             onFocusHandled={() => setGalleryFocus(null)}
+            notesFor={(item) => notesForMedia(notes.notes, item.id)}
+            // Over the gallery rather than on the Notes tab: writing about the
+            // photograph in front of you should not move you away from it.
+            onWriteNote={(item) =>
+              setWritingNote({
+                kind: 'new',
+                dayKey: dayKeyOf(readNow(), timeline.tzOffsetMinutes),
+                segments: timeline.today,
+                mediaId: item.id,
+              })
+            }
+            onOpenNote={(note) => setWritingNote({ kind: 'edit', note })}
+            onBackToNote={cameFromNote ? backToNote : undefined}
           />
           {stacks.gallery.current ? (
             <SwipeBackPage onBack={stacks.gallery.pop}>{renderPage('gallery')}</SwipeBackPage>
@@ -548,8 +667,21 @@ export function TabShell() {
                 segments: timeline.today,
               })
             }
+            // **The quick microphone files its own note, with no sheet in
+            // between.** The recording is the entry — a recording alone is
+            // already a note, by the same rule that lets a title alone be one
+            // — so there is nothing left for a form to collect and nothing for
+            // a Save to approve.
+            //
+            // Dated to when the *talking started* rather than when the file
+            // finished being written: those differ by however long the recording
+            // ran, and "when I said this" is the honest answer. `write` puts it
+            // through `freeInstant`, so two notes begun in the same millisecond
+            // cannot take each other's id.
+            onSpeak={(voice, startedAt) => notes.write(startedAt, '', '', voice)}
             onOpen={(note) => setWritingNote({ kind: 'edit', note })}
             onForget={notes.forget}
+            thumbFor={noteThumbs.uriFor}
           />
         </View>
 
@@ -630,10 +762,23 @@ export function TabShell() {
       <NoteSheet
         target={writingNote}
         defaultAt={noteDefaultAt}
-        onSave={(at, title, text, voice) => {
-          if (writingNote?.kind === 'new') notes.write(at, title, text, voice);
-          else if (writingNote) notes.edit(writingNote.note, at, title, text, voice);
+        onSave={(at, title, text, voice, mediaId) => {
+          if (writingNote?.kind === 'new') notes.write(at, title, text, voice, mediaId);
+          else if (writingNote) notes.edit(writingNote.note, at, title, text, voice, mediaId);
         }}
+        // Null for a note with no picture *and* for one whose picture has been
+        // forgotten — the sheet tells the two apart from the note's own
+        // `mediaId`, and says so, because a note outliving its photograph is
+        // the arrangement rather than a fault.
+        attached={noteThumbs.itemFor(noteMediaId)}
+        attachedThumbUri={noteThumbs.uriFor(noteMediaId)}
+        // Only from a note that exists. A new one has nowhere to come back to
+        // yet, and going to the picture would throw away what had been typed.
+        onOpenMedia={
+          writingNote?.kind === 'edit'
+            ? (mediaId) => openMediaFromNote((writingNote as { note: DayNote }).note, mediaId)
+            : undefined
+        }
         // Only over a note that exists. Deleting is also what emptying the
         // field does, so this is the explicit way rather than the only one.
         onTranscribe={onTranscribe}

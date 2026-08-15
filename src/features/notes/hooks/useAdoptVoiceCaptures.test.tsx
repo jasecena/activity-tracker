@@ -59,6 +59,9 @@ it('turns a voice capture into a note holding the same recording', async () => {
     byteLength: 4096,
     durationMs: 32_000,
     at: { lat: 0.01, lon: 0.02 },
+    // Unlocked, like every recording arrives. Adopting one from an older build
+    // is not the moment to decide its owner wanted it kept.
+    locked: false,
   });
 });
 

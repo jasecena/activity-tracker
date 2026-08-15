@@ -149,7 +149,14 @@ appId: ${APP_ID}
 # screen up at all is what this catches.
 - tapOn: 'Notes tab'
 - assertVisible: 'Notes'
-- assertVisible: 'Nothing written yet. Tap the pen to write about today, or to say it out loud.'
+- assertVisible: 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'
+# The quick microphone, bottom centre, which writes a note out of a recording
+# with no sheet in between. Asserted because it is the tab's reason for being
+# reached in a hurry — and because a control that is rendered but off screen is
+# exactly what Jest cannot tell from one that is visible, which is the whole
+# reason this file exists. It sits at the bottom edge, not below it, so a bare
+# assertVisible is right here where 'Raw data & export' needed a scroll.
+- assertVisible: 'Record a voice note'
 
 # The gallery's own gestures and panels cannot be reached here: `clearState`
 # leaves nothing captured, and a simulator has no camera to capture with — so
