@@ -1,6 +1,6 @@
 {
   "name": "activity-tracker",
-  "version": "0.4.2",
+  "version": "0.10.0",
   "private": true,
   "license": "MIT",
   "main": "index.ts",
