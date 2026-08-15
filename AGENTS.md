@@ -1011,6 +1011,21 @@ the note has no `voice` until the file lands.
 right is where the thumb is, and the recorder is the button reached for with
 something to say; the player is only ever reached afterwards.
 
+**The Notes tab is a pencil on a page, after a book and a journal both read
+wrong.** `book-outline` says "something you read", which this is not — its
+contents are the one thing nobody else wrote. `journal-outline` replaced it and
+was worse: at 30 points it is a rounded rectangle with a stripe down one edge,
+which is a credit card, and was reported as exactly that. The test an icon in
+that bar has to pass is being recognisable beside a camera and a gallery, and
+both book shapes fail it the same way — a closed rectangle, or a closed
+rectangle with a line on it. A pencil is a **different silhouette** rather than
+a differently decorated one, which is the reasoning the record button already
+uses for a square over a second microphone in another colour.
+
+It matches the pen in the tab's own header on purpose: both mean writing, and a
+bar saying "this is where you write" above a button saying "write" is
+consistent rather than duplicated.
+
 **There are two microphones and they are the same act.** The one in the sheet
 is for a note you are already writing; the one on the **Notes tab, bottom
 centre and larger**, is for the moment you have something to say and no time to
