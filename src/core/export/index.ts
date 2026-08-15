@@ -125,7 +125,12 @@ export function segmentsToCsv(segments: readonly Segment[], places: readonly Pla
         ...shared,
         '', // distance_m
         '', // mode
-        '', // label
+        // **A stay's purpose goes in `label`, beside a journey's name**, rather
+        // than in a column of its own. They are the same question asked of the
+        // two kinds of row — what was this one *for* — and both are the only
+        // thing in the file its owner wrote rather than the app measured. A
+        // second column would be one that is empty on every move.
+        segment.purpose ?? '',
         '', // manual
         '', // top_speed_mps
         '', // avg_speed_mps
@@ -194,10 +199,18 @@ export function segmentsToCsv(segments: readonly Segment[], places: readonly Pla
  * about, and is the opposite of true. The file name is the one that sits in the
  * app's own directory, so a row says both that something was said and which
  * file to go and find. Empty on a note that was typed, which is most of them.
+ *
+ * **A capture gets named for the same reason**, in `capture_id`, which is the
+ * id the media CSV lists a row under. It is the only place the link between the
+ * two files is visible outside the app, and without it a note about a
+ * photograph exports as a note about nothing in particular. An id naming a
+ * capture that has since been forgotten still exports: it says the note was
+ * about a picture, which is true, and the alternative is quietly editing
+ * somebody's diary on the way out.
  */
 export function notesToCsv(notes: readonly DayNote[], tzOffsetMinutes: number): string {
   return toCsv(
-    ['timestamp', 'epoch_ms', 'day', 'title', 'text', 'voice_file', 'voice_seconds'],
+    ['timestamp', 'epoch_ms', 'day', 'title', 'text', 'voice_file', 'voice_seconds', 'capture_id'],
     [...notes]
       .sort((a, b) => a.at - b.at)
       .map((note) => [
@@ -208,6 +221,7 @@ export function notesToCsv(notes: readonly DayNote[], tzOffsetMinutes: number): 
         note.text,
         note.voice?.fileName ?? '',
         note.voice ? Math.round(note.voice.durationMs / 1000) : '',
+        note.mediaId ?? '',
       ]),
   );
 }

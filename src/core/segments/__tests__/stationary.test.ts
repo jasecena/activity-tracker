@@ -40,6 +40,7 @@ function stay(startedAt: number, endedAt: number, atM: number, radiusM = 5, from
     fixCount: 10,
     center: north(atM, from),
     radiusM,
+    purpose: null,
   };
 }
 

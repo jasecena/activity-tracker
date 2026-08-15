@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { formatClockTime, formatDistance, formatDuration, modeLabel } from '@/core/format';
@@ -54,117 +54,130 @@ export function JourneyLabelSheet({ journey, tzOffsetMinutes, onSave, onForget, 
 
   return (
     <Modal visible={journey !== null} transparent animationType="slide" onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Close" />
-      <View style={styles.sheet}>
-        {journey ? (
-          <>
-            <Text style={styles.title} accessibilityRole="header">
-              Name this journey
-            </Text>
-            <Text style={styles.subtitle}>
-              {formatClockTime(journey.startedAt, tzOffsetMinutes)}–{formatClockTime(journey.endedAt, tzOffsetMinutes)}{' '}
-              · {formatDistance(journey.distanceM)} · {formatDuration(durationMs(journey))}
-            </Text>
+      {/* Bounded, scrolling, and out of the keyboard's way — the same three
+          things `NoteSheet` and `PlacePicker` need and for the same reason.
+          This sheet has a name field near the top and a good deal under it, so
+          with a keyboard up the unbounded version put the field behind the
+          keyboard and pushed the mode chips off the screen. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.avoider}>
+        <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Close" />
+        <View style={styles.sheet}>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            {journey ? (
+              <>
+                <Text style={styles.title} accessibilityRole="header">
+                  Name this journey
+                </Text>
+                <Text style={styles.subtitle}>
+                  {formatClockTime(journey.startedAt, tzOffsetMinutes)}–
+                  {formatClockTime(journey.endedAt, tzOffsetMinutes)} · {formatDistance(journey.distanceM)} ·{' '}
+                  {formatDuration(durationMs(journey))}
+                </Text>
 
-            <TextInput
-              value={label}
-              onChangeText={setDraft}
-              placeholder="Commute, school run, Sunday ride…"
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              accessibilityLabel="Journey name"
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={() => {
-                onSave(label, chosen);
-                close();
-              }}
-            />
+                <TextInput
+                  value={label}
+                  onChangeText={setDraft}
+                  placeholder="Commute, school run, Sunday ride…"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  accessibilityLabel="Journey name"
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    onSave(label, chosen);
+                    close();
+                  }}
+                />
 
-            {/* The classifier reads speed alone, so a slow cycle and a fast walk
+                {/* The classifier reads speed alone, so a slow cycle and a fast walk
                 are genuinely ambiguous to it. Your answer wins. */}
-            <Text style={styles.sectionLabel}>WHAT WAS IT</Text>
-            <View style={styles.modes}>
-              {CHOOSABLE.map((option) => {
-                const selected = option === chosen;
-                return (
+                <Text style={styles.sectionLabel}>WHAT WAS IT</Text>
+                <View style={styles.modes}>
+                  {CHOOSABLE.map((option) => {
+                    const selected = option === chosen;
+                    return (
+                      <Pressable
+                        key={option}
+                        onPress={() => setMode(option)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={modeLabel(option)}
+                        style={({ pressed }) => [
+                          styles.chip,
+                          selected && { backgroundColor: modeColors[option], borderColor: modeColors[option] },
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{modeLabel(option)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Pressable
+                  onPress={() => {
+                    onSave(label, chosen);
+                    close();
+                  }}
+                  disabled={label.trim().length === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save this name"
+                  style={({ pressed }) => [
+                    styles.save,
+                    label.trim().length === 0 && styles.saveDisabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.saveText}>Save</Text>
+                </Pressable>
+
+                {onForget ? (
                   <Pressable
-                    key={option}
-                    onPress={() => setMode(option)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={modeLabel(option)}
-                    style={({ pressed }) => [
-                      styles.chip,
-                      selected && { backgroundColor: modeColors[option], borderColor: modeColors[option] },
-                      pressed && styles.pressed,
-                    ]}
+                    onPress={() =>
+                      confirmDestructive({
+                        title: 'Remove this name?',
+                        message: 'The journey stays; the name you gave it goes and cannot be recovered.',
+                        confirmLabel: 'Remove',
+                        onConfirm: () => {
+                          onForget();
+                          close();
+                        },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove this name"
+                    style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
                   >
-                    <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{modeLabel(option)}</Text>
+                    <Text style={styles.forgetText}>Remove this name</Text>
                   </Pressable>
-                );
-              })}
-            </View>
+                ) : null}
 
-            <Pressable
-              onPress={() => {
-                onSave(label, chosen);
-                close();
-              }}
-              disabled={label.trim().length === 0}
-              accessibilityRole="button"
-              accessibilityLabel="Save this name"
-              style={({ pressed }) => [
-                styles.save,
-                label.trim().length === 0 && styles.saveDisabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.saveText}>Save</Text>
-            </Pressable>
-
-            {onForget ? (
-              <Pressable
-                onPress={() =>
-                  confirmDestructive({
-                    title: 'Remove this name?',
-                    message: 'The journey stays; the name you gave it goes and cannot be recovered.',
-                    confirmLabel: 'Remove',
-                    onConfirm: () => {
-                      onForget();
-                      close();
-                    },
-                  })
-                }
-                accessibilityRole="button"
-                accessibilityLabel="Remove this name"
-                style={({ pressed }) => [styles.forget, pressed && styles.pressed]}
-              >
-                <Text style={styles.forgetText}>Remove this name</Text>
-              </Pressable>
+                <Text style={styles.footnote}>
+                  The journey itself was recorded either way. A name only says what it was, and the mode you pick
+                  overrules the one worked out from speed.
+                </Text>
+              </>
             ) : null}
-
-            <Text style={styles.footnote}>
-              The journey itself was recorded either way. A name only says what it was, and the mode you pick overrules
-              the one worked out from speed.
-            </Text>
-          </>
-        ) : null}
-      </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  avoider: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl,
-    gap: spacing.sm,
+    // Of whatever the keyboard has left, not of the screen.
+    maxHeight: '90%',
   },
+  // The padding rides with the scrolling content, so the bottom inset sits
+  // below the last row rather than below the scroller.
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary },
   input: {

@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 
+import type { DayNote } from '@/core/day';
 import { formatClockTime, formatDayTitle, formatDuration } from '@/core/format';
 import {
   displayRotationFor,
@@ -54,6 +55,27 @@ interface MediaGalleryScreenProps {
    */
   readonly focusId: string | null;
   readonly onFocusHandled: () => void;
+  /**
+   * Everything written about the capture on screen, oldest first.
+   *
+   * Resolved by the shell rather than filtered here: the diary is the shell's
+   * store, and this screen is handed the answer to one question rather than the
+   * whole of somebody's writing to search through.
+   */
+  readonly notesFor: (item: MediaItem) => readonly DayNote[];
+  /** Write a new note about this capture. Opens the shell's sheet over the gallery. */
+  readonly onWriteNote: (item: MediaItem) => void;
+  /** Open one already written, in the same sheet. */
+  readonly onOpenNote: (note: DayNote) => void;
+  /**
+   * Back to the note this capture was opened from, or absent.
+   *
+   * Present only when you arrived here by tapping a picture inside a note,
+   * which is why it is the one piece of chrome on this screen that comes and
+   * goes. A back button that is always there would be a header, and the whole
+   * argument for this screen is that it does not have one.
+   */
+  readonly onBackToNote?: () => void;
 }
 
 /**
@@ -100,6 +122,10 @@ export function MediaGalleryScreen({
   onRotate,
   focusId,
   onFocusHandled,
+  notesFor,
+  onWriteNote,
+  onOpenNote,
+  onBackToNote,
 }: MediaGalleryScreenProps) {
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
@@ -249,6 +275,26 @@ export function MediaGalleryScreen({
           fifth of the screen on a phone, and what this tab is for is looking at
           the picture. */}
       <View style={[styles.topBar, !showsCaptureChrome(panel) && styles.stripHidden]} pointerEvents="box-none">
+        {/* **The only chrome on this screen that comes and goes.** It is here
+            when you arrived by tapping the picture inside a note, and absent
+            otherwise — which is the whole reason it can exist at all on a
+            screen whose argument is that it has no header. A permanent back
+            button would be a header with one item in it.
+
+            It sits beside the counter rather than replacing it: which capture
+            of how many is still the question the top of this screen answers. */}
+        {onBackToNote ? (
+          <Pressable
+            onPress={onBackToNote}
+            accessibilityRole="button"
+            accessibilityLabel="Back to the note"
+            style={({ pressed }) => [styles.backToNote, pressed && styles.pressed]}
+          >
+            <Ionicons name="chevron-back" size={14} color={colors.textPrimary} />
+            <Text style={styles.backToNoteText}>Note</Text>
+          </Pressable>
+        ) : null}
+
         <Text style={styles.counter}>
           {safeIndex + 1} of {ordered.length}
         </Text>
@@ -327,6 +373,15 @@ export function MediaGalleryScreen({
               tzOffsetMinutes={tzOffsetMinutes}
               mapsEnabled={mapsEnabled}
               thumbUri={images.uriFor(current)}
+              notes={notesFor(current)}
+              onWriteNote={() => {
+                closeInfo();
+                onWriteNote(current);
+              }}
+              onOpenNote={(note) => {
+                closeInfo();
+                onOpenNote(note);
+              }}
               onForget={onForget}
               onRotate={onRotate}
               onClose={closeInfo}
@@ -563,6 +618,9 @@ function InfoPanel({
   tzOffsetMinutes,
   mapsEnabled,
   thumbUri,
+  notes,
+  onWriteNote,
+  onOpenNote,
   onForget,
   onRotate,
   onClose,
@@ -572,22 +630,36 @@ function InfoPanel({
   readonly tzOffsetMinutes: number;
   readonly mapsEnabled: boolean;
   readonly thumbUri: string | null;
+  readonly notes: readonly DayNote[];
+  readonly onWriteNote: () => void;
+  readonly onOpenNote: (note: DayNote) => void;
   readonly onForget: (id: string) => void;
   readonly onRotate: (id: string) => void;
   readonly onClose: () => void;
 }) {
   const confirmForget = () =>
-    Alert.alert('Forget this capture?', 'The file is deleted from this phone. There is no copy anywhere else.', [
-      { text: 'Keep it', style: 'cancel' },
-      {
-        text: 'Forget',
-        style: 'destructive',
-        onPress: () => {
-          onClose();
-          onForget(item.id);
+    Alert.alert(
+      'Forget this capture?',
+      // **What survives is named, because the two have separate lives.** A note
+      // about a photograph is not part of the photograph: it is a sentence
+      // somebody wrote, and this app deletes captures on a press and writing
+      // never. Saying so here is what stops "Forget" reading as though it took
+      // the words with it.
+      notes.length > 0
+        ? 'The file is deleted from this phone. There is no copy anywhere else. What you wrote about it stays in your notes.'
+        : 'The file is deleted from this phone. There is no copy anywhere else.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Forget',
+          style: 'destructive',
+          onPress: () => {
+            onClose();
+            onForget(item.id);
+          },
         },
-      },
-    ]);
+      ],
+    );
 
   return (
     <View style={styles.info}>
@@ -629,6 +701,52 @@ function InfoPanel({
           </Text>
         )}
 
+        {/* **What you wrote about this picture, and a way to write more.**
+            The note itself lives in the diary, grouped under its day with
+            everything else written that day — it is not stored here and this is
+            not a second copy of it. What this is, is the other end of the link:
+            standing in front of a photograph is exactly when you remember what
+            it was, and having to leave, find the Notes tab and describe which
+            picture you meant is how a thought gets lost.
+
+            Several are allowed. A line in the moment and a paragraph that
+            evening are two notes about one photograph, which is the ordinary
+            way somebody uses this — and the alternative, one note per capture,
+            would make the second thing you wrote overwrite the first. */}
+        <View style={styles.notes}>
+          <Text style={styles.notesLabel}>{notes.length === 0 ? 'NOTES' : `NOTES · ${notes.length}`}</Text>
+
+          {notes.map((note) => (
+            <Pressable
+              key={note.id}
+              onPress={() => onOpenNote(note)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open the note at ${formatClockTime(note.at, tzOffsetMinutes)}`}
+              style={({ pressed }) => [styles.noteRow, pressed && styles.pressed]}
+            >
+              <Ionicons name={note.voice ? 'mic-outline' : 'create-outline'} size={14} color={colors.textMuted} />
+              {/* A heading, exactly as the diary's own rows do it: the title, or
+                  the first line where there is none, or the fact that it was
+                  spoken. The whole entry is one tap away in the sheet, which is
+                  also the only place it can be edited. */}
+              <Text style={styles.noteText} numberOfLines={1}>
+                {headingOf(note)}
+              </Text>
+              <Text style={styles.noteTime}>{formatClockTime(note.at, tzOffsetMinutes)}</Text>
+            </Pressable>
+          ))}
+
+          <Pressable
+            onPress={onWriteNote}
+            accessibilityRole="button"
+            accessibilityLabel="Write a note about this capture"
+            style={({ pressed }) => [styles.writeNote, pressed && styles.pressed]}
+          >
+            <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
+            <Text style={styles.writeNoteText}>{notes.length === 0 ? 'Write about this' : 'Write another'}</Text>
+          </Pressable>
+        </View>
+
         {/* Only a photograph, and one press per quarter turn: the app cannot
             know which of the old pictures are sideways — only their owner can
             see it — so this is a button rather than a migration. */}
@@ -656,6 +774,21 @@ function InfoPanel({
       </ScrollView>
     </View>
   );
+}
+
+/**
+ * What a note is called, for a row that shows a heading rather than an entry.
+ *
+ * The same rule `NoteRow` uses and deliberately the same words: the title, or
+ * the first line of the body where there is none, or the fact that it was
+ * spoken. Duplicated as three lines rather than shared through a component,
+ * because what is shared is the *rule* and the two rows look nothing alike —
+ * one sits in a diary and one in a panel under a photograph.
+ */
+function headingOf(note: DayNote): string {
+  if (note.title.length > 0) return note.title;
+  const first = note.text.split('\n')[0]?.trim() ?? '';
+  return first.length > 0 ? first : 'A recording';
 }
 
 function InfoRow({ label, value }: { readonly label: string; readonly value: string }) {
@@ -864,6 +997,40 @@ const styles = StyleSheet.create({
   infoGrip: { width: 36, height: 4, borderRadius: radius.pill, backgroundColor: colors.border },
   infoBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.md },
   infoCard: { gap: spacing.xs },
+  notes: { gap: spacing.xs },
+  notesLabel: { ...typography.label, fontSize: 11, color: colors.textMuted },
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  noteText: { ...typography.body, color: colors.textPrimary, flex: 1 },
+  noteTime: { ...typography.caption, color: colors.textMuted },
+  writeNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+  },
+  writeNoteText: { ...typography.body, color: colors.textPrimary },
+  backToNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  backToNoteText: { ...typography.caption, color: colors.textPrimary },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
   infoLabel: { ...typography.caption, color: colors.textSecondary },
   infoValue: { ...typography.caption, color: colors.textPrimary, flexShrink: 1, textAlign: 'right' },

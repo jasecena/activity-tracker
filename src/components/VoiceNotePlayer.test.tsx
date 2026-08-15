@@ -27,7 +27,7 @@ jest.mock('@/services/noteAudio', () => ({
 const asMock = useAudioPlayer as jest.MockedFunction<typeof useAudioPlayer>;
 
 function voice(fileName: string): NoteVoice {
-  return { fileName, durationMs: 4_000, byteLength: 2048, at: null };
+  return { fileName, durationMs: 4_000, byteLength: 2048, at: null, locked: false };
 }
 
 /**

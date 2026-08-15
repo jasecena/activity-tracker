@@ -97,6 +97,12 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
                   {formatClockTime(visit.startedAt, tzOffsetMinutes)}–{formatClockTime(visit.endedAt, tzOffsetMinutes)}{' '}
                   · {formatDuration(visit.endedAt - visit.startedAt)}
                 </Text>
+                {/* **This is the list the purpose exists for.** The name above
+                    is the same on every row here — that is what a place is —
+                    so without this the page reads as a column of identical
+                    entries distinguished only by date. With it, it reads as
+                    what you actually did: groceries, haircut, met Sam. */}
+                {visit.purpose ? <Text style={styles.visitPurpose}>{visit.purpose}</Text> : null}
               </View>
             ))
         )}
@@ -132,6 +138,7 @@ const styles = StyleSheet.create({
   visit: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, gap: 2 },
   visitDate: { ...typography.body, color: colors.textPrimary },
   visitDetail: { ...typography.caption, color: colors.textSecondary },
+  visitPurpose: { ...typography.body, color: colors.stay, marginTop: spacing.xs },
   empty: { ...typography.caption, color: colors.textMuted, paddingVertical: spacing.md },
   renameRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   input: {

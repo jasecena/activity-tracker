@@ -1,5 +1,6 @@
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 
 import type { NoteVoice } from '@/core/day';
 import type { Fix } from '@/core/geo';
@@ -9,6 +10,59 @@ import { appendFixes } from '@/services/fixBuffer';
 import { keepNoteAudio } from '@/services/noteAudio';
 import { askPosition } from '@/services/position';
 import { holdScreenAwake, releaseScreenAwake } from '@/services/wakefulness';
+
+/**
+ * The longest a voice note may run, after which it stops itself and says so.
+ *
+ * **A limit on recording, never on playback, and that distinction is the whole
+ * point of the number.** A cap applied where the audio is read back is a silent
+ * truncation: you talk for two hours, the app looks like it is listening for
+ * two hours, and the loss is discovered afterwards when the recording turns out
+ * to be twenty minutes long and the rest was never anywhere. There is no
+ * recovering from that — a recording is the one thing in this app nothing can
+ * reconstruct, in the same way a note is.
+ *
+ * So the cap fires at the microphone. The recording stops, everything up to
+ * that point is kept and handed back exactly as a pressed stop would hand it
+ * back, and a dialog says it happened. The failure becomes something you are
+ * told about while you are still in the room, and pressing record again carries
+ * on into a second note.
+ *
+ * Twenty minutes rather than none because a recorder with no ceiling left
+ * running by accident is a phone quietly filling its own disk with a pocket —
+ * captures are already the only store in the app with no bound on them. It is
+ * deliberately far above the video cap: a clip is sixty seconds because forty
+ * megabytes a minute of 1080p is the constraint, and voice at this preset is a
+ * fraction of that, so the two numbers are answering different questions and
+ * should not be tied together.
+ *
+ * One number for both microphones — the sheet's and the Notes tab's — because
+ * they are one question. A cap per button would be two places to change it and
+ * one of them eventually stale.
+ */
+export const MAX_VOICE_MS = 20 * 60_000;
+
+/**
+ * Which instance of this hook holds the microphone, or null.
+ *
+ * **There are two recorders in the app now and they are mounted at once.** One
+ * is in the note sheet, under the fields; the other is the microphone on the
+ * Notes tab that writes a note on its own. Every tab stays mounted with the
+ * inactive ones hidden — deliberate, so a switch cannot throw away a running
+ * recording — so both hooks are alive whichever screen is showing, and they are
+ * as unaware of each other as the players were before `services/audioFocus.ts`
+ * was written. Two of them recording at once is therefore the *default*
+ * behaviour rather than an edge case: start the tab's microphone, open a note,
+ * press the sheet's, and there is nothing in either to say no.
+ *
+ * The same shape as the audio focus, for the same reason and one file smaller —
+ * this module is already the only thing in the app that touches the recorder,
+ * so a second module would be a boundary around one caller. **The holder is
+ * identified by an object each instance owns**, which is what makes the release
+ * exact: a release that did not check identity would let a finished recording
+ * clear a claim belonging to one that had already started.
+ */
+let holder: object | null = null;
 
 export interface UseVoiceNote {
   readonly recording: boolean;
@@ -59,8 +113,17 @@ export interface UseVoiceNote {
  * dropping it between stopping and saving would release it precisely where the
  * phone would lock.
  */
-export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNote {
+export function useVoiceNote(onRecorded: (voice: NoteVoice, startedAt: number) => void): UseVoiceNote {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  /**
+   * This instance's claim on the microphone. Nothing is ever read off it — its
+   * identity is the whole value, which is why it is an empty object.
+   *
+   * A `useMemo` rather than a `useRef`, so there is no ref here for anything to
+   * be tempted to read during render. `react-hooks/refs` is an error in this
+   * project and the exemption below is narrow on purpose.
+   */
+  const claim = useMemo(() => ({}), []);
   const [recording, setRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [since, setSince] = useState<number | null>(null);
@@ -100,16 +163,45 @@ export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNo
     return () => clearInterval(timer);
   }, [since]);
 
+  // A recording abandoned by an unmount would otherwise hold the microphone for
+  // the rest of the session. Neither of the two ever unmounts today — the shell
+  // hides tabs rather than dropping them — which is exactly why this is written
+  // down rather than relied upon.
+  useEffect(
+    () => () => {
+      if (holder === claim) holder = null;
+    },
+    [claim],
+  );
+
   const start = useCallback(() => {
     void (async () => {
       if (recording || saving) return;
+
+      // **Claimed before the permission prompt, not after.** The claim is what
+      // makes two microphones one microphone, and everything below it is
+      // asynchronous — a prompt, an audio mode, a prepare — so a check that
+      // waited for any of them would be a check with a window in it.
+      if (holder !== null && holder !== claim) {
+        Alert.alert(
+          'Something else is recording',
+          'A voice note is already being recorded somewhere in the app. Stop that one first, and this will record into its own note.',
+        );
+        return;
+      }
+      holder = claim;
 
       try {
         // Asked on first use rather than at launch: a permission prompt is a
         // question, and asking it before anybody has pressed anything is the
         // app asking on its own behalf.
         const granted = await AudioModule.requestRecordingPermissionsAsync();
-        if (!granted.granted) return;
+        // Given straight back. A refused prompt is not a recording, and a claim
+        // left behind by one would lock out the other microphone for good.
+        if (!granted.granted) {
+          holder = null;
+          return;
+        }
 
         // **Nothing else is playing while this records.** Everywhere else in
         // the app the rule is one sound at a time because two at once is a
@@ -123,6 +215,7 @@ export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNo
         recorder.record();
       } catch (error) {
         console.warn('Could not start the voice note', error);
+        holder = null;
         return;
       }
 
@@ -136,7 +229,7 @@ export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNo
         startedAtPosition.current = at;
       });
     })();
-  }, [recorder, recording, saving]);
+  }, [claim, recorder, recording, saving]);
 
   const stop = useCallback(() => {
     void (async () => {
@@ -156,11 +249,23 @@ export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNo
           // off; and in the fix stream, so a note spoken during a stationary
           // afternoon leaves a mark on the day rather than none.
           if (at) await appendFixes([at]);
-          handler.current({
-            ...kept,
-            durationMs: readNow() - startedAt,
-            at: at ? { lat: at.lat, lon: at.lon } : null,
-          });
+          // **The start instant travels with it**, so a caller filing a note of
+          // its own can date the note to when the talking began rather than to
+          // when the file finished being written. The sheet ignores it: there
+          // the instant is the pickers' business, and they were seeded before
+          // anybody pressed record.
+          handler.current(
+            {
+              ...kept,
+              durationMs: readNow() - startedAt,
+              at: at ? { lat: at.lat, lon: at.lon } : null,
+              // Every recording starts unlocked. Keeping one is a decision its
+              // owner makes about a recording that exists, not a default the
+              // app applies to one that has just been made.
+              locked: false,
+            },
+            startedAt,
+          );
         }
       } catch (error) {
         console.warn('Could not keep the voice note', error);
@@ -181,9 +286,40 @@ export function useVoiceNote(onRecorded: (voice: NoteVoice) => void): UseVoiceNo
         setSince(null);
         setElapsedMs(0);
         startedAtPosition.current = null;
+        // Only ours, and only if it still is. The identity check is the whole
+        // point: without it a recording finishing late would clear a claim
+        // belonging to the one that started after it.
+        if (holder === claim) holder = null;
       }
     })();
-  }, [recorder, recording, since]);
+  }, [claim, recorder, recording, since]);
+
+  /**
+   * The cap, enforced against the clock that is already running.
+   *
+   * It goes through the same `stop` a press goes through rather than a second
+   * path to the same place: the file is kept, the position taken at the start
+   * still travels with it, recording mode is still given back, and the note in
+   * the sheet gains its recording exactly as it would have. The only difference
+   * is who pressed the button.
+   *
+   * `stop` flips `recording` before its first `await`, so this cannot re-enter:
+   * the next render fails the guard. The dialog is after the call for the same
+   * reason — nothing about telling somebody should sit between the limit and
+   * the recorder being told to stop.
+   *
+   * Declared after `stop` because it uses it. Hook order is what has to be
+   * stable, not the order effects and callbacks are written in.
+   */
+  useEffect(() => {
+    if (!recording || elapsedMs < MAX_VOICE_MS) return;
+
+    stop();
+    Alert.alert(
+      'Recording stopped',
+      `A voice note stops after ${MAX_VOICE_MS / 60_000} minutes. Everything up to here has been kept — record again to carry on in another note.`,
+    );
+  }, [recording, elapsedMs, stop]);
 
   return { recording, saving, elapsedMs, start, stop };
 }

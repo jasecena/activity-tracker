@@ -91,7 +91,22 @@ export interface MediaItem {
    * the last position that happened to be lying around.
    */
   readonly at: LatLon | null;
-  /** Whatever you typed, or empty. */
+  /**
+   * A caption, from the detail page that no longer exists. **Superseded.**
+   *
+   * Writing about a capture is a `DayNote` with a `mediaId` on it now — a real
+   * diary entry, filed under its day beside everything else written that day,
+   * with a title, a recording and a life of its own. This was a string on the
+   * media row, visible in one place and in no list, export or search.
+   *
+   * Kept rather than dropped, and only for as long as it takes something to
+   * carry them over: `useAdoptVoiceCaptures` already reads it when it turns an
+   * old voice capture into a note, and deleting the field would silently
+   * discard whatever an early build's owner typed here. Nothing writes it any
+   * more. **Do not build on it** — a second way to attach words to a picture is
+   * two things to keep in step and one of them always slightly wrong, which is
+   * the reasoning that retired `MediaScreen` in the first place.
+   */
   readonly note: string;
   /**
    * Which way the phone was held, or null if nothing said.

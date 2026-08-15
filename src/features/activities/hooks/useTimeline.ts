@@ -6,10 +6,12 @@ import type { Fix, RejectionReason } from '@/core/geo';
 import {
   applyJourneyLabels,
   applyStationaryClaims,
+  applyVisitPurposes,
   segmentFixes,
   type JourneyLabel,
   type Segment,
   type StationaryClaim,
+  type VisitPurpose,
 } from '@/core/segments';
 import { monotonicNow, now as readNow, tzOffsetMinutes as readTzOffset } from '@/services/clock';
 import { freezeFinishedDays } from '@/services/dayLog';
@@ -64,6 +66,7 @@ export function useTimeline(
   settings: Settings,
   labels: readonly JourneyLabel[],
   claims: readonly StationaryClaim[],
+  purposes: readonly VisitPurpose[],
   settingsReady: boolean,
 ): Timeline {
   const [today, setToday] = useState<readonly Segment[]>([]);
@@ -139,19 +142,28 @@ export function useTimeline(
       const merged = applyStationaryClaims(labelled, claims);
       const mergedLog = applyStationaryClaims(labelledLog, claims);
 
+      // **Purposes last, over whatever shape the stays finally have.** They do
+      // not reshape anything — no split, no coalesce, no row invented or
+      // removed — so they have nothing to say about the order the other two run
+      // in, and everything to gain from running after both: a claim that merged
+      // three stops into one afternoon should carry the reasons for all three,
+      // and it can only do that once the merge has happened.
+      const described = applyVisitPurposes(merged, purposes);
+      const describedLog = applyVisitPurposes(mergedLog, purposes);
+
       setNow(at);
       setTzOffset(offset);
       setRejected(dropped);
       setFixes(buffered);
-      setToday(merged);
-      setHistory(groupByDay(mergedLog, offset));
+      setToday(described);
+      setHistory(groupByDay(describedLog, offset));
       setReady(true);
     })();
 
     return () => {
       live = false;
     };
-  }, [settings.segmentation, settings.retentionDays, labels, claims, settingsReady, tick]);
+  }, [settings.segmentation, settings.retentionDays, labels, claims, purposes, settingsReady, tick]);
 
   useEffect(() => {
     const timer = setInterval(refresh, REFRESH_MS);

@@ -44,6 +44,29 @@ export interface NoteVoice {
    * finished, which is the one place it definitely was not begun.
    */
   readonly at: LatLon | null;
+  /**
+   * Kept, deliberately, against being recorded over or deleted.
+   *
+   * **A guard rather than a vault.** Recording over one already on a note asks
+   * first — it has since the feature shipped — but a dialog is only ever as good
+   * as the attention paid to it, and a recording is the one thing on a note that
+   * nothing can reconstruct: the words survive a bad transcription, the audio
+   * survives nothing. Somebody with half a minute of a voice they will not hear
+   * again wants a stronger answer than being asked.
+   *
+   * So this closes both doors at once. Locked, the microphone will not start and
+   * the delete button is not offered; unlocking is one tap and asks nothing,
+   * because the lock is what makes the destruction deliberate and a confirmation
+   * on *undoing* a guard is a dialog in front of the thing the control is for.
+   * Two acts to destroy, one to allow — the same shape as the swipe that reveals
+   * Delete on a note row rather than deleting it.
+   *
+   * The cost is stated and accepted: a locked note cannot gain a new recording.
+   * Recording elsewhere is always available — the microphone on the Notes tab
+   * files a note of its own — so nothing here stands between somebody and saying
+   * something.
+   */
+  readonly locked: boolean;
 }
 
 /**
@@ -114,6 +137,38 @@ export interface DayNote {
    * paragraph, which is what happens the moment you go back and add to it.
    */
   readonly voice: NoteVoice | null;
+  /**
+   * The capture this note is about, by id, or null.
+   *
+   * **A reference, never ownership, and the two have separate lives.** Forget
+   * the photograph and the note stays — it is a sentence somebody wrote, and
+   * losing it because a file was deleted would be the app throwing away the
+   * half it cannot reconstruct to tidy up the half it can. Delete the note and
+   * the photograph stays, for the mirror of the same reason: a capture is
+   * something you chose to take, and a note about it is a second thing you
+   * chose to write, not a container it lives in.
+   *
+   * That is why the link lives **here rather than on the `MediaItem`**, and it
+   * is what makes the whole feature cost so little. The media index is the
+   * app's own record of files on disk; `sweepOrphans` deletes anything in the
+   * directory it has never heard of, `filesOf` builds the list it is told to
+   * keep, and retention has its own opinion about all of it. Putting a pointer
+   * in there would have made a note's existence a fact the sweep had to know
+   * about. Pointing the other way, none of those functions change at all: the
+   * diary already knows how to keep something forever, and this is one more
+   * field it keeps.
+   *
+   * A dangling id is therefore an ordinary state rather than corruption, and
+   * every reader is written to expect it. The screens say the picture has been
+   * deleted rather than pretending there was never one — which is a fact about
+   * the note, and the note is the thing that survived.
+   *
+   * **It cannot make a note on its own.** See `noteAt`: a title, a paragraph or
+   * a recording each say the day by themselves, and a bare pointer at a
+   * photograph says nothing that opening the photograph would not. A note that
+   * is only a link is a blank row in the diary with a thumbnail on it.
+   */
+  readonly mediaId: string | null;
 }
 
 export function dayNoteId(at: number): string {
@@ -195,11 +250,38 @@ export function freeInstant(notes: readonly DayNote[], wanted: number): number {
  * so is thirty seconds of talking with neither. Requiring more would be the app
  * deciding how somebody keeps a diary.
  */
-export function noteAt(at: number, title: string, text: string, voice: NoteVoice | null = null): DayNote | null {
+export function noteAt(
+  at: number,
+  title: string,
+  text: string,
+  voice: NoteVoice | null = null,
+  mediaId: string | null = null,
+): DayNote | null {
   const heading = title.trim();
   const body = text.trim();
+  // **The capture is deliberately not in this test.** A title says the day, so
+  // does a paragraph, so does half a minute of talking — and a bare pointer at
+  // a photograph says only what opening the photograph would say. A note that
+  // is nothing but a link is a blank row in the diary with a thumbnail on it.
   if (heading.length === 0 && body.length === 0 && voice === null) return null;
-  return { id: dayNoteId(at), at, title: heading, text: body, voice };
+  return { id: dayNoteId(at), at, title: heading, text: body, voice, mediaId: mediaId || null };
+}
+
+/**
+ * The notes written about one capture, oldest first.
+ *
+ * Several are allowed and nothing here assumes otherwise. A photograph you
+ * wrote a line about in the moment and a paragraph about that evening is two
+ * notes about one picture, which is the ordinary way somebody uses this — and
+ * the alternative, one note per capture, would mean the second thing you wrote
+ * had to overwrite the first.
+ *
+ * Oldest first, unlike the diary's own order. This is a day's worth of writing
+ * about one thing rather than a list you scan for the most recent entry, and
+ * such a list reads forwards.
+ */
+export function notesForMedia(notes: readonly DayNote[], mediaId: string): readonly DayNote[] {
+  return notes.filter((note) => note.mediaId === mediaId).sort((a, b) => a.at - b.at);
 }
 
 /**
@@ -389,7 +471,7 @@ function isLatLon(candidate: unknown): candidate is LatLon {
  */
 function readVoice(candidate: unknown): NoteVoice | null {
   if (typeof candidate !== 'object' || candidate === null) return null;
-  const { fileName, durationMs, byteLength, at } = candidate as Partial<NoteVoice>;
+  const { fileName, durationMs, byteLength, at, locked } = candidate as Partial<NoteVoice>;
   if (!isStoredFileName(fileName)) return null;
 
   return {
@@ -397,6 +479,11 @@ function readVoice(candidate: unknown): NoteVoice | null {
     durationMs: typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : 0,
     byteLength: typeof byteLength === 'number' && Number.isFinite(byteLength) && byteLength >= 0 ? byteLength : 0,
     at: isLatLon(at) ? { lat: at.lat, lon: at.lon } : null,
+    // **Unlocked is the default, and the safe direction to be wrong in.** Every
+    // recording written before this field existed reads as unlocked, which is
+    // exactly what it was — the alternative would be a library that silently
+    // became read-only on upgrade, with no way to see why.
+    locked: locked === true,
   };
 }
 
@@ -427,6 +514,12 @@ export function normalizeDayNotes(input: unknown): DayNote[] {
         typeof note.title === 'string' ? note.title : '',
         typeof note.text === 'string' ? note.text : '',
         readVoice(note.voice),
+        // No repair and no validation beyond the shape: an id naming a capture
+        // that no longer exists is an ordinary state here rather than a broken
+        // one — the picture was forgotten and the note outlived it, which is
+        // the arrangement. Every reader expects null and every reader expects a
+        // miss, so there is nothing for this to protect.
+        typeof note.mediaId === 'string' && note.mediaId.length > 0 ? note.mediaId : null,
       );
       return built ? [built] : [];
     })

@@ -19,10 +19,10 @@ function day(key: string, startedAt: number): DayGroup {
 }
 
 function note(at: number, text: string, voice: DayNote['voice'] = null): DayNote {
-  return { id: `note-${at}`, at, title: '', text, voice };
+  return { id: `note-${at}`, at, title: '', text, voice, mediaId: null };
 }
 
-const RECORDING = { fileName: 'voice-1.m4a', durationMs: 4_000, byteLength: 2048, at: null };
+const RECORDING = { fileName: 'voice-1.m4a', durationMs: 4_000, byteLength: 2048, at: null, locked: false };
 
 const TODAY = day('2026-01-10', Date.UTC(2026, 0, 10));
 const YESTERDAY = day('2026-01-09', Date.UTC(2026, 0, 9));

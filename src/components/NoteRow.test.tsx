@@ -22,10 +22,18 @@ const T0 = Date.UTC(2026, 0, 5, 8, 30, 0);
 const UTC = 0;
 
 function note(overrides: Partial<DayNote> = {}): DayNote {
-  return { id: dayNoteId(T0), at: T0, title: '', text: 'Walked to the market', voice: null, ...overrides };
+  return {
+    id: dayNoteId(T0),
+    at: T0,
+    title: '',
+    text: 'Walked to the market',
+    voice: null,
+    mediaId: null,
+    ...overrides,
+  };
 }
 
-const VOICE = { fileName: 'voice-1.m4a', durationMs: 90_000, byteLength: 2048, at: null };
+const VOICE = { fileName: 'voice-1.m4a', durationMs: 90_000, byteLength: 2048, at: null, locked: false };
 
 /**
  * A row is a heading now, not the entry. The list used to print every note in

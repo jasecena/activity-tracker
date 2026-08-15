@@ -24,6 +24,14 @@ export {
   type SegmenterState,
 } from './machine';
 export { applyJourneyLabels, journeyLabelId, labelledSegmentId, splitSegment, type JourneyLabel } from './manual';
+export {
+  applyVisitPurposes,
+  purposeFrom,
+  purposesForStay,
+  visitPurposeId,
+  PURPOSE_SEPARATOR,
+  type VisitPurpose,
+} from './visits';
 export { overrideFor, saysSomething } from './override';
 export {
   applyStationaryClaims,

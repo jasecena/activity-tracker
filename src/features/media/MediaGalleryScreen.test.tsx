@@ -52,6 +52,9 @@ function gallery(items: MediaItem[], overrides: Partial<Parameters<typeof MediaG
       onRotate={noop}
       focusId={null}
       onFocusHandled={noop}
+      notesFor={() => []}
+      onWriteNote={noop}
+      onOpenNote={noop}
       {...overrides}
     />
   );

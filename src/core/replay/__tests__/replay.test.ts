@@ -49,6 +49,7 @@ function stay(startedAt: number, endedAt: number, northM: number): StaySegment {
     fixCount: 10,
     center: { lat: north(northM), lon: 0 },
     radiusM: 5,
+    purpose: null,
   };
 }
 

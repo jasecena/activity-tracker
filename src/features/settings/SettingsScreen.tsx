@@ -164,7 +164,15 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
     <View style={styles.screen}>
       <ScreenHeader title="Settings" />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* **The keyboard would otherwise cover the field being typed into.**
+          Eight text fields live down this page — the transcription key, and the
+          five that configure the backup — and every one of them below the fold
+          sits under the keyboard the moment it opens. This is iOS's own inset:
+          the scroller gains exactly the keyboard's height at the bottom and
+          scrolls the focused field into view, which is the whole fix on a plain
+          scrolling page. The sheets need a `KeyboardAvoidingView` instead
+          because they are anchored to the bottom rather than scrolling. */}
+      <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
         <View style={styles.card}>
           <View style={styles.row}>
             <View style={styles.rowText}>

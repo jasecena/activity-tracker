@@ -17,6 +17,7 @@ export {
   normalizeDayNotes,
   noteAt,
   notesForDay,
+  notesForMedia,
   splitAtNow,
   TRANSCRIPT_SEPARATOR,
   voiceFilesOf,

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { memo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { DayNote } from '@/core/day';
 import { formatClockTime } from '@/core/format';
@@ -13,6 +13,15 @@ interface NoteRowProps {
   readonly tzOffsetMinutes: number;
   /** Opens the note for editing. Omitted where the timeline is read-only. */
   readonly onOpen?: (note: DayNote) => void;
+  /**
+   * The thumbnail of the capture this note is about, once decrypted.
+   *
+   * Null covers every reason there might not be one — no picture, a picture
+   * since forgotten, a thumbnail still being decrypted — because the row does
+   * the same thing with all three. Which of them it was is a question for the
+   * sheet, where there is room to answer it.
+   */
+  readonly thumbUri?: string | null;
 }
 
 /**
@@ -39,7 +48,7 @@ function firstLine(text: string): string {
   return text.split('\n')[0]?.trim() ?? '';
 }
 
-export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: NoteRowProps) {
+export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen, thumbUri = null }: NoteRowProps) {
   const head = (
     <View style={styles.head}>
       {/* The icon says which hand wrote it. Nothing else about the row
@@ -86,6 +95,21 @@ export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: 
     </View>
   ) : null;
 
+  /**
+   * The picture the note is about, at the end of the row.
+   *
+   * Decoration rather than a control: the whole row already opens the note, and
+   * a second target inside it would be one tap meaning two things — the same
+   * reason the player sits outside the pressable rather than inside it. The way
+   * to the photograph is through the note, which is where the app can also say
+   * what happened if the picture has since been deleted.
+   *
+   * Absent rather than a placeholder while the thumbnail is still being
+   * decrypted: an empty grey square appearing and then filling in is a row that
+   * flickers, and there is nothing to reserve space for that the eye needs.
+   */
+  const picture = thumbUri ? <Image source={{ uri: thumbUri }} style={styles.thumb} resizeMode="cover" /> : null;
+
   if (!onOpen) {
     return (
       <View style={styles.row}>
@@ -95,6 +119,7 @@ export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: 
           {written}
           {player}
         </View>
+        {picture}
       </View>
     );
   }
@@ -114,6 +139,7 @@ export const NoteRow = memo(function NoteRow({ note, tzOffsetMinutes, onOpen }: 
         </Pressable>
         {player}
       </View>
+      {picture}
     </View>
   );
 });
@@ -127,6 +153,9 @@ const styles = StyleSheet.create({
   inner: { flex: 1, gap: spacing.xs },
   words: { gap: spacing.xs },
   player: { marginTop: spacing.xs },
+  // The filmstrip's proportions, for the same reason: a fixed frame reads far
+  // faster down a list than a mosaic that changes shape with its contents.
+  thumb: { width: 34, height: 46, borderRadius: radius.sm, backgroundColor: colors.surfaceRaised },
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   time: { ...typography.caption, color: colors.textMuted },
   noteTitle: { ...typography.body, fontWeight: '600', color: colors.textPrimary },

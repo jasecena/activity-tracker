@@ -80,6 +80,14 @@ export const STORAGE_KEYS = {
   /** Names you gave journeys, as time ranges. See `core/segments/manual.ts`. */
   journeyLabels: `${PREFIX}journey-labels`,
   /**
+   * Why you were at a stop, as time ranges. See `core/segments/visits.ts`.
+   *
+   * Its own key rather than a field on `places`, because a purpose belongs to
+   * one visit and a place is the same place every time you go — the haircut on
+   * Saturday would otherwise overwrite the groceries on Tuesday.
+   */
+  visitPurposes: `${PREFIX}visit-purposes`,
+  /**
    * Stretches you said you did not move through, as time ranges.
    *
    * The same shape as the labels above and for the same reason: a range is
