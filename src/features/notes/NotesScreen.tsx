@@ -23,6 +23,19 @@ import { MAX_VOICE_MS, useVoiceNote } from './hooks/useVoiceNote';
  */
 const QUICK_MIC_SIZE = 76;
 
+/**
+ * How far the microphone floats above the tab bar.
+ *
+ * It sat at `spacing.md` and read as crowded against the bar beneath it — a
+ * control that large wants air under it, or it looks like part of the chrome
+ * rather than a thing you press.
+ *
+ * Named rather than written twice, because the list's bottom padding is
+ * measured from it: the last row has to clear the button, so the two numbers
+ * have to move together or scrolling to the end hides an entry behind it.
+ */
+const DOCK_BOTTOM = spacing.xl;
+
 interface NotesScreenProps {
   readonly notes: readonly DayNote[];
   readonly tzOffsetMinutes: number;
@@ -311,10 +324,13 @@ const styles = StyleSheet.create({
   // entry, as far as anybody scrolling to the bottom can tell.
   content: {
     paddingHorizontal: spacing.md,
-    paddingBottom: QUICK_MIC_SIZE + spacing.xxl + spacing.lg,
+    // The button, the gap it floats in, and room for the label above it. Derived
+    // from `DOCK_BOTTOM` rather than written as its own number, so lifting the
+    // microphone cannot leave the last row hidden behind it.
+    paddingBottom: QUICK_MIC_SIZE + DOCK_BOTTOM + spacing.xxl,
     gap: spacing.md,
   },
-  dock: { position: 'absolute', left: 0, right: 0, bottom: spacing.md, alignItems: 'center', gap: spacing.xs },
+  dock: { position: 'absolute', left: 0, right: 0, bottom: DOCK_BOTTOM, alignItems: 'center', gap: spacing.xs },
   // Its own ground, because it floats over whatever the list happens to have
   // scrolled under it.
   dockLabel: {

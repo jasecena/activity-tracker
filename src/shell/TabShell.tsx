@@ -104,11 +104,23 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   // tabs is the ceiling: iOS collapses a sixth into a "More" list, which is why
   // Places stays a page under Settings.
   //
-  // A journal rather than a book: a book is something you read, and this is the
-  // one tab whose contents nobody else wrote. The icon is also now the only
-  // thing in the bar that has to survive being next to a camera and a gallery
-  // without reading as a third way of consuming something.
-  { key: 'notes', label: 'Notes', icon: 'journal-outline' },
+  // **A pencil on a page, after `book-outline` and `journal-outline` were both
+  // tried and both read wrong.** A book is something you read, and this is the
+  // one tab whose contents nobody else wrote — but the journal glyph is a
+  // rounded rectangle with a stripe down one edge, which at tab size is a
+  // credit card. Reported as exactly that.
+  //
+  // The test an icon here has to pass is being recognisable at 30 points beside
+  // a camera and a gallery, and the two book shapes fail it for opposite
+  // reasons: one is a closed rectangle, the other is a closed rectangle with a
+  // line on it. A pencil is a *different silhouette* rather than a differently
+  // decorated one, which is the same reason the record button's square beats a
+  // second microphone in another colour.
+  //
+  // It is deliberately the same glyph as the pen in this tab's header. Both
+  // mean writing, and a tab bar saying "this is where you write" above a button
+  // saying "write" is consistent rather than duplicated.
+  { key: 'notes', label: 'Notes', icon: 'create-outline' },
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
