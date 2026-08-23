@@ -428,12 +428,36 @@ describe('what is next', () => {
   });
 
   /** A system that decides things about your week and cannot say why is one you
-   * stop opening in a fortnight. */
-  it('says why then, and quotes what you actually said', async () => {
+   * stop opening in a fortnight. `why` is the cheapest version of not being that. */
+  it('says why then, in the model’s own sentence', async () => {
     await openPlans({ agenda: withAgenda([ITEM]) });
 
     expect(screen.getByText('Saturday, while there is light')).toBeTruthy();
-    expect(screen.getByText('“I need to fix the backyard garden”')).toBeTruthy();
+  });
+
+  /**
+   * **This section is what the machine decided; the plans underneath are what
+   * you said.** Quoting one inside the other put both on the screen twice over,
+   * and the two lists are separate on purpose. The citation is still carried —
+   * it belongs behind a tap on the row, where the whole relationship can be
+   * shown at once, which is a later stage.
+   */
+  it('does not print your own words back at you', async () => {
+    await openPlans({ agenda: withAgenda([ITEM]) });
+
+    expect(screen.queryByText(/I need to fix the backyard garden/)).toBeNull();
+  });
+
+  /** Until that tap exists, a row is not a control: a target that opened
+   * nothing would be worse than none. */
+  it('offers nothing to press on a row', async () => {
+    await openPlans({ agenda: withAgenda([ITEM]) });
+
+    // The row is readable — it has a label, so a screen reader gets the whole
+    // thing in one — but it is not a button, and a screen reader announcing it
+    // as one would be the same lie the visible design avoids.
+    expect(screen.getByLabelText(/Fix the backyard garden/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Fix the backyard garden/ })).toBeNull();
   });
 
   it('draws nothing at all when there is nothing to say', async () => {

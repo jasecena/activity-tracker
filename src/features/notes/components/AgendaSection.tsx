@@ -27,10 +27,22 @@ interface AgendaSectionProps {
  * list you speak into — the same reasoning that put the diary in a tab instead
  * of under each day.
  *
- * **Every row says why it is there.** The model's own sentence, and under it the
- * words from your own plan it came out of. A system that decides things about
- * your week and cannot say why is one you stop opening in a fortnight, and this
- * is the cheapest possible version of not being that.
+ * **Every row says why it is there, in the model's own sentence.** A system that
+ * decides things about your week and cannot say why is one you stop opening in a
+ * fortnight, and `why` is the cheapest possible version of not being that.
+ *
+ * **What it does not show is your own words**, and that is a change from the
+ * first version. This section is what the machine decided; the plans underneath
+ * it are what you said, and printing a quotation from one inside the other put
+ * both on the same screen twice over. The two lists are separate on purpose —
+ * recordings under Plans, decisions under here — and a row that carried both was
+ * the seam between them showing through.
+ *
+ * The citation is still in the data: `quote` and `mentions` arrive on every item
+ * and are validated. They belong behind a tap on the row, where the whole
+ * relationship can be shown at once rather than one line of it squeezed under a
+ * heading. That is a later stage, and until it exists a row is not a control —
+ * a tap target that opened nothing would be worse than none.
  *
  * **Nothing here is a control.** You cannot accept, decline or reschedule from
  * this screen, because the phone has no way to tell the machine anything yet —
@@ -105,10 +117,6 @@ function Row({
       {item.why ? <Text style={styles.why}>{item.why}</Text> : null}
 
       {facts.length > 0 ? <Text style={styles.facts}>{facts.join(' · ')}</Text> : null}
-
-      {/* Your own words, so a row can always be traced back to the thing you
-          actually said. Quoted rather than styled as a note: it is a citation. */}
-      {item.quote ? <Text style={styles.quote}>“{item.quote}”</Text> : null}
     </View>
   );
 }
@@ -137,6 +145,5 @@ const styles = StyleSheet.create({
   when: { fontSize: 13, fontWeight: '600', color: colors.move, fontVariant: ['tabular-nums'] },
   why: { fontSize: 13, color: colors.textSecondary },
   facts: { fontSize: 12, color: colors.textMuted },
-  quote: { fontSize: 12, color: colors.textMuted, fontStyle: 'italic' },
   note: { fontSize: 12, color: colors.textMuted, paddingTop: spacing.xs },
 });

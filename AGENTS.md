@@ -501,7 +501,21 @@ one already had to be written into Settings as the exception.
 **Nothing on that section is a control.** No accept, no decline, no
 reschedule — the channel is one-way in this direction, and drawing a button that
 only changed something locally would be the app pretending to a conversation it
-is not having.
+is not having. A row is not pressable either, and a screen reader is not told it
+is: a tap target that opened nothing would be worse than none.
+
+**It shows what the model said and nothing else — no quotation from your own
+plan.** That is a revision of the first version, which printed the words a
+commitment came out of under every row. The section is what the machine decided;
+the plans underneath it are what you said, and quoting one inside the other put
+both on one screen twice over. The two lists are separate on purpose, and a row
+carrying both was the seam between them showing through. `why` is the
+explanation, and it is enough of one.
+
+`quote` and `mentions` are still carried and validated on every item. They belong
+behind a tap on the row, where the whole relationship can be shown at once rather
+than one line of it squeezed under a heading — a later stage, and the reason the
+data is already in place.
 
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
