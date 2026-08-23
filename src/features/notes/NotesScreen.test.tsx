@@ -27,8 +27,8 @@ const HOUR = 3_600_000;
 const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
 const NOW = T0 + 12 * HOUR; // late on the 5th, so the fixtures above are behind it
 
-function note(at: number, title: string): DayNote {
-  return { id: dayNoteId(at), at, title, text: '', voice: null, mediaId: null };
+function note(at: number, title: string, kind: DayNote['kind'] = 'note'): DayNote {
+  return { id: dayNoteId(at), at, title, text: '', voice: null, mediaId: null, kind };
 }
 
 function confirmTheAlert(): void {
@@ -202,6 +202,7 @@ describe('the microphone on the tab', () => {
     expect(onSpeak).toHaveBeenCalledWith(
       expect.objectContaining({ fileName: 'voice-1.m4a', durationMs: expect.any(Number) }),
       expect.any(Number),
+      'note',
     );
     // Nothing was opened on the way. The sheet is the pen's route, not this one.
     expect(onWrite).not.toHaveBeenCalled();
@@ -228,5 +229,200 @@ describe('the microphone on the tab', () => {
 
     expect(onSpeak.mock.calls[0]?.[1]).toBe(NOW);
     jest.useRealTimers();
+  });
+
+  /**
+   * **The counter has to move, and it stopped moving a minute in.**
+   *
+   * It was printed with `formatDuration`, which rounds to the minute above a
+   * minute — right for a journey on a timeline, and here it meant the display
+   * read "1m" for every one of the second minute's sixty seconds. Reported from
+   * a phone as the recorder having stopped counting, which is precisely what it
+   * looks like: the only part of the screen whose job is to say the microphone
+   * is still listening had frozen, on the one control where there is nothing
+   * else to check against.
+   *
+   * Ninety seconds because that is the middle of the minute the old string could
+   * not see into, and it is the recording in the report.
+   */
+  it('keeps counting past a minute rather than sitting on the minute', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    await render(notesScreen());
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    await act(async () => {
+      jest.setSystemTime(NOW + 90_000);
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(screen.getByText('1:30')).toBeTruthy();
+    expect(screen.queryByText('1m')).toBeNull();
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+    jest.useRealTimers();
+  });
+});
+
+/**
+ * Two lists behind one switch, and the switch is also the mode.
+ *
+ * A plan is a `DayNote` with a different `kind` rather than a second store, so
+ * what has to be true is that the two never bleed into each other: the list
+ * shows one kind, the counts show both, and a recording is filed into whichever
+ * list the microphone was pressed under.
+ */
+describe('notes and plans', () => {
+  const MIXED = [note(T0, 'Went to the market'), note(T0 + 1000, 'Fix the garden', 'plan')];
+
+  it('shows the diary first, with the plans counted but not listed', async () => {
+    await render(notesScreen({ notes: MIXED }));
+
+    expect(screen.getByText('Went to the market')).toBeTruthy();
+    expect(screen.queryByText('Fix the garden')).toBeNull();
+    // The count is what says the other list is not empty before you go there.
+    expect(screen.getByLabelText('Plans, 1 entry')).toBeTruthy();
+  });
+
+  it('swaps the list when the other side is pressed', async () => {
+    await render(notesScreen({ notes: MIXED }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+
+    expect(screen.getByText('Fix the garden')).toBeTruthy();
+    expect(screen.queryByText('Went to the market')).toBeNull();
+  });
+
+  it('says what an empty list of plans is for, rather than the diary’s line', async () => {
+    await render(notesScreen({ notes: [note(T0, 'Went to the market')] }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 0 entries')));
+
+    expect(screen.getByText('No plans yet. Tap the microphone to say what you want to happen.')).toBeTruthy();
+  });
+
+  it('files what the microphone hears into the list it was pressed under', async () => {
+    const onSpeak = jest.fn();
+    await render(notesScreen({ notes: MIXED, onSpeak }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+
+    expect(onSpeak).toHaveBeenCalledWith(expect.anything(), expect.any(Number), 'plan');
+  });
+
+  /**
+   * **The kind is fixed at the press, not read at the save.** `stop` resolves
+   * inside a closure created before it, so a switch pressed halfway through a
+   * sentence must not re-file what is still being said — the same reasoning
+   * that keeps a capture's position in a ref rather than in state.
+   */
+  it('keeps a running recording in the list it started in', async () => {
+    const onSpeak = jest.fn();
+    await render(notesScreen({ notes: MIXED, onSpeak }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    // Back to the diary while the microphone is still running.
+    await act(async () => fireEvent.press(screen.getByLabelText('Notes, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+
+    expect(onSpeak).toHaveBeenCalledWith(expect.anything(), expect.any(Number), 'plan');
+  });
+
+  it('writes with the pen into the list on screen', async () => {
+    const onWrite = jest.fn();
+    await render(notesScreen({ notes: MIXED, onWrite }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Write a plan')));
+
+    expect(onWrite).toHaveBeenCalledWith('plan');
+  });
+});
+
+/**
+ * What the machine at home decided, drawn above the plans it decided them from.
+ *
+ * It is on the Plans list rather than a page of its own because the one thing it
+ * has to be is already in front of you when you open the list you speak into.
+ * Nothing on it is a control: the channel is one-way in this direction, and
+ * buttons that only changed something locally would be the app pretending to a
+ * conversation it is not having.
+ */
+describe('what is next', () => {
+  const ITEM = {
+    id: 'abc123',
+    title: 'Fix the backyard garden',
+    detail: '',
+    shape: 'once' as const,
+    urgency: 'soon' as const,
+    deadline: null,
+    effortMinutes: 90,
+    context: 'backyard',
+    energy: 'high' as const,
+    suggestedAt: T0 + 3_600_000,
+    why: 'Saturday, while there is light',
+    quote: 'I need to fix the backyard garden',
+    saidAt: T0,
+  };
+
+  const withAgenda = (items: (typeof ITEM)[], note: string | null = null) => ({
+    agenda: { version: 1, generatedAt: T0, items },
+    busy: false,
+    note,
+    onRefresh: jest.fn(),
+  });
+
+  async function openPlans(props: Parameters<typeof notesScreen>[0] = {}) {
+    await render(notesScreen(props));
+    await act(async () => fireEvent.press(screen.getByLabelText(/^Plans, /)));
+  }
+
+  it('is not on the diary, only on the plans', async () => {
+    await render(notesScreen({ agenda: withAgenda([ITEM]) }));
+
+    expect(screen.queryByText('Fix the backyard garden')).toBeNull();
+  });
+
+  it('shows what to do and when', async () => {
+    await openPlans({ agenda: withAgenda([ITEM]) });
+
+    expect(screen.getByText('Fix the backyard garden')).toBeTruthy();
+    expect(screen.getByText('10:00')).toBeTruthy();
+  });
+
+  /** A system that decides things about your week and cannot say why is one you
+   * stop opening in a fortnight. */
+  it('says why then, and quotes what you actually said', async () => {
+    await openPlans({ agenda: withAgenda([ITEM]) });
+
+    expect(screen.getByText('Saturday, while there is light')).toBeTruthy();
+    expect(screen.getByText('“I need to fix the backyard garden”')).toBeTruthy();
+  });
+
+  it('draws nothing at all when there is nothing to say', async () => {
+    await openPlans({ agenda: withAgenda([]) });
+
+    expect(screen.queryByText("WHAT'S NEXT")).toBeNull();
+  });
+
+  it('says how old it is when the machine has been asleep', async () => {
+    await openPlans({ agenda: withAgenda([ITEM], 'Worked out 3d ago.') });
+
+    expect(screen.getByText('Worked out 3d ago.')).toBeTruthy();
+  });
+
+  it('asks again when the refresh is pressed', async () => {
+    const props = withAgenda([ITEM]);
+    await openPlans({ agenda: props });
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Check for a new agenda')));
+
+    expect(props.onRefresh).toHaveBeenCalled();
   });
 });

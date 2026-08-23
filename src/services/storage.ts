@@ -105,6 +105,27 @@ export const STORAGE_KEYS = {
    */
   backupLog: `${PREFIX}backup-log`,
   /**
+   * What the plan sync has already done: whose recording has been asked about,
+   * and what fingerprint went under each object key.
+   *
+   * Separate from `backupLog` because they answer to different buttons — the
+   * backup is a press and this is not, so a phone that has never pressed Back up
+   * still has a meaningful record here, and clearing one must not clear the
+   * other.
+   */
+  planSync: `${PREFIX}plan-sync`,
+  /**
+   * The last agenda the machine at home published, as this build read it.
+   *
+   * **A cache, never a source of truth.** Everything in it is derived at the
+   * other end from plans this phone sent, so it can be thrown away and asked for
+   * again. It is kept only because that machine is a computer in a house rather
+   * than a service: it will be off for a weekend, and a phone that showed
+   * nothing whenever it could not reach the bucket would be useless exactly when
+   * somebody is away from their desk.
+   */
+  agenda: `${PREFIX}agenda`,
+  /**
    * The index of captured photos, video and voice notes.
    *
    * Only the index. The bytes live in `services/mediaStore.ts`, sealed under

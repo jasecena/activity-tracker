@@ -9,6 +9,7 @@ import {
   noteAt,
   notesForDay,
   notesForMedia,
+  notesOfKind,
   TRANSCRIPT_SEPARATOR,
   voiceFilesOf,
   whereToWrite,
@@ -32,7 +33,7 @@ const T0 = Date.UTC(2026, 0, 5, 8, 0, 0);
 const HOUR = 3_600_000;
 
 function note(at: number, text = 'something', title = ''): DayNote {
-  return { id: dayNoteId(at), at, title, text, voice: null, mediaId: null };
+  return { id: dayNoteId(at), at, title, text, voice: null, mediaId: null, kind: 'note' };
 }
 
 function voice(startedAt: number): NoteVoice {
@@ -61,6 +62,7 @@ describe('writing one', () => {
       text: 'Walked there with Sam',
       voice: null,
       mediaId: null,
+      kind: 'note',
     });
   });
 
@@ -237,10 +239,64 @@ describe('the days you can open', () => {
  * segment. A malformed reading can go, because thousands more are coming; a
  * note is the one row nobody and nothing can reconstruct.
  */
+/**
+ * A plan is a note that looks forwards.
+ *
+ * The field exists so the diary can be shown as two lists and the microphone can
+ * know which one it is writing into. Nothing else in `core` reads it — the cut
+ * at now, the grouping and the day arithmetic are the same either side — so what
+ * is worth asserting is that it survives a round trip and that everything
+ * written before it existed still reads as a diary entry.
+ */
+describe('what an entry is for', () => {
+  it('defaults to a diary entry', () => {
+    expect(noteAt(T0, 'Market day', '')?.kind).toBe('note');
+  });
+
+  it('carries a plan through', () => {
+    expect(noteAt(T0, '', 'start doing affirmations', null, null, 'plan')?.kind).toBe('plan');
+  });
+
+  it('separates the two lists and leaves their order alone', () => {
+    const written = [
+      noteAt(T0, 'a', '') as DayNote,
+      noteAt(T0 + 1, '', 'fix the garden', null, null, 'plan') as DayNote,
+      noteAt(T0 + 2, 'b', '') as DayNote,
+    ];
+
+    expect(notesOfKind(written, 'note').map((note) => note.title)).toEqual(['a', 'b']);
+    expect(notesOfKind(written, 'plan').map((note) => note.text)).toEqual(['fix the garden']);
+  });
+
+  /**
+   * Every note in the store predates this field, so the default is the one that
+   * cannot lose anything: an entry whose kind cannot be read is still an entry,
+   * and the diary is where somebody would go looking for it. Same safe
+   * direction the recording's `locked` defaults in.
+   */
+  it('reads an entry written before the field existed as a diary entry', () => {
+    expect(normalizeDayNotes([{ id: dayNoteId(T0), at: T0, text: 'written last week' }])[0]?.kind).toBe('note');
+  });
+
+  it('reads a stored plan back as one', () => {
+    const stored = [{ id: dayNoteId(T0), at: T0, title: '', text: 'affirmations', kind: 'plan' }];
+
+    expect(normalizeDayNotes(stored)[0]?.kind).toBe('plan');
+  });
+
+  it('reads anything else as a diary entry rather than dropping the row', () => {
+    const stored = [{ id: dayNoteId(T0), at: T0, title: '', text: 'kept', kind: 'nonsense' }];
+    const [read] = normalizeDayNotes(stored);
+
+    expect(read?.kind).toBe('note');
+    expect(read?.text).toBe('kept');
+  });
+});
+
 describe('reading the store back', () => {
   it('keeps a note whose id no build ever wrote, rebuilding it from the instant', () => {
     expect(normalizeDayNotes([{ id: 'whatever-this-is', at: T0, text: 'kept' }])).toEqual([
-      { id: dayNoteId(T0), at: T0, title: '', text: 'kept', voice: null, mediaId: null },
+      { id: dayNoteId(T0), at: T0, title: '', text: 'kept', voice: null, mediaId: null, kind: 'note' },
     ]);
   });
 
@@ -287,7 +343,7 @@ describe('reading the store back', () => {
     const stored = [{ id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0) }];
 
     expect(normalizeDayNotes(stored)).toEqual([
-      { id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0), mediaId: null },
+      { id: dayNoteId(T0), at: T0, title: '', text: '', voice: voice(T0), mediaId: null, kind: 'note' },
     ]);
   });
 

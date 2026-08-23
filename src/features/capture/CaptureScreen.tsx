@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions, type Camera
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { formatDuration } from '@/core/format';
+import { formatTimecode } from '@/core/format';
 import {
   dialSpecFor,
   formatDisplayFactor,
@@ -435,7 +435,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
             color={state === 'recording' ? colors.danger : colors.textMuted}
           />
           <Text style={styles.voiceTime}>
-            {state === 'recording' ? formatDuration(Math.max(0, elapsedMs)) : 'Ready'}
+            {state === 'recording' ? formatTimecode(Math.max(0, elapsedMs)) : 'Ready'}
           </Text>
         </View>
       )}
@@ -444,7 +444,7 @@ export function CaptureScreen({ media, visible }: CaptureScreenProps) {
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={[styles.recordingBadge, upright]}>
             <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>{formatDuration(Math.max(0, elapsedMs))}</Text>
+            <Text style={styles.recordingText}>{formatTimecode(Math.max(0, elapsedMs))}</Text>
           </View>
         </View>
       ) : null}

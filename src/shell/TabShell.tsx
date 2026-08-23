@@ -1,21 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  appendTranscript,
   dayKeyOf,
   daysWorthOpening,
   groupByDay,
   notesForMedia,
   whereToWrite,
   type DayNote,
+  type NoteKind,
   type NoteVoice,
 } from '@/core/day';
 import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
-import { formatDistance, modeLabel } from '@/core/format';
+import { formatDistance, formatDuration, modeLabel } from '@/core/format';
 import { ACTIVITY_MODES, journeyLabelId, judgeStationaryClaim, stationaryCentre } from '@/core/segments';
 import type { MergeRefusal, MoveSegment, Segment, StationaryClaim, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
@@ -43,6 +45,9 @@ import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptu
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
 import { useNoteThumbnails } from '@/features/notes/hooks/useNoteThumbnails';
 import { NotesScreen } from '@/features/notes/NotesScreen';
+import { usePlanSync } from '@/features/notes/hooks/usePlanSync';
+import { agendaAge, STALE_AFTER_MS, useAgenda } from '@/features/notes/hooks/useAgenda';
+import { planQueueLine } from '@/core/plans';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
@@ -86,6 +91,15 @@ type NoteTarget =
       readonly kind: 'new';
       readonly dayKey: string;
       readonly segments: readonly Segment[];
+      /**
+       * A diary entry or a plan — `DayNote['kind']`, not this union's own.
+       *
+       * Named apart from `kind` above because the two answer different
+       * questions: that one is what the sheet is open *for*, this is what the
+       * entry *is*. Collapsing them would make "new plan" and "edit" the same
+       * axis, which they are not.
+       */
+      readonly noteKind: NoteKind;
       /** The capture it is about, when it was begun from one. */
       readonly mediaId?: string | null;
     }
@@ -208,6 +222,73 @@ export function TabShell() {
   const purposes = useVisitPurposes();
   const backup = useBackup(settings.settings);
   const notes = useDayNotes();
+
+  /**
+   * Plans, out to the bucket, and the words fetched for the spoken ones.
+   *
+   * Hoisted here rather than living on the Notes tab because it must keep going
+   * while you are looking at the map — a queue that only drains on one screen is
+   * a queue that drains when you happen to visit it. `onTranscript` appends
+   * rather than replaces, so nothing this does can eat what somebody typed.
+   */
+  const planSync = usePlanSync({
+    notes: notes.notes,
+    ready: notes.ready && settings.ready,
+    settings: settings.settings,
+    onTranscript: useCallback(
+      (note: DayNote, text: string) =>
+        notes.edit(note, note.at, note.title, appendTranscript(note.text, text), note.voice, note.mediaId),
+      [notes],
+    ),
+  });
+  /**
+   * One line under the Plans switch: how many are still to go, or where to
+   * configure somewhere to send them, or what the last failure said.
+   *
+   * The trouble takes precedence over the count, because a count that keeps not
+   * going down is the thing that needs explaining.
+   */
+  const planNote = useMemo(() => {
+    if (planSync.trouble) {
+      const said = planSync.trouble.detail.trim();
+      return `Could not send plans: ${planSync.trouble.reason}${said.length > 0 ? ` — ${said}` : ''}`;
+    }
+    return planQueueLine(planSync.waiting, settings.settings.backupBucket.length > 0);
+  }, [planSync.trouble, planSync.waiting, settings.settings.backupBucket]);
+
+  /**
+   * What the machine at home decided, read back out of the bucket.
+   *
+   * Only asked for while the Notes tab is showing: it is drawn on the Plans
+   * list and nowhere else, and a request made behind three hidden screens is a
+   * request nobody asked for.
+   */
+  const agenda = useAgenda(settings.settings, tab === 'notes');
+
+  /**
+   * One line under the agenda: what went wrong, or how old it is.
+   *
+   * Trouble first — a list that keeps not changing is the thing that needs
+   * explaining. Then staleness, because the machine sleeps and a phone showing
+   * four-day-old suggestions as though they were this morning's is the app being
+   * confidently wrong. Silence when it is fresh: a reassurance nobody asked for
+   * is chrome.
+   */
+  const agendaNote = useMemo(() => {
+    if (agenda.trouble) {
+      // Nothing configured says nothing here: `planQueueLine` already tells you
+      // to add a bucket in Settings, and two messages saying one thing is noise.
+      if (agenda.trouble.kind === 'not-configured') return null;
+      if (agenda.trouble.kind === 'too-new') {
+        return 'This was worked out by a newer version than this app knows. Showing the last one it understood.';
+      }
+      return `Could not check: ${agenda.trouble.reason}`;
+    }
+    if (!agenda.loaded || agenda.agenda.generatedAt === 0) return null;
+    const age = agendaAge(agenda.agenda);
+    return age > STALE_AFTER_MS ? `Worked out ${formatDuration(age)} ago.` : null;
+  }, [agenda.trouble, agenda.loaded, agenda.agenda]);
+
   const places = usePlaces();
   const media = useMedia();
   const timeline = useTimeline(
@@ -650,6 +731,7 @@ export function TabShell() {
             onWriteNote={(item) =>
               setWritingNote({
                 kind: 'new',
+                noteKind: 'note',
                 dayKey: dayKeyOf(readNow(), timeline.tzOffsetMinutes),
                 segments: timeline.today,
                 mediaId: item.id,
@@ -672,9 +754,10 @@ export function TabShell() {
             // and time pickers are how it becomes about any other day — which
             // is the same affordance that already existed, now reached from the
             // diary rather than from the day.
-            onWrite={() =>
+            onWrite={(noteKind) =>
               setWritingNote({
                 kind: 'new',
+                noteKind,
                 dayKey: dayKeyOf(readNow(), timeline.tzOffsetMinutes),
                 segments: timeline.today,
               })
@@ -690,10 +773,17 @@ export function TabShell() {
             // ran, and "when I said this" is the honest answer. `write` puts it
             // through `freeInstant`, so two notes begun in the same millisecond
             // cannot take each other's id.
-            onSpeak={(voice, startedAt) => notes.write(startedAt, '', '', voice)}
+            onSpeak={(voice, startedAt, noteKind) => notes.write(startedAt, '', '', voice, null, noteKind)}
             onOpen={(note) => setWritingNote({ kind: 'edit', note })}
             onForget={notes.forget}
             thumbFor={noteThumbs.uriFor}
+            planNote={planNote}
+            agenda={{
+              agenda: agenda.agenda,
+              busy: agenda.busy,
+              note: agendaNote,
+              onRefresh: agenda.refresh,
+            }}
           />
         </View>
 
@@ -775,7 +865,7 @@ export function TabShell() {
         target={writingNote}
         defaultAt={noteDefaultAt}
         onSave={(at, title, text, voice, mediaId) => {
-          if (writingNote?.kind === 'new') notes.write(at, title, text, voice, mediaId);
+          if (writingNote?.kind === 'new') notes.write(at, title, text, voice, mediaId, writingNote.noteKind);
           else if (writingNote) notes.edit(writingNote.note, at, title, text, voice, mediaId);
         }}
         // Null for a note with no picture *and* for one whose picture has been

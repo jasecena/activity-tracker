@@ -304,6 +304,159 @@ place, in no list, no export and no search. It is kept only because
 `useAdoptVoiceCaptures` still reads it and dropping the field would silently
 discard what an early build's owner typed. Do not build on it.
 
+**A plan is a note that looks forwards, and it is a `kind` rather than a second
+store.** The diary records what a day was; a plan records what you want to
+happen — "start doing affirmations", "fix the backyard garden" — said out loud
+so it is not lost. Both are a sentence somebody sat down and wrote, both are
+unreconstructable, and both want the same title, body, recording and instant. So
+`DayNote.kind` is `'note' | 'plan'` and nothing else about a note changes.
+
+**A second store would have cost a third sweep.** `sweepNoteAudio` already keeps
+the diary's recordings and `sweepOrphans` already deletes anything in the media
+directory its index has never heard of — which is exactly the race that forced
+note audio into a directory of its own. A third directory means a third index, a
+third sweep and a third chance to delete somebody's recording on launch. One
+field has none of that: the recording is already swept, already repaired by
+`normalizeDayNotes`, already spared by retention, already in the CSV export and
+already in the backup.
+
+**Nothing in `core` reads the field except the filter.** `splitAtNow`,
+`groupNotesByDay`, `noteAt` and the day arithmetic treat the two identically,
+because which Tuesday an entry is about does not change with what it is for.
+`notesOfKind` is the whole of it.
+
+**The segment is the mode, which is why there is no separate toggle.** The Notes
+tab carries a two-cell switch above the list — Notes on the left, Plans on the
+right — and the list you are looking at is what the microphone writes into. The
+first design had a switch beside the microphone and a tag on the rows, which was
+two controls and a legend for one decision. This asks nothing before you speak:
+you are already standing in one list or the other, and the press means what the
+screen in front of you says it means. It is also the withdrawn Record button's
+lesson kept — that control asked you to declare a journey before it had
+happened.
+
+**Which list the talking started in lives in a ref.** Same reasoning as a
+capture's position, and the same failure if it does not: `stop` resolves inside a
+closure created before it, so reading the state at save time would re-file a
+running recording the moment somebody pressed the other cell mid-sentence. The
+regression test presses Plans, records, presses Notes, then stops, and asserts
+the recording is still a plan.
+
+**Editing never changes what an entry is for.** The sheet collects words, an
+instant and a recording and never asks about the kind, so `edit` takes it off the
+note rather than defaulting — otherwise opening a plan and pressing Save would
+move it silently into the diary.
+
+**Everything before the field reads as a diary entry**, including a garbled
+value. The safe direction is the one that cannot lose a row: an entry whose kind
+cannot be read is still an entry, and the diary is where somebody would go
+looking for it. Same direction a recording's `locked` defaults in.
+
+**A plan goes to the bucket on its own, and it is the one thing in the app that
+does.** `usePlanSync`. Everything else waits to be asked — a map is drawn while
+you look at one, a recording is transcribed when you press Transcribe, the backup
+goes when you press Back up — and this does not. What holds the line is that your
+press still made the thing it sends: nothing already on the phone is swept into
+it, the diary is never a candidate however it was written, and there is nothing
+to send until you have filed something under Plans.
+
+**Only the words leave.** The recording stays here — already swept by
+`sweepNoteAudio`, already spared by retention, already in the ordinary backup —
+and the thing reading the bucket reads text. `plans/<note-id>.json` holds the
+title, the text, the instant and how long the recording ran, sealed under the
+backup key and put with the same `putObject` the backup uses. A test asserts the
+file name is not in the bytes, because that is the promise Settings makes.
+
+**The one-way property is untouched, and that is why this shape was chosen.**
+The app still has no unseal path and still never reads an object back. No new
+IAM permission, no second key, no second bucket. A stolen phone can add to the
+backup and still cannot open it.
+
+**The key is the note's id, so a retry overwrites rather than duplicates**, and
+what decides a re-send is a fingerprint of the payload rather than a flag —
+editing a plan has to send it again and only its content knows that. The same
+discipline as segment ids and the backup's own object naming.
+
+**Two passes, and the first one is one-at-a-time.** A spoken plan has its words
+fetched and appended to the note — `appendTranscript`, so nothing can overwrite
+what somebody typed — and only then does it have anything to send. That write
+goes through the notes store, which reads its list out of the closure it was
+built in, so a loop would write every result over one snapshot and keep the
+last. One per pass; the list changing brings the effect round again. Uploading
+is a loop because it writes no notes.
+
+**The record is only written when it changed, and a test suite that never
+finished is what found that.** `record` is a dependency of the effect, so
+setting it to a fresh object saying the same thing re-runs the effect, which
+re-sends, which sets it again — a failed upload became an infinite loop against
+the bucket.
+
+**A queue nobody can see is a queue that fails silently.** `planQueueLine` puts
+the count under the Plans switch, and says where to go when there is nowhere to
+send them — a phone with no bucket would otherwise hold everything for ever and
+look perfectly healthy. The last failure's own words are printed there too, the
+same reasoning as the transcription error: there is no log, no crash reporter
+and no telemetry to look it up in afterwards.
+
+**Nothing is lost by a failure.** The note is saved long before any of this
+starts, a failed transcription is not marked answered, a failed upload is not
+recorded as sent, and both are tried again when the list next changes. A silent
+recording _is_ marked answered, because asking again would be asking for ever.
+
+**`networkNote` stopped saying "none of it happens on its own".** That was true
+until this existed and would have been the third string in this app's history to
+promise more protection than it provides. It names the exception instead:
+everything but the Plans list waits to be asked.
+
+**The agenda is the way back, and it is the only thing this app reads out of
+the bucket.** The machine at home publishes `agenda/current.json` — what it
+decided and, for a few of them, when — and the Plans list draws it above the
+plans it was decided from. `core/agenda` parses it, `services/agenda.ts` fetches
+it, and the format is documented **once**, in `server/planner/agenda.py`, beside
+the code that writes it: a format described in two places is a format that
+drifts.
+
+**This narrowed a guarantee, and that is written down rather than discovered.**
+`docs/BACKLOG.md` § 12 chose one-way so a stolen phone could add to the backup
+and open none of it, and "the app has no unseal path at all" was half of what
+made that true. `unsealWithKey` exists now, so the other half — the bucket
+policy — is the whole of it: the phone may `GetObject` on `agenda/` and nothing
+else, and that `Condition` block is load-bearing rather than tidy. What did
+**not** change is that no key was added to the device: the agenda is sealed with
+the key the phone already seals with.
+
+**One object, replaced whole, never a log.** A phone that has been off for a
+week asks once and has the current answer, and the two ends cannot disagree
+about what has been applied — which is the class of bug a diff-based channel
+exists to have.
+
+**A bad item is dropped and the rest kept; a newer version is refused whole.**
+Not the diary's rule, and the difference is the point: `normalizeDayNotes`
+repairs because a note is unreconstructable, whereas nothing in an agenda is —
+the truth is in Postgres at home, and a missing row lasts until the next
+publish. Repairing one would mean inventing a decision nobody made. A version
+this build does not know is refused entirely rather than half-read, because half
+a screen confidently missing what the new version added is worse than the last
+agenda that was understood.
+
+**It is cached, because the machine at home sleeps.** It is a computer in a
+house rather than a service, and a phone that showed nothing whenever it could
+not reach the bucket would be useless exactly when somebody is away from their
+desk. So the last agenda is kept and shown **with how old it is** — stale is
+said, never hidden. The cache is never a source of truth and nothing is ever
+written back to it.
+
+**Refreshed when the list is first looked at, and on a press. Never on a
+timer.** The plan upload had to be automatic because there is no press after a
+recording that could carry it; a download has an obvious one — you are looking
+at the list. A poll would be this app's second automatic request, and the first
+one already had to be written into Settings as the exception.
+
+**Nothing on that section is a control.** No accept, no decline, no
+reschedule — the channel is one-way in this direction, and drawing a button that
+only changed something locally would be the app pretending to a conversation it
+is not having.
+
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
@@ -1072,6 +1225,34 @@ The limit iOS imposes is separate and is **not** twenty minutes:
 `UIBackgroundModes` holds `location` alone, deliberately, so backgrounding the
 app ends a recording. The screen is held awake while recording, which covers the
 auto-lock; it cannot cover the home gesture.
+
+**A counter is not a summary, and one formatter was doing both.**
+`formatDuration` rounds to the largest two units — "1h 24m", never "1h 24m 09s"
+— because seconds are noise on a timeline row and make it jitter as it updates.
+It was also printing the recording counter, so a voice note ticked 57s, 58s, 59s
+and then sat on **"1m" for a full minute**. Reported from a phone as the recorder
+having stopped counting, which is exactly what it looks like: the one part of the
+screen whose job is to prove the microphone is still listening had stopped
+moving, on the one control where there is nothing else to check it against.
+
+The same string then went onto the finished note, so a recording of 1m47s was
+labelled "1m" — the counter that appeared to freeze at a minute produced a
+recording that claims to be a minute, and the two agree on a number that is
+wrong. **That is worse than an idle counter: it is the app telling somebody the
+rest of what they said was not kept.** Nothing was: `elapsedMs` and the stored
+`durationMs` were right the whole time and only the display lied, which is why
+every existing recording reads its true length now with no migration.
+
+So `formatTimecode` — `0:07`, `1:47`, `1:02:33` — wherever a duration is
+**advancing** or is **a recording's own length**: both microphones' counters, the
+video badge, the player pill, the clip transport and its scrubber label.
+`formatDuration` keeps every summary of a stretch of a day, where rounding is the
+feature. Neither is a general-purpose duration formatter, and reaching for the
+wrong one is not a cosmetic mistake — it reads as data loss.
+
+The regression test that matters asserts **ninety seconds**, the middle of the
+minute the old string could not see into, and the fixture behind the player's
+was already 90 s asserting `1m`: the bug was written down as the expectation.
 
 **Every sheet with a field in it is bounded, scrolls, and gets out of the
 keyboard's way — and all three shipped without.** `NoteSheet`, `PlacePicker`,

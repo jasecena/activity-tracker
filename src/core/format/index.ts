@@ -67,6 +67,10 @@ export function formatBytes(bytes: number): string {
  * "1h 24m", not "1h 24m 09s": the seconds are noise at that scale and they make
  * the row jitter as it updates. Under a minute they are all there is, so they
  * are shown.
+ *
+ * **A summary of a stretch of a day, never a counter and never a recording's
+ * length.** Rounding to the minute is the whole feature here and the whole bug
+ * there — see `formatTimecode`.
  */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '—';
@@ -77,6 +81,48 @@ export function formatDuration(ms: number): string {
   const minutes = Math.floor((ms % MS_PER_HOUR) / MS_PER_MINUTE);
   if (hours === 0) return `${minutes}m`;
   return `${hours}h ${pad(minutes)}m`;
+}
+
+/**
+ * A clock that is running, or a length short enough that the seconds are the
+ * point: `0:07`, `1:47`, `1:02:33`.
+ *
+ * **`formatDuration` is a summary and this is a counter, and using the first
+ * where the second belongs is a bug that reads as data loss.** That formatter
+ * drops the seconds above a minute on purpose — "1h 24m 09s" is noise on a
+ * timeline row and makes it jitter as it updates — but it was also driving the
+ * recording counter, so a voice note ticked 57s, 58s, 59s and then sat on "1m"
+ * for a full minute before moving again. Reported from a phone as the recorder
+ * having stopped counting, which is exactly what it looks like: the one part of
+ * the screen whose job is to prove the microphone is still listening had
+ * stopped moving.
+ *
+ * The same string then went on the finished note, where a recording of 1m47s is
+ * labelled "1m" — so the counter that appeared to freeze at a minute produced a
+ * recording that claims to be a minute, and the two agree on a number that is
+ * wrong. That is worse than an idle counter: it is the app telling somebody the
+ * rest of what they said was not kept.
+ *
+ * So anywhere a duration is either **advancing** or is **a recording's own
+ * length**, the seconds are shown — a live counter, a playback position, the
+ * length on the pill. Anywhere it summarises a stretch of a day — a journey, a
+ * stay, a total over a place — `formatDuration` still reads better and still
+ * rounds. Neither is a general-purpose duration formatter; the question they
+ * answer is different.
+ *
+ * Minutes are unpadded and everything below them is padded, which is how a
+ * stopwatch and every media transport write it: `9:59`, then `10:00`. The hour
+ * appears only once there is one, so the common case stays the two fields the
+ * eye is expecting.
+ */
+export function formatTimecode(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const totalSeconds = Math.floor(ms / MS_PER_SECOND);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+  if (hours === 0) return `${minutes}:${pad(seconds)}`;
+  return `${hours}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 /** Wall-clock time of day, 24-hour, in the zone the caller names. See `core/day` on the sign of the offset. */

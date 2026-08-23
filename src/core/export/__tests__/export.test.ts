@@ -1,3 +1,4 @@
+import type { DayNote } from '../../day';
 import type { Fix } from '../../geo';
 import type { Place } from '../../places';
 import type { MoveSegment, Segment, StaySegment } from '../../segments';
@@ -164,13 +165,14 @@ describe('CSV quoting', () => {
  * full of commas, quotes and paragraph breaks as a matter of course.
  */
 describe('notesToCsv', () => {
-  const note = (at: number, text: string, title = '') => ({
+  const note = (at: number, text: string, title = ''): DayNote => ({
     id: `note-${at}`,
     at,
     title,
     text,
     voice: null,
     mediaId: null,
+    kind: 'note',
   });
 
   it('writes the instant, the day it belongs to, and the words', () => {

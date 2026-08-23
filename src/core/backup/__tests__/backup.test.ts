@@ -19,7 +19,7 @@ function day(key: string, startedAt: number): DayGroup {
 }
 
 function note(at: number, text: string, voice: DayNote['voice'] = null): DayNote {
-  return { id: `note-${at}`, at, title: '', text, voice, mediaId: null };
+  return { id: `note-${at}`, at, title: '', text, voice, mediaId: null, kind: 'note' };
 }
 
 const RECORDING = { fileName: 'voice-1.m4a', durationMs: 4_000, byteLength: 2048, at: null, locked: false };

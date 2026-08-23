@@ -4,7 +4,7 @@ import { useCallback, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { NoteVoice } from '@/core/day';
-import { formatDuration } from '@/core/format';
+import { formatTimecode } from '@/core/format';
 import { releaseAudioFocus, takeAudioFocus } from '@/services/audioFocus';
 import { noteAudioUri } from '@/services/noteAudio';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -113,7 +113,7 @@ export function VoiceNotePlayer({ voice, onForget }: VoiceNotePlayerProps) {
         style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
       >
         <Ionicons name={playing ? 'pause' : 'play'} size={18} color={colors.textPrimary} />
-        <Text style={styles.duration}>{formatDuration(voice.durationMs)}</Text>
+        <Text style={styles.duration}>{formatTimecode(voice.durationMs)}</Text>
       </Pressable>
 
       {onForget ? (

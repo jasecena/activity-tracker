@@ -30,7 +30,16 @@ function voice(): NoteVoice {
 }
 
 function note(overrides: Partial<DayNote> = {}): DayNote {
-  return { id: dayNoteId(T0), at: T0, title: '', text: 'typed', voice: null, mediaId: null, ...overrides };
+  return {
+    id: dayNoteId(T0),
+    at: T0,
+    title: '',
+    text: 'typed',
+    voice: null,
+    mediaId: null,
+    kind: 'note',
+    ...overrides,
+  };
 }
 
 function sheet(props: Partial<React.ComponentProps<typeof NoteSheet>> = {}) {

@@ -100,6 +100,33 @@ export interface NoteVoice {
  * whose segments have aged out can still have its note, which is the right way
  * round: the readings were the disposable half all along.
  */
+/**
+ * What an entry is *for*: something that happened, or something you want to.
+ *
+ * **A diary entry looks backwards and a plan looks forwards, and that is the
+ * whole of the difference.** "Went to the beach, it was lovely" is a record of a
+ * day; "start doing affirmations in the morning" is not a record of anything —
+ * it is a thing you said out loud so that you would not lose it. Both are a
+ * sentence somebody sat down and wrote, both are unreconstructable, and both
+ * want the same title, body, recording and instant. So a plan is a `DayNote`
+ * with a different `kind` rather than a second store.
+ *
+ * **A second store would have cost a third sweep.** `sweepNoteAudio` already
+ * keeps the diary's recordings and `sweepOrphans` already deletes anything in
+ * the media directory its index has never heard of — which is precisely the
+ * race that forced note audio into a directory of its own. A third directory
+ * would be a third index, a third sweep and a third chance to delete somebody's
+ * recording on launch. One field has none of that: the recording is already
+ * swept, already repaired by `normalizeDayNotes`, already spared by retention,
+ * already in the CSV export and already in the backup.
+ *
+ * It is the field that decides which list an entry appears in, and nothing else
+ * in `core` reads it. That is deliberate — `splitAtNow`, `groupNotesByDay` and
+ * `noteAt` all treat the two identically, because the arithmetic of "which day
+ * is this about" does not change with what the entry is for.
+ */
+export type NoteKind = 'note' | 'plan';
+
 export interface DayNote {
   /**
    * `note-<at>`, derived rather than generated — `core` has no entropy source
@@ -169,6 +196,15 @@ export interface DayNote {
    * is only a link is a blank row in the diary with a thumbnail on it.
    */
   readonly mediaId: string | null;
+  /**
+   * A diary entry, or something you want to happen. See `NoteKind`.
+   *
+   * Required rather than optional, and defaulted in `normalizeDayNotes` rather
+   * than here, so that every reader gets a definite answer and none of them has
+   * to spell "or undefined". Everything written before this field existed reads
+   * back as `'note'`, which is exactly what it was.
+   */
+  readonly kind: NoteKind;
 }
 
 export function dayNoteId(at: number): string {
@@ -256,6 +292,7 @@ export function noteAt(
   text: string,
   voice: NoteVoice | null = null,
   mediaId: string | null = null,
+  kind: NoteKind = 'note',
 ): DayNote | null {
   const heading = title.trim();
   const body = text.trim();
@@ -264,7 +301,7 @@ export function noteAt(
   // a photograph says only what opening the photograph would say. A note that
   // is nothing but a link is a blank row in the diary with a thumbnail on it.
   if (heading.length === 0 && body.length === 0 && voice === null) return null;
-  return { id: dayNoteId(at), at, title: heading, text: body, voice, mediaId: mediaId || null };
+  return { id: dayNoteId(at), at, title: heading, text: body, voice, mediaId: mediaId || null, kind };
 }
 
 /**
@@ -280,6 +317,19 @@ export function noteAt(
  * about one thing rather than a list you scan for the most recent entry, and
  * such a list reads forwards.
  */
+/**
+ * One list or the other, in the order they came in.
+ *
+ * The whole of what `kind` does. It is a filter rather than two stores, so an
+ * entry that turns out to be the other thing changes a field instead of moving
+ * between directories — and nothing downstream of here has to know there are two
+ * kinds at all: the grouping, the day arithmetic and the cut at now are the same
+ * either side.
+ */
+export function notesOfKind(notes: readonly DayNote[], kind: NoteKind): readonly DayNote[] {
+  return notes.filter((note) => note.kind === kind);
+}
+
 export function notesForMedia(notes: readonly DayNote[], mediaId: string): readonly DayNote[] {
   return notes.filter((note) => note.mediaId === mediaId).sort((a, b) => a.at - b.at);
 }
@@ -520,6 +570,13 @@ export function normalizeDayNotes(input: unknown): DayNote[] {
         // the arrangement. Every reader expects null and every reader expects a
         // miss, so there is nothing for this to protect.
         typeof note.mediaId === 'string' && note.mediaId.length > 0 ? note.mediaId : null,
+        // **Anything that is not exactly a plan is a diary entry.** Every note
+        // written before this field existed has no `kind` at all and reads back
+        // as `'note'`, which is what it was — the same safe direction the
+        // recording's `locked` defaults in, and for the same reason. A garbled
+        // value lands there too: an entry whose kind cannot be read is still an
+        // entry, and the diary is where you would go looking for it.
+        note.kind === 'plan' ? 'plan' : 'note',
       );
       return built ? [built] : [];
     })
