@@ -344,3 +344,85 @@ describe('notes and plans', () => {
     expect(onWrite).toHaveBeenCalledWith('plan');
   });
 });
+
+/**
+ * What the machine at home decided, drawn above the plans it decided them from.
+ *
+ * It is on the Plans list rather than a page of its own because the one thing it
+ * has to be is already in front of you when you open the list you speak into.
+ * Nothing on it is a control: the channel is one-way in this direction, and
+ * buttons that only changed something locally would be the app pretending to a
+ * conversation it is not having.
+ */
+describe('what is next', () => {
+  const ITEM = {
+    id: 'abc123',
+    title: 'Fix the backyard garden',
+    detail: '',
+    shape: 'once' as const,
+    urgency: 'soon' as const,
+    deadline: null,
+    effortMinutes: 90,
+    context: 'backyard',
+    energy: 'high' as const,
+    suggestedAt: T0 + 3_600_000,
+    why: 'Saturday, while there is light',
+    quote: 'I need to fix the backyard garden',
+    saidAt: T0,
+  };
+
+  const withAgenda = (items: (typeof ITEM)[], note: string | null = null) => ({
+    agenda: { version: 1, generatedAt: T0, items },
+    busy: false,
+    note,
+    onRefresh: jest.fn(),
+  });
+
+  async function openPlans(props: Parameters<typeof notesScreen>[0] = {}) {
+    await render(notesScreen(props));
+    await act(async () => fireEvent.press(screen.getByLabelText(/^Plans, /)));
+  }
+
+  it('is not on the diary, only on the plans', async () => {
+    await render(notesScreen({ agenda: withAgenda([ITEM]) }));
+
+    expect(screen.queryByText('Fix the backyard garden')).toBeNull();
+  });
+
+  it('shows what to do and when', async () => {
+    await openPlans({ agenda: withAgenda([ITEM]) });
+
+    expect(screen.getByText('Fix the backyard garden')).toBeTruthy();
+    expect(screen.getByText('10:00')).toBeTruthy();
+  });
+
+  /** A system that decides things about your week and cannot say why is one you
+   * stop opening in a fortnight. */
+  it('says why then, and quotes what you actually said', async () => {
+    await openPlans({ agenda: withAgenda([ITEM]) });
+
+    expect(screen.getByText('Saturday, while there is light')).toBeTruthy();
+    expect(screen.getByText('“I need to fix the backyard garden”')).toBeTruthy();
+  });
+
+  it('draws nothing at all when there is nothing to say', async () => {
+    await openPlans({ agenda: withAgenda([]) });
+
+    expect(screen.queryByText("WHAT'S NEXT")).toBeNull();
+  });
+
+  it('says how old it is when the machine has been asleep', async () => {
+    await openPlans({ agenda: withAgenda([ITEM], 'Worked out 3d ago.') });
+
+    expect(screen.getByText('Worked out 3d ago.')).toBeTruthy();
+  });
+
+  it('asks again when the refresh is pressed', async () => {
+    const props = withAgenda([ITEM]);
+    await openPlans({ agenda: props });
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Check for a new agenda')));
+
+    expect(props.onRefresh).toHaveBeenCalled();
+  });
+});

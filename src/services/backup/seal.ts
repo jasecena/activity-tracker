@@ -151,6 +151,66 @@ export function sealWithSalt(backupKey: Uint8Array, plaintext: Uint8Array, fileS
   return concatBytes(...parts);
 }
 
+/**
+ * Open one object, or say why it cannot be opened.
+ *
+ * **This is the unseal path the app deliberately did not have, and adding it
+ * narrowed a guarantee.** `docs/BACKLOG.md` § 12 chose one-way precisely so a
+ * stolen phone could add to the backup and open none of it, and "the app has no
+ * unseal path at all" was half of what made that true — the other half being the
+ * bucket policy. The agenda channel needs the phone to read *something*, so what
+ * is left is the policy alone: the phone may `GetObject` on `agenda/` and
+ * nothing else, and that `Condition` block is now load-bearing rather than tidy.
+ *
+ * Written down rather than discovered later, in the tradition this file's
+ * neighbours have earned. What has **not** changed: no key is added to the
+ * device — the agenda is sealed under the same key the phone already seals with
+ * — and nothing here can reach an object the policy does not permit.
+ *
+ * **It throws rather than returning something plausible.** Every check is a case
+ * where the bytes are not what they claim, and the two that matter are
+ * authenticated rather than merely parsed: a chunk carries its index, so it
+ * cannot be moved, and it carries whether it is the last, so the object cannot
+ * be truncated into a shorter one that still opens cleanly.
+ */
+export function unsealWithKey(backupKey: Uint8Array, sealed: Uint8Array): Uint8Array {
+  if (sealed.length < 5 + 4 + SALT_BYTES) throw new Error('Too short to hold a header');
+  if (!MAGIC.every((byte, at) => sealed[at] === byte)) throw new Error('Not an activity-tracker object');
+  if (sealed[4] !== VERSION) throw new Error(`Version ${sealed[4]} is newer than this build understands`);
+
+  const view = new DataView(sealed.buffer, sealed.byteOffset, sealed.byteLength);
+  const fileSalt = sealed.subarray(9, 9 + SALT_BYTES);
+  const fileKey = fileKeyFrom(backupKey, fileSalt);
+
+  // The frames are read before any chunk is opened, so "is this the last one" is
+  // known going in. That flag is authenticated, so it has to be right rather
+  // than discovered on the way out.
+  const frames: Uint8Array[] = [];
+  let at = 9 + SALT_BYTES;
+  while (at < sealed.length) {
+    if (at + 4 > sealed.length) throw new Error('A chunk length runs off the end');
+    const length = view.getUint32(at);
+    at += 4;
+    if (at + length > sealed.length) throw new Error('A chunk runs off the end — the object is truncated');
+    frames.push(sealed.subarray(at, at + length));
+    at += length;
+  }
+  if (frames.length === 0) throw new Error('No chunks at all');
+
+  const opened = frames.map((frame, index) => {
+    const final = index === frames.length - 1;
+    try {
+      return chacha20poly1305(fileKey, nonceFor(index), aadFor(index, final)).decrypt(frame);
+    } catch {
+      // The wrong key and altered bytes are indistinguishable here, and neither
+      // is worth guessing between.
+      throw new Error(`Chunk ${index} failed to authenticate — wrong key, or the object was altered`);
+    }
+  });
+
+  return concatBytes(...opened);
+}
+
 /** What an object will weigh once sealed, without sealing it. For the counts on screen. */
 export function sealedLength(plaintextLength: number): number {
   const chunks = Math.max(1, Math.ceil(plaintextLength / CHUNK_BYTES));

@@ -17,7 +17,7 @@ import {
 import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
-import { formatDistance, modeLabel } from '@/core/format';
+import { formatDistance, formatDuration, modeLabel } from '@/core/format';
 import { ACTIVITY_MODES, journeyLabelId, judgeStationaryClaim, stationaryCentre } from '@/core/segments';
 import type { MergeRefusal, MoveSegment, Segment, StationaryClaim, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
@@ -46,6 +46,7 @@ import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
 import { useNoteThumbnails } from '@/features/notes/hooks/useNoteThumbnails';
 import { NotesScreen } from '@/features/notes/NotesScreen';
 import { usePlanSync } from '@/features/notes/hooks/usePlanSync';
+import { agendaAge, STALE_AFTER_MS, useAgenda } from '@/features/notes/hooks/useAgenda';
 import { planQueueLine } from '@/core/plans';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
@@ -254,6 +255,39 @@ export function TabShell() {
     }
     return planQueueLine(planSync.waiting, settings.settings.backupBucket.length > 0);
   }, [planSync.trouble, planSync.waiting, settings.settings.backupBucket]);
+
+  /**
+   * What the machine at home decided, read back out of the bucket.
+   *
+   * Only asked for while the Notes tab is showing: it is drawn on the Plans
+   * list and nowhere else, and a request made behind three hidden screens is a
+   * request nobody asked for.
+   */
+  const agenda = useAgenda(settings.settings, tab === 'notes');
+
+  /**
+   * One line under the agenda: what went wrong, or how old it is.
+   *
+   * Trouble first — a list that keeps not changing is the thing that needs
+   * explaining. Then staleness, because the machine sleeps and a phone showing
+   * four-day-old suggestions as though they were this morning's is the app being
+   * confidently wrong. Silence when it is fresh: a reassurance nobody asked for
+   * is chrome.
+   */
+  const agendaNote = useMemo(() => {
+    if (agenda.trouble) {
+      // Nothing configured says nothing here: `planQueueLine` already tells you
+      // to add a bucket in Settings, and two messages saying one thing is noise.
+      if (agenda.trouble.kind === 'not-configured') return null;
+      if (agenda.trouble.kind === 'too-new') {
+        return 'This was worked out by a newer version than this app knows. Showing the last one it understood.';
+      }
+      return `Could not check: ${agenda.trouble.reason}`;
+    }
+    if (!agenda.loaded || agenda.agenda.generatedAt === 0) return null;
+    const age = agendaAge(agenda.agenda);
+    return age > STALE_AFTER_MS ? `Worked out ${formatDuration(age)} ago.` : null;
+  }, [agenda.trouble, agenda.loaded, agenda.agenda]);
 
   const places = usePlaces();
   const media = useMedia();
@@ -744,6 +778,12 @@ export function TabShell() {
             onForget={notes.forget}
             thumbFor={noteThumbs.uriFor}
             planNote={planNote}
+            agenda={{
+              agenda: agenda.agenda,
+              busy: agenda.busy,
+              note: agendaNote,
+              onRefresh: agenda.refresh,
+            }}
           />
         </View>
 

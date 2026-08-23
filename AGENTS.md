@@ -408,6 +408,55 @@ until this existed and would have been the third string in this app's history to
 promise more protection than it provides. It names the exception instead:
 everything but the Plans list waits to be asked.
 
+**The agenda is the way back, and it is the only thing this app reads out of
+the bucket.** The machine at home publishes `agenda/current.json` — what it
+decided and, for a few of them, when — and the Plans list draws it above the
+plans it was decided from. `core/agenda` parses it, `services/agenda.ts` fetches
+it, and the format is documented **once**, in `server/planner/agenda.py`, beside
+the code that writes it: a format described in two places is a format that
+drifts.
+
+**This narrowed a guarantee, and that is written down rather than discovered.**
+`docs/BACKLOG.md` § 12 chose one-way so a stolen phone could add to the backup
+and open none of it, and "the app has no unseal path at all" was half of what
+made that true. `unsealWithKey` exists now, so the other half — the bucket
+policy — is the whole of it: the phone may `GetObject` on `agenda/` and nothing
+else, and that `Condition` block is load-bearing rather than tidy. What did
+**not** change is that no key was added to the device: the agenda is sealed with
+the key the phone already seals with.
+
+**One object, replaced whole, never a log.** A phone that has been off for a
+week asks once and has the current answer, and the two ends cannot disagree
+about what has been applied — which is the class of bug a diff-based channel
+exists to have.
+
+**A bad item is dropped and the rest kept; a newer version is refused whole.**
+Not the diary's rule, and the difference is the point: `normalizeDayNotes`
+repairs because a note is unreconstructable, whereas nothing in an agenda is —
+the truth is in Postgres at home, and a missing row lasts until the next
+publish. Repairing one would mean inventing a decision nobody made. A version
+this build does not know is refused entirely rather than half-read, because half
+a screen confidently missing what the new version added is worse than the last
+agenda that was understood.
+
+**It is cached, because the machine at home sleeps.** It is a computer in a
+house rather than a service, and a phone that showed nothing whenever it could
+not reach the bucket would be useless exactly when somebody is away from their
+desk. So the last agenda is kept and shown **with how old it is** — stale is
+said, never hidden. The cache is never a source of truth and nothing is ever
+written back to it.
+
+**Refreshed when the list is first looked at, and on a press. Never on a
+timer.** The plan upload had to be automatic because there is no press after a
+recording that could carry it; a download has an obvious one — you are looking
+at the list. A poll would be this app's second automatic request, and the first
+one already had to be written into Settings as the exception.
+
+**Nothing on that section is a control.** No accept, no decline, no
+reschedule — the channel is one-way in this direction, and drawing a button that
+only changed something locally would be the app pretending to a conversation it
+is not having.
+
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,

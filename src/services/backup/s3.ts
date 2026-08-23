@@ -1,12 +1,21 @@
 import { signS3Request, type AwsCredentials } from './sigv4';
 
 /**
- * The two verbs this app knows.
+ * The three verbs this app knows.
  *
- * `PUT`, and `GET` of a listing. There is deliberately no `GET` of an object
- * and no `DELETE` here — not because they would be hard, but because the bucket
- * policy denies the phone both, and a client that cannot express what it is not
- * allowed to do is one fewer place for that rule to be undone by accident.
+ * `PUT`, `GET` of a listing, and `GET` of one object. There is still no
+ * `DELETE` — not because it would be hard, but because the bucket policy denies
+ * the phone it, and a client that cannot express what it is not allowed to do is
+ * one fewer place for that rule to be undone by accident.
+ *
+ * **`getObject` is new and it revises what stood here.** This file used to say
+ * there was deliberately no `GET` of an object, which was true while the backup
+ * was the only thing in the bucket. The agenda channel is the other direction —
+ * the machine at home writes what it decided, the phone reads it — so the verb
+ * has to exist. What keeps the original property is the policy: the phone may
+ * read `agenda/` and nothing else, and `days/`, `media/`, `note-audio/` and
+ * `plans/` stay unreadable to it. See `unsealWithKey` for the same note from the
+ * other side.
  *
  * Every failure is returned rather than thrown, with the service's own words
  * attached. S3 answers a bad signature with a 403 and an XML body naming which
@@ -110,6 +119,40 @@ export async function putObject(
  * running two years is past that. A truncated listing that looked complete would
  * quietly re-upload everything beyond the first page, for ever.
  */
+/**
+ * One object, as bytes, or why it could not be had.
+ *
+ * A 404 comes back as `not-configured` rather than an error worth alarming
+ * anybody about: an agenda that has not been published yet is the ordinary state
+ * of a fresh install, not a fault.
+ */
+export async function getObject(config: BucketConfig, key: string, now: number): Promise<Uint8Array | BackupError> {
+  const signed = signS3Request({
+    method: 'GET',
+    bucket: config.bucket,
+    key,
+    body: new Uint8Array(),
+    credentials: config,
+    now,
+  });
+  const { signal, done } = abortAfter(TIMEOUT_MS);
+  try {
+    const response = await fetch(signed.url, { method: 'GET', headers: signed.headers, signal });
+    if (!response.ok) {
+      const said = await response.text().catch(() => '');
+      return { reason: response.status === 404 ? 'not-configured' : failureFor(response.status), detail: said };
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    return {
+      reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'unreachable',
+      detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    };
+  } finally {
+    done();
+  }
+}
+
 export async function listKeys(config: BucketConfig, now: number): Promise<readonly string[] | BackupError> {
   const keys: string[] = [];
   let token: string | undefined;
