@@ -6,7 +6,11 @@ module.exports = [
   ...expoConfig,
   prettierConfig,
   {
-    ignores: ['node_modules/**', 'coverage/**', '.expo/**', 'dist/**', 'ios/**', 'android/**'],
+    // `server/**` is the other half and is not this tooling's business —
+    // `server/README.md` says so, and it was not true until this line existed.
+    // Following that file's own setup instructions creates `server/.venv`, and
+    // eslint walked into a vendored emscripten worker and failed the build.
+    ignores: ['node_modules/**', 'coverage/**', '.expo/**', 'dist/**', 'ios/**', 'android/**', 'server/**'],
   },
   {
     rules: {
