@@ -421,6 +421,39 @@ until this existed and would have been the third string in this app's history to
 promise more protection than it provides. It names the exception instead:
 everything but the Plans list waits to be asked.
 
+**An agenda item is wired back to the recordings it came out of, both ways.**
+One recording holds several items; one item is heard in several recordings. The
+first direction was always there — a commitment carries the plan it was read
+from. The second is `subject`, a hash of the normalised title with **no plan id
+in it**, so the same thing said again a fortnight later lands on the same subject
+instead of becoming an unrelated row nothing could ever join.
+
+**The linkage is plan ids and nothing else, and that is what keeps the promise.**
+A plan id _is_ a `DayNote` id — the phone named the object `plans/<note-id>.json`
+when it sent it — so handing the id back lets the phone find its own note and,
+through it, the audio on disk. **No file name ever leaves the device**, which is
+what Settings says, and none is needed. `notesBehind` is the whole walk.
+
+**Repetition is emphasis, and it is the one place that changes anything.** Said
+three times over a fortnight is on somebody's mind in a way said once is not, and
+nothing inside a single reading can see that. `mentionCount` orders the agenda
+after urgency — a deadline still outranks it, because repetition is emphasis and
+a date is a date — and the scheduler is told, so the model can weigh it too.
+
+**One subject is one item however often it was said.** Showing it twice would be
+the app treating repetition as more work rather than as more emphasis, which is
+the opposite of what it means.
+
+**Title matching is the floor and that is stated rather than implied.** "Fix the
+backyard garden" said twice merges; "fix the garden" and "sort out the backyard"
+do not, because nothing here understands they mean the same thing. Merging those
+needs a pass comparing meanings rather than strings. What exists is the linkage
+and the place to put a better answer, not the better answer.
+
+**Nothing on the phone draws any of it yet.** It is carried, validated and kept
+so that the day something wants it the link is already there rather than lost —
+and a test walks it end to end, from an agenda item to the recording on disk.
+
 **The agenda is the way back, and it is the only thing this app reads out of
 the bucket.** The machine at home publishes `agenda/current.json` — what it
 decided and, for a few of them, when — and the Plans list draws it above the

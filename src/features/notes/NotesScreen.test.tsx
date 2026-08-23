@@ -398,6 +398,8 @@ describe('what is next', () => {
     why: 'Saturday, while there is light',
     quote: 'I need to fix the backyard garden',
     saidAt: T0,
+    mentions: [dayNoteId(T0)],
+    mentionCount: 1,
   };
 
   const withAgenda = (items: (typeof ITEM)[], note: string | null = null) => ({

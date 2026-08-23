@@ -1,4 +1,4 @@
-import { AGENDA_VERSION, isStale, nextUp, readAgenda, type Agenda } from '../index';
+import { AGENDA_VERSION, isStale, nextUp, notesBehind, readAgenda, type Agenda } from '../index';
 
 /**
  * The first thing in this app that arrives from off the phone as a whole
@@ -28,6 +28,8 @@ function item(over: Record<string, unknown> = {}) {
     why: '',
     quote: 'I need to fix the garden',
     saidAt: T0,
+    mentions: ['note-1'],
+    mentionCount: 1,
     ...over,
   };
 }
@@ -174,5 +176,92 @@ describe('how old it is', () => {
 
   it('says nothing about an agenda that was never read', () => {
     expect(isStale({ version: AGENDA_VERSION, generatedAt: 0, items: [] }, T0, 1)).toBe(false);
+  });
+});
+
+/**
+ * The linkage back to what was actually said.
+ *
+ * One recording holds several items and one item is heard in several
+ * recordings, and both directions have to survive the pipe. Nothing draws this
+ * yet — it is carried so that the day something wants it, the link is there
+ * rather than lost.
+ */
+describe('wiring an item back to its recordings', () => {
+  it('keeps every recording it was heard in', () => {
+    const read = readAgenda(agenda([item({ mentions: ['note-1', 'note-2'], mentionCount: 2 })]));
+
+    expect(read?.items[0]?.mentions).toEqual(['note-1', 'note-2']);
+    expect(read?.items[0]?.mentionCount).toBe(2);
+  });
+
+  it('never carries a file name, only an id', () => {
+    const read = readAgenda(agenda([item({ mentions: ['note-1'] })]));
+
+    expect(JSON.stringify(read)).not.toContain('.m4a');
+  });
+
+  it('drops a link that is not an id rather than pointing at nothing', () => {
+    const read = readAgenda(agenda([item({ mentions: ['note-1', '', 42, null] })]));
+
+    expect(read?.items[0]?.mentions).toEqual(['note-1']);
+  });
+
+  /** A row exists because something was said, so zero is a writer being wrong. */
+  it('never counts a mention below one', () => {
+    expect(readAgenda(agenda([item({ mentions: [], mentionCount: 0 })]))?.items[0]?.mentionCount).toBe(1);
+  });
+
+  it('trusts a count higher than the ids it was sent', () => {
+    const read = readAgenda(agenda([item({ mentions: ['note-1'], mentionCount: 3 })]));
+
+    expect(read?.items[0]?.mentionCount).toBe(3);
+  });
+
+  it('reads an agenda written before mentions existed', () => {
+    const { mentions, mentionCount, ...older } = item();
+    void mentions;
+    void mentionCount;
+
+    expect(readAgenda(agenda([older]))?.items[0]?.mentions).toEqual([]);
+  });
+
+  /**
+   * **A plan id is a `DayNote` id**, which is the whole of the linkage: the
+   * phone named the object after its own note when it sent it, so this walk
+   * needs nothing from the network and no file name ever left the device.
+   */
+  describe('resolving one back to the notes on this phone', () => {
+    const notes = [
+      { id: 'note-1', voice: { fileName: 'voice-1.m4a' } },
+      { id: 'note-2', voice: { fileName: 'voice-2.m4a' } },
+      { id: 'note-3', voice: null },
+    ];
+
+    it('finds every recording behind one item', () => {
+      const one = readAgenda(agenda([item({ mentions: ['note-1', 'note-2'] })]))!.items[0]!;
+
+      expect(notesBehind(one, notes).map((note) => note.voice?.fileName)).toEqual(['voice-1.m4a', 'voice-2.m4a']);
+    });
+
+    it('finds the several items that came out of one recording', () => {
+      const read = readAgenda(
+        agenda([
+          item({ id: 'a', mentions: ['note-1'] }),
+          item({ id: 'b', mentions: ['note-1'] }),
+          item({ id: 'c', mentions: ['note-2'] }),
+        ]),
+      )!;
+      const fromOne = read.items.filter((one) => one.mentions.includes('note-1'));
+
+      expect(fromOne.map((one) => one.id)).toEqual(['a', 'b']);
+    });
+
+    /** The note may have been deleted since. Ordinary, not broken. */
+    it('says nothing rather than inventing a note that has gone', () => {
+      const one = readAgenda(agenda([item({ mentions: ['note-gone'] })]))!.items[0]!;
+
+      expect(notesBehind(one, notes)).toEqual([]);
+    });
   });
 });

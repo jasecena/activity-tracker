@@ -51,6 +51,36 @@ export interface AgendaItem {
   readonly quote: string;
   /** When the plan behind it was said. */
   readonly saidAt: number;
+  /**
+   * Every recording this came out of, by plan id — oldest first.
+   *
+   * **A plan id is a `DayNote` id**, which is what makes this linkage free and
+   * what keeps the promise Settings makes. The phone named the object
+   * `plans/<note-id>.json` when it sent it, so the machine can hand the same id
+   * back and this phone looks up its own note and, through it, the recording on
+   * disk. **No file name ever leaves the device**, and none is needed.
+   *
+   * **Both directions live here.** One recording holds several items — several
+   * agenda items naming the same plan id. One item is heard in several
+   * recordings — several plan ids on one item, which is what happens when you
+   * say the same thing again a fortnight later.
+   *
+   * Nothing draws this yet. It is carried, validated and kept so that the day
+   * something wants it, the link is already there rather than lost.
+   */
+  readonly mentions: readonly string[];
+  /**
+   * How many recordings mentioned it.
+   *
+   * Not `mentions.length` — the writer decides it, and the two could differ if
+   * a mention were ever recorded without its plan surviving. Trusting the count
+   * the sender computed is the same discipline as not re-sorting the list.
+   *
+   * Repetition is emphasis: something raised three times over a fortnight is on
+   * somebody's mind in a way something said once is not. The machine already
+   * uses it to order the list; this phone only carries it.
+   */
+  readonly mentionCount: number;
 }
 
 export interface Agenda {
@@ -103,6 +133,15 @@ function readItem(candidate: unknown): AgendaItem | null {
   // next publish.
   if (!id || !title || saidAt === null || !shape || !urgency || !energy) return null;
 
+  // Ids only, and only ones shaped like ids. A malformed entry here would be a
+  // link to nothing rather than a link to the wrong thing, but dropping it is
+  // still cheaper than carrying it.
+  const mentions = Array.isArray(row.mentions)
+    ? row.mentions
+        .filter((one): one is string => typeof one === 'string' && one.trim().length > 0)
+        .map((one) => one.trim())
+    : [];
+
   const effort = row.effortMinutes;
   return {
     id,
@@ -118,6 +157,14 @@ function readItem(candidate: unknown): AgendaItem | null {
     why: text(row.why),
     quote: text(row.quote),
     saidAt,
+    mentions,
+    // Never below one: a row exists because something was said, so a count of
+    // zero is a writer being wrong rather than a fact about the world.
+    mentionCount: Math.max(
+      typeof row.mentionCount === 'number' && Number.isFinite(row.mentionCount) ? Math.round(row.mentionCount) : 0,
+      mentions.length,
+      1,
+    ),
   };
 }
 
@@ -168,4 +215,28 @@ export function nextUp(agenda: Agenda, count: number): readonly AgendaItem[] {
  */
 export function isStale(agenda: Agenda, now: number, afterMs: number): boolean {
   return agenda.generatedAt > 0 && now - agenda.generatedAt > afterMs;
+}
+
+/**
+ * The recordings behind one agenda item, as this phone's own notes.
+ *
+ * **The whole linkage, and it costs one lookup.** A plan id *is* a `DayNote`
+ * id — the phone named the object after its own note when it sent it — so
+ * resolving what the machine decided back to what you actually said needs
+ * nothing from the network and nothing stored on either side beyond the id.
+ *
+ * A miss is ordinary rather than broken, and every caller has to expect it: the
+ * note may have been deleted since it was sent, and the agenda would not know.
+ * The same shape as a `DayNote.mediaId` pointing at a forgotten capture.
+ *
+ * Nothing calls this yet. It is here so the link is provable rather than
+ * merely intended — a test walks it end to end, from an agenda item to the
+ * recording on disk.
+ */
+export function notesBehind<T extends { readonly id: string }>(
+  item: Pick<AgendaItem, 'mentions'>,
+  notes: readonly T[],
+): readonly T[] {
+  const wanted = new Set(item.mentions);
+  return notes.filter((note) => wanted.has(note.id));
 }
