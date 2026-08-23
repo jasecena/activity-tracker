@@ -24,6 +24,8 @@ function item(over: Record<string, unknown> = {}) {
     effortMinutes: null,
     context: null,
     energy: 'low',
+    priority: 'normal',
+    dependsOn: '',
     suggestedAt: null,
     why: '',
     quote: 'I need to fix the garden',
@@ -263,5 +265,48 @@ describe('wiring an item back to its recordings', () => {
 
       expect(notesBehind(one, notes)).toEqual([]);
     });
+  });
+});
+
+/**
+ * **This is a list of a life, not a to-do list.** Dated tasks and hard deadlines
+ * live in a different application; almost everything here is `whenever`, which
+ * is why importance has to be its own field rather than being read off urgency.
+ */
+describe('how much a thing matters', () => {
+  it('keeps what the machine decided', () => {
+    expect(readAgenda(agenda([item({ priority: 'high' })]))?.items[0]?.priority).toBe('high');
+  });
+
+  it('is normal when nothing said otherwise', () => {
+    expect(readAgenda(agenda([item({ priority: undefined })]))?.items[0]?.priority).toBe('normal');
+  });
+
+  /** An item whose importance cannot be read is still an item. */
+  it('reads an unknown priority as normal rather than dropping the row', () => {
+    const read = readAgenda(agenda([item({ priority: 'critical' })]));
+
+    expect(read?.items).toHaveLength(1);
+    expect(read?.items[0]?.priority).toBe('normal');
+  });
+
+  it('carries what has to happen first, in your own words', () => {
+    expect(readAgenda(agenda([item({ dependsOn: 'once the fence is up' })]))?.items[0]?.dependsOn).toBe(
+      'once the fence is up',
+    );
+  });
+
+  it('is empty when nothing has to happen first', () => {
+    expect(readAgenda(agenda([item()]))?.items[0]?.dependsOn).toBe('');
+  });
+
+  it('reads an agenda written before either existed', () => {
+    const { priority, dependsOn, ...older } = item();
+    void priority;
+    void dependsOn;
+    const read = readAgenda(agenda([older]));
+
+    expect(read?.items[0]?.priority).toBe('normal');
+    expect(read?.items[0]?.dependsOn).toBe('');
   });
 });

@@ -394,6 +394,8 @@ describe('what is next', () => {
     effortMinutes: 90,
     context: 'backyard',
     energy: 'high' as const,
+    priority: 'normal' as const,
+    dependsOn: '',
     suggestedAt: T0 + 3_600_000,
     why: 'Saturday, while there is light',
     quote: 'I need to fix the backyard garden',

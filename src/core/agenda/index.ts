@@ -26,10 +26,12 @@ export const AGENDA_VERSION = 1;
 export type Shape = 'once' | 'recurring' | 'series' | 'habit';
 export type Urgency = 'whenever' | 'soon' | 'deadline';
 export type Energy = 'low' | 'medium' | 'high';
+export type Priority = 'low' | 'normal' | 'high';
 
 const SHAPES: readonly Shape[] = ['once', 'recurring', 'series', 'habit'];
 const URGENCIES: readonly Urgency[] = ['whenever', 'soon', 'deadline'];
 const ENERGIES: readonly Energy[] = ['low', 'medium', 'high'];
+const PRIORITIES: readonly Priority[] = ['low', 'normal', 'high'];
 
 export interface AgendaItem {
   /** The commitment id, derived at the other end from the plan and the title. */
@@ -43,6 +45,25 @@ export interface AgendaItem {
   readonly effortMinutes: number | null;
   readonly context: string | null;
   readonly energy: Energy;
+  /**
+   * How much it matters, which is a different question from when it must happen.
+   *
+   * **This is a list of a life, not a to-do list** — dated tasks and hard
+   * deadlines live in a different app entirely — so almost everything here is
+   * `whenever`, and urgency alone would sort the whole list into one heap. This
+   * is what actually separates them. Defaults to `normal`, which is also what
+   * most things are.
+   */
+  readonly priority: Priority;
+  /**
+   * What has to happen first, in your own words, or empty.
+   *
+   * Free text and deliberately not a link: the model reads one plan at a time
+   * and cannot know another commitment's id. Turning these into real edges is a
+   * later step, and a field that looked like a reference and was not would be
+   * worse than one that admits what it is.
+   */
+  readonly dependsOn: string;
   /** When it is suggested for, or null when it is only on the list. */
   readonly suggestedAt: number | null;
   /** Why then, in the model's own words. Empty when there is no time. */
@@ -153,6 +174,10 @@ function readItem(candidate: unknown): AgendaItem | null {
     effortMinutes: typeof effort === 'number' && Number.isFinite(effort) && effort > 0 ? Math.round(effort) : null,
     context: text(row.context) || null,
     energy,
+    // Anything unrecognised reads as `normal` rather than dropping the row: an
+    // item whose importance cannot be read is still an item.
+    priority: oneOf(row.priority, PRIORITIES) ?? 'normal',
+    dependsOn: text(row.dependsOn),
     suggestedAt: instant(row.suggestedAt),
     why: text(row.why),
     quote: text(row.quote),

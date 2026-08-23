@@ -304,6 +304,21 @@ place, in no list, no export and no search. It is kept only because
 `useAdoptVoiceCaptures` still reads it and dropping the field would silently
 discard what an early build's owner typed. Do not build on it.
 
+**Plans are a life, not a to-do list, and every prompt says so.** Dated tasks and
+hard deadlines live in a different application; what arrives here is what
+somebody said out loud so as not to forget it. So **almost nothing has a
+deadline and that is the normal case**, both prompts state it in as many words,
+and reading time pressure into a note that had none would turn a life into a
+backlog.
+
+That is why **importance is its own field**. `priority` is how much a thing
+matters, `urgency` is when it has to happen, and on a list where nearly
+everything is `whenever` the second one sorts the whole thing into a single heap.
+`dependsOn` is free text in the owner's own words rather than a link, because the
+model reads one plan at a time and cannot know another commitment's id — a field
+that looked like a reference and was not would be worse than one that admits what
+it is.
+
 **A plan is a note that looks forwards, and it is a `kind` rather than a second
 store.** The diary records what a day was; a plan records what you want to
 happen — "start doing affirmations", "fix the backyard garden" — said out loud
