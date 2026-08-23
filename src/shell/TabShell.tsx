@@ -150,7 +150,7 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
  * **Places used to be a tab and is now a page under Settings.** Day, Capture
  * and Media are things you do or look at daily; Places is a reference list you
  * consult, and iOS collapses a sixth tab into a "More" menu that is worse than
- * either. The reasoning in `docs/ARCHITECTURE.md` §13 survives four tabs and
+ * either. The reasoning in the architecture notes § 13 survives four tabs and
  * one level of depth; it would not survive a fifth level, deep links or modal
  * routes.
  *

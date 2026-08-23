@@ -88,8 +88,20 @@ xcuserdata/
 # keeps APPLE_TEAM_ID in `.env`.
 infra/*.local.json
 
-# The server half is Python. Build artefacts and the virtualenv it runs in — the
-# source and `pyproject.toml` are committed, the environment is not.
+# This repository is the iPhone app and nothing else.
+#
+# `server/` is the other half — a Python package that reads the bucket on a
+# machine at home — and `docs/` is the design and operations writing behind
+# both. Neither is published: the server is being moved to a repository of its
+# own, and the documents are personal enough that they live on the machine that
+# needs them. They are ignored rather than absent, because they still sit in
+# this working tree while the two halves are developed together.
+#
+# Both were removed from this repository's history, not merely from its tip.
+docs/
+server/
+
+# Python build artefacts and virtualenvs, wherever they land.
 __pycache__/
 *.py[cod]
 .venv/

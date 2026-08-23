@@ -11,7 +11,7 @@ import { dayKeyOf, startOfLocalDay, type DayGroup, type TzOffsetMinutes } from '
  * and the video, opened from the Media tab, counted as something the camera
  * produced. That was filing it by the hardware it came out of rather than by
  * what it is. Saying something about a day and writing it down are the same act
- * with different hands, and the transcription in `docs/BACKLOG.md` § 15 makes
+ * with different hands, and the transcription in the backlog’s § 15 makes
  * that literal: the text it produces belongs *on the note*, beside whatever was
  * typed, not on a row in a gallery.
  *
@@ -228,7 +228,7 @@ export const TRANSCRIPT_SEPARATOR = '\n\n—\n\n';
  * recording stays on the note and the text it produced lands underneath
  * whatever was there — so a bad transcript costs a paragraph you delete by
  * hand, and no press of a button can ever eat something you wrote. It is the
- * same conclusion `docs/BACKLOG.md` § 15 reached from the other direction: the
+ * same conclusion the backlog’s § 15 reached from the other direction: the
  * audio is the record and the text is a reading of it, so the reading is never
  * allowed to overwrite the record or the writing beside it.
  *

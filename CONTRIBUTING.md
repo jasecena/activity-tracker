@@ -5,7 +5,7 @@
 Read [`AGENTS.md`](AGENTS.md). It is short, and it is the list of things that
 were decided against a real constraint rather than by preference. If a change
 contradicts one of them, that is fine — but change the reasoning in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) with it, rather than leaving the
+the architecture notes with it, rather than leaving the
 document describing an app that no longer exists.
 
 ## The loop
@@ -76,9 +76,11 @@ the file silently never runs its effects.
 
 ## Things that will get a change sent back
 
-- A network request. The app makes exactly one kind — Apple Maps tiles, behind a
-  switch that starts off — and that claim is load-bearing for everything in
-  [`SECURITY.md`](SECURITY.md).
+- A **fourth** kind of network request. The app makes exactly three — map
+  imagery, transcription, and a backup to a bucket you own — and each one is a
+  press. That the list fits in a sentence is load-bearing for everything in
+  [`SECURITY.md`](SECURITY.md), so widening it means rewriting that section in
+  the same change rather than afterwards.
 - Storing the derived timeline instead of re-deriving it.
 - A generated segment id.
 - Interpolating across a gap.

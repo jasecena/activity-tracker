@@ -155,7 +155,7 @@ export function sealWithSalt(backupKey: Uint8Array, plaintext: Uint8Array, fileS
  * Open one object, or say why it cannot be opened.
  *
  * **This is the unseal path the app deliberately did not have, and adding it
- * narrowed a guarantee.** `docs/BACKLOG.md` § 12 chose one-way precisely so a
+ * narrowed a guarantee.** the backlog’s § 12 chose one-way precisely so a
  * stolen phone could add to the backup and open none of it, and "the app has no
  * unseal path at all" was half of what made that true — the other half being the
  * bucket policy. The agenda channel needs the phone to read *something*, so what

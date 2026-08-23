@@ -48,8 +48,8 @@ interface CaptureScreenProps {
  * a diary's own judgement about what a capture is for, a clip attached to a
  * moment rather than a recording session, plus a disk budget with no ceiling if
  * nothing bounds it. That is a weaker argument than the old one and
- * `docs/ARCHITECTURE.md` § 12b says so; it is the one to revisit if the segment
- * model in `docs/BACKLOG.md` is built, since pause and resume make "how long is
+ * the architecture notes § 12b says so; it is the one to revisit if the segment
+ * model in the backlog is built, since pause and resume make "how long is
  * one clip" a different question.
  */
 const MAX_VIDEO_SECONDS = 60;

@@ -13,7 +13,7 @@
 # repos and runs the right pre-build step. See `detect` job.
 #
 # Required secrets, repository setup, Apple portal setup and troubleshooting are
-# all documented in docs/DEPLOYMENT.md.
+# all documented in the deployment notes kept alongside this project.
 
 name: iOS Release
 
@@ -461,7 +461,7 @@ jobs:
           [[ -n "${ASC_PRIVATE_KEY:-}" ]] || missing+=("secrets.APP_STORE_CONNECT_PRIVATE_KEY")
           if (( ${#missing[@]} )); then
             echo "::error::Missing required configuration: ${missing[*]}"
-            echo "See docs/DEPLOYMENT.md for how to create each one."
+            echo "See the deployment notes for how to create each one."
             exit 1
           fi
 

@@ -88,7 +88,7 @@ export interface Settings {
    * **Pinned rather than detected**, and Persian by default. Declaring the
    * language stops the model hedging and is most of the distance between
    * Scribe's code-switched accuracy and its single-language accuracy — see
-   * `docs/BACKLOG.md` § 15. The cost is that an English word spoken mid-sentence
+   * the backlog’s § 15. The cost is that an English word spoken mid-sentence
    * comes back transliterated into Persian script, which is accepted.
    *
    * A setting rather than a constant because that is the whole price of being

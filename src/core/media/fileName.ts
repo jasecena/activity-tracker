@@ -19,7 +19,7 @@ const STORED_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
  *
  * It matters more later than now. Today an entry can only be planted by
  * something that already holds the device key, which is game over anyway. The
- * S3 restore in `docs/BACKLOG.md` § 12 is the path that makes an index arrive
+ * S3 restore in the backlog’s § 12 is the path that makes an index arrive
  * from somewhere other than this phone, and this is much cheaper to require
  * before that exists than to retrofit after.
  *

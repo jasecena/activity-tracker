@@ -63,7 +63,7 @@ file silently never runs its effects.
 # Settled decisions
 
 These were worked out against the platform's limits and are not open to casual
-revision. Changing one means changing the reasoning in `docs/ARCHITECTURE.md`
+revision. Changing one means changing the reasoning in the architecture notes
 with it.
 
 **One fix stream, always, and there is no Record button.** Tracking is on or it
@@ -109,7 +109,7 @@ and carries its own name and type.
 This is also the case for the on-screen raw error. The failure was undiagnosable
 from a laptop: no log, no crash reporter, no telemetry, and a generic message. It
 was found in one attempt once the service's own words were printed under the
-button — see `docs/BACKLOG.md` § 16, which asks for that as a general facility
+button — see the backlog's § 16, which asks for that as a general facility
 rather than a per-feature afterthought.
 
 **A note in a list is a heading, not the entry.** The title, or the first line
@@ -222,7 +222,7 @@ an edge of it.
 
 **The diary is its own tab, and the Day screen no longer carries notes.** A note
 was filed under the day it was about and reached by walking to that day, which
-`docs/BACKLOG.md` already called "fine for a week and not for a year". It is one
+the backlog already called "fine for a week and not for a year". It is one
 list now — every note, **newest first**, grouped by the day it is about, because
 a diary is still indexed by the date. `groupNotesByDay` does that arithmetic in
 `core`; `notesForDay` remains for anything that wants one day forwards. The same
@@ -473,12 +473,12 @@ and a test walks it end to end, from an agenda item to the recording on disk.
 the bucket.** The machine at home publishes `agenda/current.json` — what it
 decided and, for a few of them, when — and the Plans list draws it above the
 plans it was decided from. `core/agenda` parses it, `services/agenda.ts` fetches
-it, and the format is documented **once**, in `server/planner/agenda.py`, beside
+it, and the format is documented **once**, in the server's own `agenda.py`, beside
 the code that writes it: a format described in two places is a format that
 drifts.
 
 **This narrowed a guarantee, and that is written down rather than discovered.**
-`docs/BACKLOG.md` § 12 chose one-way so a stolen phone could add to the backup
+The backup's design chose one-way so a stolen phone could add to it
 and open none of it, and "the app has no unseal path at all" was half of what
 made that true. `unsealWithKey` exists now, so the other half — the bucket
 policy — is the whole of it: the phone may `GetObject` on `agenda/` and nothing
@@ -816,7 +816,7 @@ a place has no name until you type one — and the list is still enumerable in a
 sentence, **which is the property worth defending rather than the number**.
 
 The third is the largest by far and the rule survives it for one reason: it is
-still a press. `docs/BACKLOG.md` § 12 is the whole design.
+still a press. The backup's own design note is the whole of it.
 
 The first is **Apple Maps imagery**, behind `settings.mapsEnabled`, **off on a
 fresh install**. Your track is never sent: it is an overlay drawn on the device.
@@ -1163,7 +1163,7 @@ the same entry, at the same instant, on the same day, with a title if it wants
 one. So `voice` is a **field of `DayNote`**, the bytes go to
 `services/noteAudio.ts`, and the microphone lives under the fields in
 `NoteSheet` — record, then type under it, or type and then add a sentence aloud,
-and it is still one note. Item 15 in `docs/BACKLOG.md` is the test of that: a
+and it is still one note. The transcription item in the backlog is the test of that: a
 transcript belongs _on the note_, beside what was typed, and that is only simple
 to build if the recording was never a row of its own. Capture has two modes.
 
@@ -1650,8 +1650,9 @@ three over the source, and they were verified by breaking the wall.
 It works because **nothing there needs a model** — what is coming and how long
 there is to prepare is date arithmetic. It is also only a store rather than a
 retraction: a birthday spoken into a plan was already in a transcript a model
-read. Server design lives in `server/README.md` and `docs/ASSISTANT.md`, not
+read. The server is a separate repository and its design lives there, not
 here; this entry exists so the rule is not rediscovered.
 
-Architecture rationale: `docs/ARCHITECTURE.md`. Release pipeline:
-`docs/DEPLOYMENT.md`. First-time setup: `docs/SETUP_CHECKLIST.md`.
+Architecture rationale, the release pipeline and first-time setup are in the
+notes kept alongside this project rather than in it — see README § _A note on
+what is not here_.

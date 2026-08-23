@@ -6,11 +6,12 @@ module.exports = [
   ...expoConfig,
   prettierConfig,
   {
-    // `server/**` is the other half and is not this tooling's business —
-    // `server/README.md` says so, and it was not true until this line existed.
-    // Following that file's own setup instructions creates `server/.venv`, and
-    // eslint walked into a vendored emscripten worker and failed the build.
-    ignores: ['node_modules/**', 'coverage/**', '.expo/**', 'dist/**', 'ios/**', 'android/**', 'server/**'],
+    // `docs/` and `server/` are not part of this repository — see `.gitignore`.
+    // They still sit in this working tree while the two halves are developed
+    // together, and eslint walks the directory rather than the index: without
+    // this it descended into a Python virtualenv's vendored emscripten worker
+    // and failed the build on somebody else's JavaScript.
+    ignores: ['node_modules/**', 'coverage/**', '.expo/**', 'dist/**', 'ios/**', 'android/**', 'docs/**', 'server/**'],
   },
   {
     rules: {

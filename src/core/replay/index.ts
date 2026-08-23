@@ -11,7 +11,7 @@ import type { Segment } from '../segments';
  *
  * **The one rule that matters here is that a gap stays a hole.** The
  * segmenter closes whatever is open when the fixes stop, and the reason is in
- * `docs/ARCHITECTURE.md` §2: drawing a straight line across two hours indoors
+ * the architecture notes § 2: drawing a straight line across two hours indoors
  * turns a building into a four-kilometre walk through it. A player is where
  * that temptation is strongest, because a moving icon that stops dead looks
  * like a bug and a gliding one looks correct. So `positionAt` returns **null**

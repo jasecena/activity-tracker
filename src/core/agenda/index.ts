@@ -1,7 +1,7 @@
 /**
  * What the machine at home decided, as this phone reads it.
  *
- * **The format is documented once, in `server/planner/agenda.py`, and this
+ * **The format is documented once, in the server’s own `agenda.py`, and this
  * parses exactly that.** A format described in two places is a format that
  * drifts — so the shape lives there with the code that writes it, and this file
  * is only the trust boundary around it.

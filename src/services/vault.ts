@@ -91,7 +91,7 @@ function keyFromStored(value: string): Uint8Array | null {
  *
  * This is the interim answer. Key handling gets revisited properly when the S3
  * sync lands and there is somewhere to re-encrypt *to* — see
- * `docs/BACKLOG.md` § 12.
+ * the backlog’s § 12.
  */
 async function deviceKey(): Promise<Uint8Array> {
   if (cachedKey) return cachedKey;

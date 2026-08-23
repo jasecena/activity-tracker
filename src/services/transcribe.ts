@@ -8,7 +8,7 @@ import { holdScreenAwake, releaseScreenAwake } from './wakefulness';
  * **This is the second thing in the app that leaves the phone, and the first
  * that is a recording of its owner.** Apple Maps imagery — the only other
  * request — sends the region you are looking at; this sends your voice. The
- * whole of `docs/ARCHITECTURE.md` § 12 exists to keep that list short and
+ * whole of the architecture notes § 12 exists to keep that list short and
  * honest, so the rules are stricter here than anywhere else in `services`:
  *
  * **Nothing happens without a press.** There is no automatic transcription, no
@@ -192,7 +192,7 @@ export async function transcribe({ uri, apiKey, languageCode }: TranscriptionReq
   form.append('model_id', MODEL_ID);
   // Pinned, never detected. Declaring the language is most of the distance
   // between Scribe's code-switched and single-language accuracy on Persian —
-  // see `docs/BACKLOG.md` § 15.
+  // see the backlog’s § 15.
   form.append('language_code', languageCode);
   /**
    * **Ask them not to keep it.**

@@ -7,8 +7,8 @@ Leave it running and it keeps a diary: two hours at a restaurant, a walk to the
 shops, a drive to the beach — each with the distance, the duration, the speed and
 the shape of the route. Name a journey afterwards if it deserves one, play a day
 back to watch it happen, and attach a photo, a clip or a voice note to the moment
-it belongs to. Nothing you record is uploaded, because there is nothing to upload
-to.
+it belongs to. Nothing you record leaves the phone unless you ask it to, and the
+short list of ways to ask is in _What it does not do_.
 
 ```
 Today
@@ -84,15 +84,19 @@ made the gallery unusable. What it did buy — a restored backup holding ciphert
 — is bought back a cheaper way: the media directory is flagged
 `NSURLIsExcludedFromBackupKey`, so those files are never copied into a backup in
 the first place. The cost is that a lost phone takes them with it, which is what
-the S3 sync in [`docs/BACKLOG.md`](docs/BACKLOG.md) is for. See
-[`SECURITY.md`](SECURITY.md) for what that changes.
+the backup is for. See [`SECURITY.md`](SECURITY.md) for what that changes.
 
 ## What it does not do
 
 - **No map imagery unless you turn it on.** A fresh install draws routes from
   your own coordinates and asks nobody. With the switch on, Apple sees which part
   of the map you are looking at — never your track, which is drawn on the phone.
-  It is the only network request in the app.
+- **Nothing on its own.** The app makes exactly three kinds of network request
+  and every one of them is a press you made: map imagery, sending one voice note
+  for transcription, and backing finished days up to a bucket you own. All three
+  start switched off, and the backup seals everything on this phone before it
+  goes, so the bucket holds ciphertext. That the whole list fits in a sentence is
+  the property being defended — see [`SECURITY.md`](SECURITY.md).
 - **No geocoding.** A place has no name until you type one. There is nothing to
   ask.
 - **Nothing in the camera roll, and nothing in a backup.** Captures stay in this
@@ -116,7 +120,8 @@ npm run ios
 `npm run verify` runs the whole check suite — typecheck, lint, format and 601
 tests — in well under a minute, entirely on Linux.
 
-Full first-time setup, including the Apple side: [`docs/SETUP_CHECKLIST.md`](docs/SETUP_CHECKLIST.md).
+Full first-time setup, including the Apple side, is in the deployment notes —
+see _A note on what is not here_.
 
 ## How it is put together
 
@@ -156,7 +161,8 @@ rows rather than duplicating them.
 Both are asserted as properties over generated fix streams in
 [`src/core/segments/__tests__/properties.test.ts`](src/core/segments/__tests__/properties.test.ts).
 
-Why each decision was made: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Why each decision was made is recorded at length in the architecture notes —
+see _A note on what is not here_.
 
 ## Battery
 
@@ -233,8 +239,22 @@ needs a native Swift target, because React Native cannot build for watchOS.
 Note the hardware floor: **Series 2 or later**, since that is where built-in GPS
 starts. The original 2015 Apple Watch (watchOS 4.3.2, models like MLCH2LL/A) has
 no GPS receiver and takes its location from a tethered iPhone, so standalone
-tracking on it is impossible regardless of software. See
-[`docs/ARCHITECTURE.md` § 15](docs/ARCHITECTURE.md).
+tracking on it is impossible regardless of software.
+
+## A note on what is not here
+
+Two things this repository deliberately does not carry.
+
+**The design and operations writing.** `ARCHITECTURE.md`, `BACKLOG.md`,
+`DEPLOYMENT.md` and the rest are kept with the project but outside it. Comments
+throughout `src/` cite them by name and section; those citations are real, the
+files are simply not published. What a reader needs in order to understand or
+change the code is in `AGENTS.md`, in `SECURITY.md`, and in the comments
+themselves, which carry the reasoning rather than pointing at it.
+
+**The other half.** The backup bucket is also read by a small Python service
+that runs on a machine at home. It shares a file format with this app and no
+code, and it lives in its own repository.
 
 ## Licence
 

@@ -6,3 +6,8 @@ ios/
 android/
 package-lock.json
 expo-env.d.ts
+
+# Not part of this repository — see .gitignore. Present in the working tree,
+# and prettier walks the directory rather than the index, so it needs telling.
+docs/
+server/

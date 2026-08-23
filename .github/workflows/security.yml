@@ -40,7 +40,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Named explicitly rather than relying on auto-discovery. The config
-          # allowlists docs/DEPLOYMENT.md, which contains a truncated example
+          # allowlists .env.example, which contains a truncated example
           # `-----BEGIN PRIVATE KEY-----` block for illustration — without the
           # config loading, that example alone would fail every scan.
           GITLEAKS_CONFIG: .gitleaks.toml

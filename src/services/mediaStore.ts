@@ -17,7 +17,7 @@ import { openBytes } from './vault';
  * the passcode, so the second pass bought very little against a stolen phone
  * and cost every read — forty megabytes of pure-JavaScript AEAD on the thread
  * that also draws the screen, before anything could be looked at. The gallery
- * was unusable and the cause was entirely self-inflicted. `docs/ARCHITECTURE.md`
+ * was unusable and the cause was entirely self-inflicted. the architecture notes
  * § 12b has the full argument; `writeMedia` below has the short version.
  *
  * **What that layer really protected was a backup**, because the vault key is
@@ -305,7 +305,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * thread the interface also runs on.
  *
  * This reverses the decision that media is sealed at rest, and the reasoning is
- * in `docs/ARCHITECTURE.md` § 11. In short: iOS already encrypts the container
+ * in the architecture notes § 11. In short: iOS already encrypts the container
  * with a key derived from the passcode, so a second pass in JavaScript bought
  * very little against a stolen phone and cost every read. Encryption belongs at
  * the boundary where data actually leaves — the sync that is coming — and the

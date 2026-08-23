@@ -22,27 +22,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  server:
-    name: Server tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # Only what the pure tests need. `boto3`, `psycopg` and `anthropic` are
-      # runtime dependencies and nothing under test imports them — everything
-      # that talks to the outside is in its own module, which is what lets these
-      # run with no bucket, no database, no key and no network.
-      - name: Install
-        run: pip install pytest cryptography pydantic
-
-      - name: Test
-        run: python -m pytest server -q
-
   verify:
     name: Lint, typecheck, test
     runs-on: ubuntu-latest

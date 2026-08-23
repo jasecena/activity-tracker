@@ -41,14 +41,11 @@ tags = ["privacy"]
 [allowlist]
 description = "Paths that legitimately contain credential-shaped or coordinate-shaped text"
 paths = [
-  # Document the *names* of secrets and show placeholder values. Each contains
-  # a literal `-----BEGIN PRIVATE KEY-----` in prose, telling you to paste the
+  # Name the *names* of secrets and show placeholder values. Each contains a
+  # literal `-----BEGIN PRIVATE KEY-----` in prose, telling you to paste the
   # real thing into a GitHub secret — which is exactly the string the rule
   # below looks for, so they have to be listed here or every scan fails on the
   # instructions for keeping keys out of the repository.
-  '''docs/DEPLOYMENT\.md''',
-  '''docs/SETUP_CHECKLIST\.md''',
-  '''docs/ROLLOUT\.md''',
   '''\.env\.example''',
   '''\.gitleaks\.toml''',
   # Placeholder identifiers, never real ones.

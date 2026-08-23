@@ -104,7 +104,7 @@ const TRANSCRIPTION_MESSAGES: Readonly<Record<TranscriptionFailure, string>> = {
  * one: the same entry, at the same instant, on the same day, with a title if it
  * wants one. Putting the microphone inside the sheet makes that literal —
  * record, then type under it, or type and then add a sentence aloud, and it is
- * still one note. It is also what item 15 in `docs/BACKLOG.md` needs to be
+ * still one note. It is also what item 15 in the backlog needs to be
  * true: a transcript belongs *on the note*, beside what was typed, and that is
  * only a simple thing to build if the recording was never a row of its own.
  */

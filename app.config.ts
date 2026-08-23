@@ -36,12 +36,26 @@ const VARIANT_NAME: Record<Variant, string> = {
  * Specific on purpose. "This app uses your location" is the string that gets a
  * background-location app rejected; naming what is recorded, and that it stays
  * on the phone, is what gets it approved. Changing these means re-reading
- * docs/DEPLOYMENT.md § 4.
+ * the deployment notes § 4.
  */
 const WHEN_IN_USE_REASON =
   'Records the route of the walk, ride or drive you are on, so the day is logged without you having to press start.';
+/**
+ * **This string stopped saying "never uploaded" when the backup shipped.**
+ *
+ * It was true until a finished day could be sealed and put in a bucket. A raw
+ * `Fix` still never leaves — but `days/` carries the segments folded out of
+ * them, and a stay has a `center` and a move has a `path`, so what goes up is
+ * where you were. Telling somebody at the permission prompt that it never
+ * leaves the phone, because the *word* "fix" is technically accurate, is the
+ * kind of true sentence that is a lie; it is the third time this file has been
+ * caught claiming more protection than the app provides.
+ *
+ * Same shape as the microphone string below: the default first, then the
+ * exception, named.
+ */
 const ALWAYS_REASON =
-  'Keeps logging your walks, rides and drives while the app is closed, so your day is recorded as it happens. Every fix stays on this phone and is never uploaded.';
+  'Keeps logging your walks, rides and drives while the app is closed, so your day is recorded as it happens. Your locations stay in this app on this phone unless you set up a backup of your own, which encrypts each finished day on this phone before it is sent.';
 
 /**
  * Capture. Same rule as the location strings: name what is recorded and where
@@ -49,7 +63,7 @@ const ALWAYS_REASON =
  * review rejection rather than an approval.
  */
 const CAMERA_REASON =
-  'Takes the photos and videos you attach to a day in your diary. They stay in this app on this phone, are kept out of backups, and are never uploaded.';
+  'Takes the photos and videos you attach to a day in your diary. They stay in this app on this phone, are kept out of iPhone backups, and are never uploaded.';
 /**
  * **This string stopped saying "never uploaded" when transcription shipped.**
  *
@@ -58,13 +72,13 @@ const CAMERA_REASON =
  * key, a button press, and one note at a time. A permission string is read once,
  * at the prompt, by somebody deciding whether to trust the app; "never" with an
  * asterisk they cannot see is exactly the drift the v0.4.0 audit was about, and
- * `docs/DEPLOYMENT.md` § 4 says to re-read these before submitting for that
+ * the deployment notes § 4 say to re-read these before submitting for that
  * reason.
  *
  * What replaces it says the default and names the exception, in that order.
  */
 const MICROPHONE_REASON =
-  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They stay in this app on this phone and are kept out of backups. A voice note is only ever uploaded if you add a transcription key and press Transcribe on that note.';
+  'Records the voice notes you attach to a day in your diary, and the sound on any video you capture. They stay in this app on this phone and are kept out of iPhone backups. A recording leaves this phone only when you ask: if you add a transcription key and press Transcribe on that note, or if you set up a backup of your own, which encrypts it on this phone before it is sent.';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -106,7 +120,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       // always-on background updates — is gated by these usage strings and the
       // user's answer to the prompt, not by a capability on the App ID. So
       // unlike an app using push, this one signs against a plain App ID with
-      // nothing ticked at developer.apple.com. See docs/DEPLOYMENT.md § 3.
+      // nothing ticked at developer.apple.com. See the deployment notes § 3.
       'expo-location',
       {
         locationWhenInUsePermission: WHEN_IN_USE_REASON,

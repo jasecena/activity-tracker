@@ -102,7 +102,7 @@ interface NotesScreenProps {
  *
  * **Its own tab, where it used to be a section of the Day screen.** A note was
  * filed under the day it was about, and reaching one meant walking to its day —
- * which `docs/BACKLOG.md` already recorded as "fine for a week and not for a
+ * which the backlog already recorded as "fine for a week and not for a
  * year". Moving it out is what makes the whole diary one list instead of a
  * drawer on each of three hundred pages, and it is why the Day screen no longer
  * carries notes at all: the same rows in two places is two things to keep in

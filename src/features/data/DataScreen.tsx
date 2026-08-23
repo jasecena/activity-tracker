@@ -272,7 +272,7 @@ export function DataScreen({
         {backup.progress.error ? (
           // The service's own words, on the screen. A generic message read on a
           // phone as "no connection" once already, and cost a release to
-          // diagnose — see `docs/BACKLOG.md` § 16.
+          // diagnose — see the backlog’s § 16.
           <Text style={styles.footnoteWarn}>
             {backup.progress.error.reason === 'not-configured'
               ? 'Set the bucket and a passphrase in Settings first.'

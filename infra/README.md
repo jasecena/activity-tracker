@@ -1,6 +1,6 @@
 # The backup bucket
 
-What `docs/BACKLOG.md` § 12 describes, as the AWS objects that implement it. Set
+The backup, as the AWS objects that implement it. Set
 up once, from an admin profile, and then never touched by the phone.
 
 Nothing here names a real bucket or a real account. The `.json.template` files

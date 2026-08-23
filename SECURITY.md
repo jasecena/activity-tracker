@@ -16,14 +16,14 @@ sensitive thing on most people's phones, and the design treats it that way.
 **The threat model is not a determined attacker holding your unlocked phone.**
 Against that, nothing an app can do helps. It is the ordinary ways a file leaks:
 
-| Leak                                             | Mitigation                                                                                                                                                                                           |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key. Media is not sealed, so it is excluded from the backup outright — see below. |
-| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                                                                         |
-| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                                                                        |
-| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                                                                        |
-| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                                                                  |
-| Data sent somewhere by accident                  | The app makes one kind of request — Apple Maps tiles, off by default. Your track is never in it. See _Network posture_.                                                                              |
+| Leak                                             | Mitigation                                                                                                                                                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key. Media is not sealed, so it is excluded from the backup outright — see below.     |
+| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                                                                             |
+| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                                                                            |
+| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                                                                            |
+| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                                                                      |
+| Data sent somewhere by accident                  | The app makes three kinds of request and each one is a press: map imagery, transcription, and a backup to a bucket you own. There is no telemetry and nothing happens on its own. See _Network posture_. |
 
 ### Media at rest: the one place this changed
 
@@ -109,25 +109,51 @@ and leaving the interesting part untested.
 
 ### Network posture
 
-The app makes **exactly one kind of request, and only when you ask for it**: Apple
-Maps imagery, behind `settings.mapsEnabled`, which is **off on a fresh install**.
-With it on, Apple learns which part of the map is on screen. It never learns your
-track — the route is an overlay drawn on the device from coordinates that do not
-leave it. `components/MapCanvas.tsx` is the only file permitted to import
-`expo-maps`; with the switch off, every map in the app is the offline canvas drawn
-from your own coordinates and nothing else.
+The app makes **exactly three kinds of request, and every one of them is a press
+you made**. This section used to say "exactly one" and was left standing after
+the second and third arrived — which is the failure it exists to prevent, so the
+count is stated plainly and each entry names what leaves.
 
-There is no analytics, no telemetry, no crash reporting upload, no remote config
-and no geocoder — which is still why a place has no name until you type one, and
-why there is nothing to ask. `NSAllowsArbitraryLoads` is `false` with no exception
-domains: App Transport Security stays fully enforced.
+**The property worth defending is that the list fits in a sentence**, not that
+the number is one.
+
+| Request                                | Gate                                                            | What leaves the phone                                                                                                                  |
+| -------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apple Maps imagery**                 | `settings.mapsEnabled`, **off on a fresh install**              | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                    |
+| **Transcription** (ElevenLabs)         | A key you typed, plus a press of Transcribe on one note         | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                            |
+| **Backup** to an S3 bucket **you own** | Credentials and a passphrase you typed, plus a press of Back up | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video. |
+
+With maps off, every map in the app is the offline canvas drawn from your own
+coordinates and nothing else. `components/MapCanvas.tsx` is the only file
+permitted to import `expo-maps`; `services/transcribe.ts` is the only file that
+knows the transcription endpoint exists.
+
+**The backup is one-way and the bucket holds ciphertext.** Sealing is
+ChaCha20-Poly1305 under a key `scrypt` derives from a passphrase that is stored
+nowhere, so its operator holds nothing readable. The app has no unseal path for
+any of it except one object it fetches back; what makes that safe is the bucket
+policy, and `infra/` carries the templates. Getting data back out is a script on
+a laptop.
+
+There is still no analytics, no telemetry, no crash reporting upload, no remote
+config and no geocoder — which is still why a place has no name until you type
+one, and why there is nothing to ask. `NSAllowsArbitraryLoads` is `false` with no
+exception domains: App Transport Security stays fully enforced for all three.
+
+Every claim here is **state-dependent**, and that is the trap. The Settings
+paragraph reads four different ways depending on which switches are on, and the
+permission strings have been caught twice claiming more protection than the app
+provided — once for the microphone when transcription shipped, once for location
+when the backup did. A string somebody reads at a permission prompt, while
+deciding whether to trust the app, is the worst place in the project to be
+optimistic.
 
 The share sheet is not a network request. `exportFile.ts` hands iOS a file and iOS
 decides what happens to it, which is the user's choice and not the app's.
 
 If you are reviewing a change and it adds a dependency that opens a socket, that
-is the change to push back on. The planned S3 backup widens this rule considerably
-and must rewrite the reasoning rather than slip past it.
+is the change to push back on — and if it adds a **fourth** kind of request, this
+section is part of the change rather than something to update afterwards.
 
 ## Credentials
 
