@@ -29,6 +29,7 @@ function note(overrides: Partial<DayNote> = {}): DayNote {
     text: 'Walked to the market',
     voice: null,
     mediaId: null,
+    kind: 'note',
     ...overrides,
   };
 }

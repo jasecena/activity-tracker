@@ -158,6 +158,25 @@ appId: ${APP_ID}
 # assertVisible is right here where 'Raw data & export' needed a scroll.
 - assertVisible: 'Record a voice note'
 
+# **The two lists, and the switch between them.** A plan is a `DayNote` with a
+# different `kind` rather than a second store, and this switch is both the way
+# between them and the mode the microphone writes in — press it under Plans and
+# what you say is filed as a plan. Asserted here because Jest cannot tell a
+# control that rendered from one that is actually on screen, and this one sits
+# above the scroller where a mis-measured header would push it under the
+# navigation bar.
+#
+# Both cells are labelled '<name>, N entries', built in `NoteKindSwitch`. Change
+# that string and this must change with it — the same contract each preset row
+# in Settings already has.
+- assertVisible: 'Notes, 0 entries'
+- tapOn: 'Plans, 0 entries'
+# The empty line is per list rather than shared: the diary's says to write
+# something, and this one says what a plan is for.
+- assertVisible: 'No plans yet. Tap the microphone to say what you want to happen.'
+- tapOn: 'Notes, 0 entries'
+- assertVisible: 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'
+
 # The gallery's own gestures and panels cannot be reached here: `clearState`
 # leaves nothing captured, and a simulator has no camera to capture with — so
 # the media rules are asserted in the Jest suite instead

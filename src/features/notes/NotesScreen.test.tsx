@@ -27,8 +27,8 @@ const HOUR = 3_600_000;
 const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
 const NOW = T0 + 12 * HOUR; // late on the 5th, so the fixtures above are behind it
 
-function note(at: number, title: string): DayNote {
-  return { id: dayNoteId(at), at, title, text: '', voice: null, mediaId: null };
+function note(at: number, title: string, kind: DayNote['kind'] = 'note'): DayNote {
+  return { id: dayNoteId(at), at, title, text: '', voice: null, mediaId: null, kind };
 }
 
 function confirmTheAlert(): void {
@@ -202,6 +202,7 @@ describe('the microphone on the tab', () => {
     expect(onSpeak).toHaveBeenCalledWith(
       expect.objectContaining({ fileName: 'voice-1.m4a', durationMs: expect.any(Number) }),
       expect.any(Number),
+      'note',
     );
     // Nothing was opened on the way. The sheet is the pen's route, not this one.
     expect(onWrite).not.toHaveBeenCalled();
@@ -261,5 +262,85 @@ describe('the microphone on the tab', () => {
     await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
     await act(async () => Promise.resolve());
     jest.useRealTimers();
+  });
+});
+
+/**
+ * Two lists behind one switch, and the switch is also the mode.
+ *
+ * A plan is a `DayNote` with a different `kind` rather than a second store, so
+ * what has to be true is that the two never bleed into each other: the list
+ * shows one kind, the counts show both, and a recording is filed into whichever
+ * list the microphone was pressed under.
+ */
+describe('notes and plans', () => {
+  const MIXED = [note(T0, 'Went to the market'), note(T0 + 1000, 'Fix the garden', 'plan')];
+
+  it('shows the diary first, with the plans counted but not listed', async () => {
+    await render(notesScreen({ notes: MIXED }));
+
+    expect(screen.getByText('Went to the market')).toBeTruthy();
+    expect(screen.queryByText('Fix the garden')).toBeNull();
+    // The count is what says the other list is not empty before you go there.
+    expect(screen.getByLabelText('Plans, 1 entry')).toBeTruthy();
+  });
+
+  it('swaps the list when the other side is pressed', async () => {
+    await render(notesScreen({ notes: MIXED }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+
+    expect(screen.getByText('Fix the garden')).toBeTruthy();
+    expect(screen.queryByText('Went to the market')).toBeNull();
+  });
+
+  it('says what an empty list of plans is for, rather than the diary’s line', async () => {
+    await render(notesScreen({ notes: [note(T0, 'Went to the market')] }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 0 entries')));
+
+    expect(screen.getByText('No plans yet. Tap the microphone to say what you want to happen.')).toBeTruthy();
+  });
+
+  it('files what the microphone hears into the list it was pressed under', async () => {
+    const onSpeak = jest.fn();
+    await render(notesScreen({ notes: MIXED, onSpeak }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+
+    expect(onSpeak).toHaveBeenCalledWith(expect.anything(), expect.any(Number), 'plan');
+  });
+
+  /**
+   * **The kind is fixed at the press, not read at the save.** `stop` resolves
+   * inside a closure created before it, so a switch pressed halfway through a
+   * sentence must not re-file what is still being said — the same reasoning
+   * that keeps a capture's position in a ref rather than in state.
+   */
+  it('keeps a running recording in the list it started in', async () => {
+    const onSpeak = jest.fn();
+    await render(notesScreen({ notes: MIXED, onSpeak }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    // Back to the diary while the microphone is still running.
+    await act(async () => fireEvent.press(screen.getByLabelText('Notes, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+
+    expect(onSpeak).toHaveBeenCalledWith(expect.anything(), expect.any(Number), 'plan');
+  });
+
+  it('writes with the pen into the list on screen', async () => {
+    const onWrite = jest.fn();
+    await render(notesScreen({ notes: MIXED, onWrite }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Write a plan')));
+
+    expect(onWrite).toHaveBeenCalledWith('plan');
   });
 });

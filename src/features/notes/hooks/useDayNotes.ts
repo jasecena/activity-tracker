@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { freeInstant, normalizeDayNotes, noteAt, voiceFilesOf, type DayNote, type NoteVoice } from '@/core/day';
+import {
+  freeInstant,
+  normalizeDayNotes,
+  noteAt,
+  voiceFilesOf,
+  type DayNote,
+  type NoteKind,
+  type NoteVoice,
+} from '@/core/day';
 import { deleteNoteAudio, sweepNoteAudio } from '@/services/noteAudio';
 import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 
@@ -18,7 +26,14 @@ export interface UseDayNotes {
    * The recording, when there is one, is already on disk: the sheet records
    * first and saves after, so this stores a name rather than bytes.
    */
-  write: (at: number, title: string, text: string, voice?: NoteVoice | null, mediaId?: string | null) => void;
+  write: (
+    at: number,
+    title: string,
+    text: string,
+    voice?: NoteVoice | null,
+    mediaId?: string | null,
+    kind?: NoteKind,
+  ) => void;
   /**
    * Change one already written: its words, its time, or both.
    *
@@ -96,12 +111,19 @@ export function useDayNotes(): UseDayNotes {
   }, []);
 
   const write = useCallback(
-    (at: number, title: string, text: string, voice: NoteVoice | null = null, mediaId: string | null = null) => {
+    (
+      at: number,
+      title: string,
+      text: string,
+      voice: NoteVoice | null = null,
+      mediaId: string | null = null,
+      kind: NoteKind = 'note',
+    ) => {
       // Every note added to a finished day wants the same default instant — the
       // end of its last segment — and an id is derived from that instant, so
       // without this the second note about a Tuesday would replace the first.
       // A minute chosen by hand collides just as easily.
-      const next = noteAt(freeInstant(notes, at), title, text, voice, mediaId);
+      const next = noteAt(freeInstant(notes, at), title, text, voice, mediaId, kind);
       if (next) persist([...notes, next]);
     },
     [notes, persist],
@@ -119,7 +141,12 @@ export function useDayNotes(): UseDayNotes {
       const without = notes.filter((existing) => existing.id !== note.id);
       // Against the others rather than against all of them: a note keeping its
       // own instant must not be nudged off it by its own reflection.
-      const next = noteAt(freeInstant(without, at), title, text, voice, mediaId);
+      // **An edit never changes what an entry is for.** The sheet collects the
+      // words, the instant and the recording; nothing in it asks whether this is
+      // a plan, so the kind comes off the note being edited rather than
+      // defaulting — which would quietly re-file every plan the first time it
+      // was opened and saved.
+      const next = noteAt(freeInstant(without, at), title, text, voice, mediaId, note.kind);
       // Emptying a note is how you delete one, so there is no separate confirm
       // for the case where somebody selected all and pressed backspace.
       persist(next ? [...without, next] : without);

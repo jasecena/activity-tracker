@@ -304,6 +304,54 @@ place, in no list, no export and no search. It is kept only because
 `useAdoptVoiceCaptures` still reads it and dropping the field would silently
 discard what an early build's owner typed. Do not build on it.
 
+**A plan is a note that looks forwards, and it is a `kind` rather than a second
+store.** The diary records what a day was; a plan records what you want to
+happen — "start doing affirmations", "fix the backyard garden" — said out loud
+so it is not lost. Both are a sentence somebody sat down and wrote, both are
+unreconstructable, and both want the same title, body, recording and instant. So
+`DayNote.kind` is `'note' | 'plan'` and nothing else about a note changes.
+
+**A second store would have cost a third sweep.** `sweepNoteAudio` already keeps
+the diary's recordings and `sweepOrphans` already deletes anything in the media
+directory its index has never heard of — which is exactly the race that forced
+note audio into a directory of its own. A third directory means a third index, a
+third sweep and a third chance to delete somebody's recording on launch. One
+field has none of that: the recording is already swept, already repaired by
+`normalizeDayNotes`, already spared by retention, already in the CSV export and
+already in the backup.
+
+**Nothing in `core` reads the field except the filter.** `splitAtNow`,
+`groupNotesByDay`, `noteAt` and the day arithmetic treat the two identically,
+because which Tuesday an entry is about does not change with what it is for.
+`notesOfKind` is the whole of it.
+
+**The segment is the mode, which is why there is no separate toggle.** The Notes
+tab carries a two-cell switch above the list — Notes on the left, Plans on the
+right — and the list you are looking at is what the microphone writes into. The
+first design had a switch beside the microphone and a tag on the rows, which was
+two controls and a legend for one decision. This asks nothing before you speak:
+you are already standing in one list or the other, and the press means what the
+screen in front of you says it means. It is also the withdrawn Record button's
+lesson kept — that control asked you to declare a journey before it had
+happened.
+
+**Which list the talking started in lives in a ref.** Same reasoning as a
+capture's position, and the same failure if it does not: `stop` resolves inside a
+closure created before it, so reading the state at save time would re-file a
+running recording the moment somebody pressed the other cell mid-sentence. The
+regression test presses Plans, records, presses Notes, then stops, and asserts
+the recording is still a plan.
+
+**Editing never changes what an entry is for.** The sheet collects words, an
+instant and a recording and never asks about the kind, so `edit` takes it off the
+note rather than defaulting — otherwise opening a plan and pressing Save would
+move it silently into the diary.
+
+**Everything before the field reads as a diary entry**, including a garbled
+value. The safe direction is the one that cannot lose a row: an entry whose kind
+cannot be read is still an entry, and the diary is where somebody would go
+looking for it. Same direction a recording's `locked` defaults in.
+
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,

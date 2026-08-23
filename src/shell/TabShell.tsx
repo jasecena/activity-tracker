@@ -10,6 +10,7 @@ import {
   notesForMedia,
   whereToWrite,
   type DayNote,
+  type NoteKind,
   type NoteVoice,
 } from '@/core/day';
 import { capturesOnly, type MediaItem } from '@/core/media';
@@ -86,6 +87,15 @@ type NoteTarget =
       readonly kind: 'new';
       readonly dayKey: string;
       readonly segments: readonly Segment[];
+      /**
+       * A diary entry or a plan — `DayNote['kind']`, not this union's own.
+       *
+       * Named apart from `kind` above because the two answer different
+       * questions: that one is what the sheet is open *for*, this is what the
+       * entry *is*. Collapsing them would make "new plan" and "edit" the same
+       * axis, which they are not.
+       */
+      readonly noteKind: NoteKind;
       /** The capture it is about, when it was begun from one. */
       readonly mediaId?: string | null;
     }
@@ -650,6 +660,7 @@ export function TabShell() {
             onWriteNote={(item) =>
               setWritingNote({
                 kind: 'new',
+                noteKind: 'note',
                 dayKey: dayKeyOf(readNow(), timeline.tzOffsetMinutes),
                 segments: timeline.today,
                 mediaId: item.id,
@@ -672,9 +683,10 @@ export function TabShell() {
             // and time pickers are how it becomes about any other day — which
             // is the same affordance that already existed, now reached from the
             // diary rather than from the day.
-            onWrite={() =>
+            onWrite={(noteKind) =>
               setWritingNote({
                 kind: 'new',
+                noteKind,
                 dayKey: dayKeyOf(readNow(), timeline.tzOffsetMinutes),
                 segments: timeline.today,
               })
@@ -690,7 +702,7 @@ export function TabShell() {
             // ran, and "when I said this" is the honest answer. `write` puts it
             // through `freeInstant`, so two notes begun in the same millisecond
             // cannot take each other's id.
-            onSpeak={(voice, startedAt) => notes.write(startedAt, '', '', voice)}
+            onSpeak={(voice, startedAt, noteKind) => notes.write(startedAt, '', '', voice, null, noteKind)}
             onOpen={(note) => setWritingNote({ kind: 'edit', note })}
             onForget={notes.forget}
             thumbFor={noteThumbs.uriFor}
@@ -775,7 +787,7 @@ export function TabShell() {
         target={writingNote}
         defaultAt={noteDefaultAt}
         onSave={(at, title, text, voice, mediaId) => {
-          if (writingNote?.kind === 'new') notes.write(at, title, text, voice, mediaId);
+          if (writingNote?.kind === 'new') notes.write(at, title, text, voice, mediaId, writingNote.noteKind);
           else if (writingNote) notes.edit(writingNote.note, at, title, text, voice, mediaId);
         }}
         // Null for a note with no picture *and* for one whose picture has been

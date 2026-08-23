@@ -1,15 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { formatDayTitle, formatDuration, formatTimecode } from '@/core/format';
-import { groupNotesByDay, splitAtNow, type DayNote, type NoteDay, type NoteVoice } from '@/core/day';
+import {
+  groupNotesByDay,
+  notesOfKind,
+  splitAtNow,
+  type DayNote,
+  type NoteDay,
+  type NoteKind,
+  type NoteVoice,
+} from '@/core/day';
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
+import { NoteKindSwitch } from './components/NoteKindSwitch';
 import { RecordButton } from './components/RecordButton';
 import { MAX_VOICE_MS, useVoiceNote } from './hooks/useVoiceNote';
 
@@ -47,7 +56,8 @@ interface NotesScreenProps {
    * a heading moving, not data changing.
    */
   readonly now: number;
-  readonly onWrite: () => void;
+  /** Open the sheet on a new entry of the kind currently being shown. */
+  readonly onWrite: (kind: NoteKind) => void;
   /**
    * File a recording as a note of its own, at the instant the talking started.
    *
@@ -55,7 +65,7 @@ interface NotesScreenProps {
    * Save, because a recording alone is already a note — the same rule that lets
    * a title alone be one, or a paragraph nobody wanted to name.
    */
-  readonly onSpeak: (voice: NoteVoice, startedAt: number) => void;
+  readonly onSpeak: (voice: NoteVoice, startedAt: number, kind: NoteKind) => void;
   readonly onOpen: (note: DayNote) => void;
   readonly onForget: (id: string) => void;
   /**
@@ -111,9 +121,31 @@ export function NotesScreen({
    * from now; what has not is a plan, so it reads forwards to the next thing.
    * Both put the entry nearest to now first.
    */
-  const { ahead, behind } = useMemo(() => splitAtNow(notes, now), [notes, now]);
+  /**
+   * Which half is on screen, and therefore what the microphone writes.
+   *
+   * Plain state rather than something derived or lifted: it is a view mode this
+   * screen owns, nothing above it needs to know, and it is not a reading of any
+   * data — so there is nothing here for `react-hooks/set-state-in-effect` to be
+   * right about.
+   */
+  const [kind, setKind] = useState<NoteKind>('note');
+
+  const counts = useMemo(
+    () => ({ note: notesOfKind(notes, 'note').length, plan: notesOfKind(notes, 'plan').length }),
+    [notes],
+  );
+
+  // **Filtered before anything else touches them.** Everything below — the cut
+  // at now, the grouping, the headings — is the same arithmetic either side, so
+  // it runs over one list rather than learning there are two.
+  const shown = useMemo(() => notesOfKind(notes, kind), [notes, kind]);
+
+  const { ahead, behind } = useMemo(() => splitAtNow(shown, now), [shown, now]);
   const upcoming = useMemo(() => groupNotesByDay(ahead, tzOffsetMinutes, 'soonest'), [ahead, tzOffsetMinutes]);
   const days = useMemo(() => groupNotesByDay(behind, tzOffsetMinutes), [behind, tzOffsetMinutes]);
+
+  const plans = kind === 'plan';
 
   /**
    * The quick microphone's recorder.
@@ -129,15 +161,52 @@ export function NotesScreen({
    * without a render in between. The list is what says it worked: the new entry
    * appears at the top of today, which is where the eye already is.
    */
-  const recorder = useVoiceNote(onSpeak);
+  /**
+   * Which list the talking *started* in.
+   *
+   * A ref, and for exactly the reason the capture position is one: `stop`
+   * resolves inside a closure created before it, so what the handler needs is
+   * the value at the press rather than the value now. Switching to the other
+   * list halfway through a sentence must not re-file what you are still saying
+   * — you pressed the microphone under Plans, so it is a plan.
+   *
+   * Never read during render, which is all `react-hooks/refs` asks.
+   */
+  const startedIn = useRef<NoteKind>('note');
+
+  const file = useCallback(
+    (voice: NoteVoice, startedAt: number) => onSpeak(voice, startedAt, startedIn.current),
+    [onSpeak],
+  );
+
+  const recorder = useVoiceNote(file);
+
+  const start = useCallback(() => {
+    startedIn.current = kind;
+    recorder.start();
+  }, [kind, recorder]);
 
   return (
     <View style={styles.screen}>
       <ScreenHeader
         title="Notes"
-        subtitle={notes.length === 1 ? '1 entry' : `${notes.length} entries`}
-        actions={[{ label: 'Write a note', icon: 'create-outline', onPress: onWrite }]}
+        // The switch below already carries both counts, so the subtitle says
+        // what the list on screen is *for* instead of repeating the arithmetic.
+        subtitle={plans ? 'Things you want to happen' : "Everything you've written"}
+        actions={[
+          {
+            label: plans ? 'Write a plan' : 'Write a note',
+            icon: 'create-outline',
+            onPress: () => onWrite(kind),
+          },
+        ]}
       />
+
+      {/* Above the scroller rather than inside it: the way between the two lists
+          must not be able to scroll off the top, which is the same reasoning
+          that makes the Day screen's bar sticky. It is a plain sibling here, so
+          it needs none of the wrapper that a `stickyHeaderIndices` child does. */}
+      <NoteKindSwitch kind={kind} onChange={setKind} counts={counts} />
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* **Ahead of now, in a dashed box at the top.** Dashed rather than a
@@ -164,7 +233,9 @@ export function NotesScreen({
 
         {days.length === 0 && upcoming.length === 0 ? (
           <Text style={styles.empty}>
-            Nothing written yet. Tap the microphone to say something, or the pen to write it.
+            {plans
+              ? 'No plans yet. Tap the microphone to say what you want to happen.'
+              : 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'}
           </Text>
         ) : (
           days.map((day) => (
@@ -204,16 +275,11 @@ export function NotesScreen({
           ) : recorder.saving ? (
             <Text style={styles.hint}>Saving…</Text>
           ) : (
-            <Text style={styles.hint}>Tap to say something</Text>
+            <Text style={styles.hint}>{plans ? 'Tap to say a plan' : 'Tap to say something'}</Text>
           )}
         </View>
 
-        <RecordButton
-          size={QUICK_MIC_SIZE}
-          recording={recorder.recording}
-          onStart={recorder.start}
-          onStop={recorder.stop}
-        />
+        <RecordButton size={QUICK_MIC_SIZE} recording={recorder.recording} onStart={start} onStop={recorder.stop} />
       </View>
     </View>
   );

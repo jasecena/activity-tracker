@@ -281,3 +281,36 @@ describe('a note that was spoken', () => {
     expect(sweepNoteAudio).toHaveBeenCalledWith([`voice-${T0}.m4a`]);
   });
 });
+
+/**
+ * **Editing an entry never changes what it is for.** The sheet collects words,
+ * an instant and a recording; nothing in it asks whether this is a plan. So the
+ * kind has to come off the note being edited rather than fall back to the
+ * default — otherwise opening a plan and pressing Save would quietly move it
+ * into the diary, which is a row disappearing from the list you left it in.
+ */
+it('keeps a plan a plan when its words are edited', async () => {
+  const result = await openDiary();
+  await act(async () => {
+    result.current.write(T0, '', 'fix the backyard garden', null, null, 'plan');
+  });
+  const written = result.current.notes[0] as DayNote;
+  expect(written.kind).toBe('plan');
+
+  await act(async () => {
+    result.current.edit(written, written.at, 'Garden', 'fix the backyard garden this weekend');
+  });
+
+  expect(result.current.notes[0]?.kind).toBe('plan');
+  expect(result.current.notes[0]?.title).toBe('Garden');
+});
+
+it('writes a diary entry by default', async () => {
+  const result = await openDiary();
+
+  await act(async () => {
+    result.current.write(T0, '', 'rain all day');
+  });
+
+  expect(result.current.notes[0]?.kind).toBe('note');
+});
