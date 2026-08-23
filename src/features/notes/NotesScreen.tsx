@@ -206,6 +206,34 @@ export function NotesScreen({
     recorder.start();
   }, [kind, recorder]);
 
+  /**
+   * Changing list ends a recording rather than carrying it across.
+   *
+   * **The alternative was letting it run**, filed under wherever it started, and
+   * that was wrong for the reason the switch exists at all: this control's whole
+   * claim is that the list you are looking at is the list you are writing into.
+   * A running recording that belongs to the other list breaks exactly that, and
+   * it does it invisibly — the counter keeps going while the screen underneath
+   * says something else.
+   *
+   * Nothing is lost by stopping. `stop` saves what has been said so far and
+   * files it, so this is not `confirmDestructive`'s bar: it is finishing a
+   * recording early, not discarding one.
+   *
+   * **The ref above is still load-bearing, and for a different reason now.**
+   * `stop` flips `recording` before its first `await` but saves behind that, so
+   * the handler runs after `setKind` has already changed the state. Reading the
+   * state there would file the recording under the list you just moved to.
+   */
+  const changeKind = useCallback(
+    (next: NoteKind) => {
+      if (next === kind) return;
+      if (recorder.recording) recorder.stop();
+      setKind(next);
+    },
+    [kind, recorder],
+  );
+
   return (
     <View style={styles.screen}>
       <ScreenHeader
@@ -226,7 +254,7 @@ export function NotesScreen({
           must not be able to scroll off the top, which is the same reasoning
           that makes the Day screen's bar sticky. It is a plain sibling here, so
           it needs none of the wrapper that a `stickyHeaderIndices` child does. */}
-      <NoteKindSwitch kind={kind} onChange={setKind} counts={counts} />
+      <NoteKindSwitch kind={kind} onChange={changeKind} counts={counts} />
 
       {plans && planNote ? <Text style={styles.planNote}>{planNote}</Text> : null}
 

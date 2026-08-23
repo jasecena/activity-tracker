@@ -335,12 +335,25 @@ screen in front of you says it means. It is also the withdrawn Record button's
 lesson kept — that control asked you to declare a journey before it had
 happened.
 
-**Which list the talking started in lives in a ref.** Same reasoning as a
-capture's position, and the same failure if it does not: `stop` resolves inside a
-closure created before it, so reading the state at save time would re-file a
-running recording the moment somebody pressed the other cell mid-sentence. The
-regression test presses Plans, records, presses Notes, then stops, and asserts
-the recording is still a plan.
+**Changing list ends a recording rather than carrying it across.** The switch's
+whole claim is that the list in front of you is the list you are writing into,
+and a recording still running under the other one breaks exactly that —
+invisibly, with the counter going while the screen says something else. The first
+version let it run and filed it under wherever it started, which was consistent
+and still wrong. Nothing is lost by stopping: `stop` saves what has been said and
+files it, so this is finishing a recording early rather than discarding one, and
+`confirmDestructive`'s bar is not met. Pressing the cell you are already on does
+nothing at all.
+
+**Which list the talking started in still lives in a ref, and the reason
+changed.** It is no longer that somebody can switch mid-sentence — they cannot
+any more. It is that `stop` flips `recording` before its first `await` and saves
+behind it, so the handler runs _after_ `setKind` has already moved the screen.
+Reading state there would file the recording under the list you just moved to.
+Same shape as a capture's position, same failure if it goes. The regression test
+presses Plans, records, presses Notes, and asserts the recording is still a plan
+— and it fails against a version that reads the state, which is the only way that
+test is worth keeping.
 
 **Editing never changes what an entry is for.** The sheet collects words, an
 instant and a recording and never asks about the kind, so `edit` takes it off the

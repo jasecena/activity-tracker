@@ -315,23 +315,52 @@ describe('notes and plans', () => {
   });
 
   /**
-   * **The kind is fixed at the press, not read at the save.** `stop` resolves
-   * inside a closure created before it, so a switch pressed halfway through a
-   * sentence must not re-file what is still being said — the same reasoning
-   * that keeps a capture's position in a ref rather than in state.
+   * **Changing list ends the recording rather than carrying it across.**
+   *
+   * The switch's whole claim is that the list you are looking at is the list you
+   * are writing into, and a recording still running under the other one breaks
+   * exactly that — invisibly, with the counter going while the screen says
+   * something else. Nothing is lost: what was said is saved and filed.
    */
-  it('keeps a running recording in the list it started in', async () => {
+  it('stops a running recording when the other list is pressed', async () => {
+    await render(notesScreen({ notes: MIXED }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    expect(screen.getByLabelText('Stop recording')).toBeTruthy();
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Notes, 1 entry')));
+
+    expect(screen.queryByLabelText('Stop recording')).toBeNull();
+    expect(screen.getByLabelText('Record a voice note')).toBeTruthy();
+  });
+
+  /**
+   * **The kind is still fixed at the press, and the ref is still load-bearing.**
+   * `stop` flips `recording` before its first `await` but saves behind it, so
+   * the handler runs after the list has already changed. Reading the state there
+   * would file the recording under the list you just moved to.
+   */
+  it('files what was interrupted under the list it started in', async () => {
     const onSpeak = jest.fn();
     await render(notesScreen({ notes: MIXED, onSpeak }));
 
     await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
     await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
-    // Back to the diary while the microphone is still running.
     await act(async () => fireEvent.press(screen.getByLabelText('Notes, 1 entry')));
-    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
     await act(async () => Promise.resolve());
 
     expect(onSpeak).toHaveBeenCalledWith(expect.anything(), expect.any(Number), 'plan');
+  });
+
+  it('leaves a recording alone when the list it is already on is pressed', async () => {
+    await render(notesScreen({ notes: MIXED }));
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    await act(async () => fireEvent.press(screen.getByLabelText('Plans, 1 entry')));
+
+    expect(screen.getByLabelText('Stop recording')).toBeTruthy();
   });
 
   it('writes with the pen into the list on screen', async () => {
