@@ -1636,5 +1636,22 @@ hard way costs a release.
 **Expo Go no longer runs this app.** `expo-camera`, `expo-audio`, `expo-video`
 and `expo-maps` are native modules, so development needs a dev client build.
 
+**The machine at home has one table no prompt may read, and the wall is
+structural.** `server/private_facts` — birthdays, anniversaries, the day
+somebody died. A date of birth is what half the world accepts as proof of
+identity and a list of who you care about is a social graph; neither is worth
+sending anywhere for a reminder to buy a present. So there is no filter that
+strips them before a request, because there is no path from them to a request:
+`planner/private.py` imports nothing that can reach a model, the six
+prompt-building modules never name any of its symbols, and exactly three
+functions in `store.py` touch the table. `tests/test_private.py` asserts all
+three over the source, and they were verified by breaking the wall.
+
+It works because **nothing there needs a model** — what is coming and how long
+there is to prepare is date arithmetic. It is also only a store rather than a
+retraction: a birthday spoken into a plan was already in a transcript a model
+read. Server design lives in `server/README.md` and `docs/ASSISTANT.md`, not
+here; this entry exists so the rule is not rediscovered.
+
 Architecture rationale: `docs/ARCHITECTURE.md`. Release pipeline:
 `docs/DEPLOYMENT.md`. First-time setup: `docs/SETUP_CHECKLIST.md`.
