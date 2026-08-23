@@ -70,6 +70,11 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
       'a voice note is uploaded to ElevenLabs when you press Transcribe on it, and nothing goes with it — not your notes, not your days, not where you were',
     canBackUp &&
       'the days that are over are sealed on this phone and sent to your own S3 bucket when you press Back up, which nobody but you holds the key to',
+    canBackUp &&
+      'anything you file under Plans is sealed and sent to that same bucket on its own, without a press — its words only, never its recording, and never anything from the diary',
+    canBackUp &&
+      canTranscribe &&
+      "a plan's recording is uploaded to ElevenLabs on its own too, to fetch the words that get sent",
   ].filter((entry): entry is string => typeof entry === 'string');
 
   if (destinations.length === 0) {
@@ -78,7 +83,15 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
 
   const count =
     destinations.length === 1 ? 'One thing leaves this phone' : `${destinations.length} things leave this phone`;
-  return `${count}, and only when you ask: ${destinations.join('; ')}. Nothing else in the app talks to a network, and none of it happens on its own.`;
+  // **"None of it happens on its own" was true until Plans existed, and saying
+  // it now would be the third string in this app's history to promise more than
+  // it provides.** So the sentence names the exception instead of dropping the
+  // claim: everything else still waits to be asked, and the one thing that does
+  // not is the one you filed under a list that says so.
+  const automatic = canBackUp
+    ? 'Everything but the Plans list waits to be asked; a plan goes as soon as you have made one.'
+    : 'None of it happens on its own.';
+  return `${count}: ${destinations.join('; ')}. Nothing else in the app talks to a network. ${automatic}`;
 }
 
 export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, onOpenJourneys }: SettingsScreenProps) {

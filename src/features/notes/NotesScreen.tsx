@@ -77,6 +77,15 @@ interface NotesScreenProps {
    * library.
    */
   readonly thumbFor?: (mediaId: string | null) => string | null;
+  /**
+   * What the Plans queue has to say about itself, or null when it has nothing.
+   *
+   * Shown on the Plans list only, because that is where the plans are. A queue
+   * nobody can see is a queue that fails silently, and this one is not a press —
+   * a phone with no bucket would otherwise hold everything for ever and look
+   * perfectly healthy.
+   */
+  readonly planNote?: string | null;
 }
 
 /**
@@ -111,6 +120,7 @@ export function NotesScreen({
   onOpen,
   onForget,
   thumbFor,
+  planNote,
 }: NotesScreenProps) {
   /**
    * What has happened and what has not, read in opposite directions.
@@ -207,6 +217,8 @@ export function NotesScreen({
           that makes the Day screen's bar sticky. It is a plain sibling here, so
           it needs none of the wrapper that a `stickyHeaderIndices` child does. */}
       <NoteKindSwitch kind={kind} onChange={setKind} counts={counts} />
+
+      {plans && planNote ? <Text style={styles.planNote}>{planNote}</Text> : null}
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* **Ahead of now, in a dashed box at the top.** Dashed rather than a
@@ -384,6 +396,12 @@ function SwipeToDelete({
 }
 
 const styles = StyleSheet.create({
+  planNote: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
   screen: { flex: 1 },
   // Deep enough that the last row clears the microphone rather than sitting
   // under it: a list whose final entry can never be read is a list missing an

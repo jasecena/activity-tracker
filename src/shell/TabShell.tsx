@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  appendTranscript,
   dayKeyOf,
   daysWorthOpening,
   groupByDay,
@@ -44,6 +45,8 @@ import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptu
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
 import { useNoteThumbnails } from '@/features/notes/hooks/useNoteThumbnails';
 import { NotesScreen } from '@/features/notes/NotesScreen';
+import { usePlanSync } from '@/features/notes/hooks/usePlanSync';
+import { planQueueLine } from '@/core/plans';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
@@ -218,6 +221,40 @@ export function TabShell() {
   const purposes = useVisitPurposes();
   const backup = useBackup(settings.settings);
   const notes = useDayNotes();
+
+  /**
+   * Plans, out to the bucket, and the words fetched for the spoken ones.
+   *
+   * Hoisted here rather than living on the Notes tab because it must keep going
+   * while you are looking at the map — a queue that only drains on one screen is
+   * a queue that drains when you happen to visit it. `onTranscript` appends
+   * rather than replaces, so nothing this does can eat what somebody typed.
+   */
+  const planSync = usePlanSync({
+    notes: notes.notes,
+    ready: notes.ready && settings.ready,
+    settings: settings.settings,
+    onTranscript: useCallback(
+      (note: DayNote, text: string) =>
+        notes.edit(note, note.at, note.title, appendTranscript(note.text, text), note.voice, note.mediaId),
+      [notes],
+    ),
+  });
+  /**
+   * One line under the Plans switch: how many are still to go, or where to
+   * configure somewhere to send them, or what the last failure said.
+   *
+   * The trouble takes precedence over the count, because a count that keeps not
+   * going down is the thing that needs explaining.
+   */
+  const planNote = useMemo(() => {
+    if (planSync.trouble) {
+      const said = planSync.trouble.detail.trim();
+      return `Could not send plans: ${planSync.trouble.reason}${said.length > 0 ? ` — ${said}` : ''}`;
+    }
+    return planQueueLine(planSync.waiting, settings.settings.backupBucket.length > 0);
+  }, [planSync.trouble, planSync.waiting, settings.settings.backupBucket]);
+
   const places = usePlaces();
   const media = useMedia();
   const timeline = useTimeline(
@@ -706,6 +743,7 @@ export function TabShell() {
             onOpen={(note) => setWritingNote({ kind: 'edit', note })}
             onForget={notes.forget}
             thumbFor={noteThumbs.uriFor}
+            planNote={planNote}
           />
         </View>
 

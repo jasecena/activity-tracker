@@ -352,6 +352,62 @@ value. The safe direction is the one that cannot lose a row: an entry whose kind
 cannot be read is still an entry, and the diary is where somebody would go
 looking for it. Same direction a recording's `locked` defaults in.
 
+**A plan goes to the bucket on its own, and it is the one thing in the app that
+does.** `usePlanSync`. Everything else waits to be asked — a map is drawn while
+you look at one, a recording is transcribed when you press Transcribe, the backup
+goes when you press Back up — and this does not. What holds the line is that your
+press still made the thing it sends: nothing already on the phone is swept into
+it, the diary is never a candidate however it was written, and there is nothing
+to send until you have filed something under Plans.
+
+**Only the words leave.** The recording stays here — already swept by
+`sweepNoteAudio`, already spared by retention, already in the ordinary backup —
+and the thing reading the bucket reads text. `plans/<note-id>.json` holds the
+title, the text, the instant and how long the recording ran, sealed under the
+backup key and put with the same `putObject` the backup uses. A test asserts the
+file name is not in the bytes, because that is the promise Settings makes.
+
+**The one-way property is untouched, and that is why this shape was chosen.**
+The app still has no unseal path and still never reads an object back. No new
+IAM permission, no second key, no second bucket. A stolen phone can add to the
+backup and still cannot open it.
+
+**The key is the note's id, so a retry overwrites rather than duplicates**, and
+what decides a re-send is a fingerprint of the payload rather than a flag —
+editing a plan has to send it again and only its content knows that. The same
+discipline as segment ids and the backup's own object naming.
+
+**Two passes, and the first one is one-at-a-time.** A spoken plan has its words
+fetched and appended to the note — `appendTranscript`, so nothing can overwrite
+what somebody typed — and only then does it have anything to send. That write
+goes through the notes store, which reads its list out of the closure it was
+built in, so a loop would write every result over one snapshot and keep the
+last. One per pass; the list changing brings the effect round again. Uploading
+is a loop because it writes no notes.
+
+**The record is only written when it changed, and a test suite that never
+finished is what found that.** `record` is a dependency of the effect, so
+setting it to a fresh object saying the same thing re-runs the effect, which
+re-sends, which sets it again — a failed upload became an infinite loop against
+the bucket.
+
+**A queue nobody can see is a queue that fails silently.** `planQueueLine` puts
+the count under the Plans switch, and says where to go when there is nowhere to
+send them — a phone with no bucket would otherwise hold everything for ever and
+look perfectly healthy. The last failure's own words are printed there too, the
+same reasoning as the transcription error: there is no log, no crash reporter
+and no telemetry to look it up in afterwards.
+
+**Nothing is lost by a failure.** The note is saved long before any of this
+starts, a failed transcription is not marked answered, a failed upload is not
+recorded as sent, and both are tried again when the list next changes. A silent
+recording _is_ marked answered, because asking again would be asking for ever.
+
+**`networkNote` stopped saying "none of it happens on its own".** That was true
+until this existed and would have been the third string in this app's history to
+promise more protection than it provides. It names the exception instead:
+everything but the Plans list waits to be asked.
+
 **A note is the one thing here that is not derived from anything.** Every other
 row on a timeline is the fold's reading of a fix stream; none of it can say what
 the day was _like_ or who you were with. `core/day/notes.ts` — several per day,
