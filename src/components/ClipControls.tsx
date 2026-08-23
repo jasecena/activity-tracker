@@ -3,7 +3,7 @@ import type { VideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { formatDuration } from '@/core/format';
+import { formatTimecode } from '@/core/format';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { Scrubber } from './Scrubber';
@@ -74,7 +74,7 @@ export function ClipControls({ player, durationMs, onScrubbing, onToggleMute }: 
         <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color={colors.textPrimary} />
       </Pressable>
 
-      <Text style={styles.time}>{formatDuration(Math.max(0, atMs))}</Text>
+      <Text style={styles.time}>{formatTimecode(Math.max(0, atMs))}</Text>
 
       <View style={styles.track}>
         <Scrubber
@@ -87,12 +87,12 @@ export function ClipControls({ player, durationMs, onScrubbing, onToggleMute }: 
           // offers both for exactly this reason.
           onChange={(next) => player.seekBy(next / 1000 - player.currentTime)}
           onDragging={onScrubbing}
-          label={`Playback position, ${formatDuration(Math.max(0, atMs))}`}
+          label={`Playback position, ${formatTimecode(Math.max(0, atMs))}`}
         />
       </View>
 
       {/* Remaining, not total: the question mid-clip is "how much longer". */}
-      <Text style={styles.time}>-{formatDuration(Math.max(0, totalMs - atMs))}</Text>
+      <Text style={styles.time}>-{formatTimecode(Math.max(0, totalMs - atMs))}</Text>
 
       {/* **Sound is a control, not a surprise.** A clip starts muted because it
           starts on its own, so this is how it gets a voice — a primary control

@@ -1073,6 +1073,34 @@ The limit iOS imposes is separate and is **not** twenty minutes:
 app ends a recording. The screen is held awake while recording, which covers the
 auto-lock; it cannot cover the home gesture.
 
+**A counter is not a summary, and one formatter was doing both.**
+`formatDuration` rounds to the largest two units — "1h 24m", never "1h 24m 09s"
+— because seconds are noise on a timeline row and make it jitter as it updates.
+It was also printing the recording counter, so a voice note ticked 57s, 58s, 59s
+and then sat on **"1m" for a full minute**. Reported from a phone as the recorder
+having stopped counting, which is exactly what it looks like: the one part of the
+screen whose job is to prove the microphone is still listening had stopped
+moving, on the one control where there is nothing else to check it against.
+
+The same string then went onto the finished note, so a recording of 1m47s was
+labelled "1m" — the counter that appeared to freeze at a minute produced a
+recording that claims to be a minute, and the two agree on a number that is
+wrong. **That is worse than an idle counter: it is the app telling somebody the
+rest of what they said was not kept.** Nothing was: `elapsedMs` and the stored
+`durationMs` were right the whole time and only the display lied, which is why
+every existing recording reads its true length now with no migration.
+
+So `formatTimecode` — `0:07`, `1:47`, `1:02:33` — wherever a duration is
+**advancing** or is **a recording's own length**: both microphones' counters, the
+video badge, the player pill, the clip transport and its scrubber label.
+`formatDuration` keeps every summary of a stretch of a day, where rounding is the
+feature. Neither is a general-purpose duration formatter, and reaching for the
+wrong one is not a cosmetic mistake — it reads as data loss.
+
+The regression test that matters asserts **ninety seconds**, the middle of the
+minute the old string could not see into, and the fixture behind the player's
+was already 90 s asserting `1m`: the bug was written down as the expectation.
+
 **Every sheet with a field in it is bounded, scrolls, and gets out of the
 keyboard's way — and all three shipped without.** `NoteSheet`, `PlacePicker`,
 `JourneyLabelSheet`. The last two had no `KeyboardAvoidingView` at all, so they

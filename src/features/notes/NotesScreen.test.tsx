@@ -229,4 +229,37 @@ describe('the microphone on the tab', () => {
     expect(onSpeak.mock.calls[0]?.[1]).toBe(NOW);
     jest.useRealTimers();
   });
+
+  /**
+   * **The counter has to move, and it stopped moving a minute in.**
+   *
+   * It was printed with `formatDuration`, which rounds to the minute above a
+   * minute — right for a journey on a timeline, and here it meant the display
+   * read "1m" for every one of the second minute's sixty seconds. Reported from
+   * a phone as the recorder having stopped counting, which is precisely what it
+   * looks like: the only part of the screen whose job is to say the microphone
+   * is still listening had frozen, on the one control where there is nothing
+   * else to check against.
+   *
+   * Ninety seconds because that is the middle of the minute the old string could
+   * not see into, and it is the recording in the report.
+   */
+  it('keeps counting past a minute rather than sitting on the minute', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    await render(notesScreen());
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Record a voice note')));
+    await act(async () => {
+      jest.setSystemTime(NOW + 90_000);
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(screen.getByText('1:30')).toBeTruthy();
+    expect(screen.queryByText('1m')).toBeNull();
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Stop recording')));
+    await act(async () => Promise.resolve());
+    jest.useRealTimers();
+  });
 });

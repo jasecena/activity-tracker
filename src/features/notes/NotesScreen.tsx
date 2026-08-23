@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
-import { formatDayTitle, formatDuration } from '@/core/format';
+import { formatDayTitle, formatDuration, formatTimecode } from '@/core/format';
 import { groupNotesByDay, splitAtNow, type DayNote, type NoteDay, type NoteVoice } from '@/core/day';
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { NoteRow } from '@/components/NoteRow';
@@ -195,7 +195,7 @@ export function NotesScreen({
         <View style={styles.dockLabel}>
           {recorder.recording ? (
             <>
-              <Text style={styles.clock}>{formatDuration(recorder.elapsedMs)}</Text>
+              <Text style={styles.clock}>{formatTimecode(recorder.elapsedMs)}</Text>
               {/* The ceiling, said while there is still time to act on it. The
                   recorder stops itself there and says so, but being told
                   afterwards is a worse place to find out. */}

@@ -16,7 +16,7 @@ import {
 
 import { appendTranscript, type DayNote, type NoteVoice } from '@/core/day';
 import type { MediaItem } from '@/core/media';
-import { formatDuration } from '@/core/format';
+import { formatDuration, formatTimecode } from '@/core/format';
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { copyText } from '@/services/clipboard';
 import { VoiceNotePlayer } from '@/components/VoiceNotePlayer';
@@ -461,7 +461,7 @@ export function NoteSheet({
                   <View style={styles.voiceState}>
                     {recorder.recording ? (
                       <>
-                        <Text style={styles.recordingClock}>{formatDuration(recorder.elapsedMs)}</Text>
+                        <Text style={styles.recordingClock}>{formatTimecode(recorder.elapsedMs)}</Text>
                         {/* The ceiling, said while there is still time to act on
                           it. The recorder stops itself there and tells you, but
                           being told afterwards is a worse place to find out

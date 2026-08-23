@@ -62,9 +62,12 @@ it('plays a recording from the row it belongs to', async () => {
   await render(<NoteRow note={note({ voice: VOICE })} tzOffsetMinutes={UTC} />);
 
   expect(screen.getByLabelText('Play the recording')).toBeTruthy();
-  // The same `formatDuration` the video transport prints, so a length reads
-  // the same wherever the app shows one.
-  expect(screen.getByText('1m')).toBeTruthy();
+  // **The whole length, seconds and all.** This asserted `1m` for a recording
+  // of a minute and a half, which is what the app printed — `formatDuration`
+  // rounds to the minute, which is right on a timeline row and a lie on a
+  // recording. The same `formatTimecode` the transport prints, so a length
+  // reads the same wherever the app shows one.
+  expect(screen.getByText('1:30')).toBeTruthy();
 });
 
 /**

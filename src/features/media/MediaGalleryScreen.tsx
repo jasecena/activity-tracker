@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 
 import type { DayNote } from '@/core/day';
-import { formatClockTime, formatDayTitle, formatDuration } from '@/core/format';
+import { formatClockTime, formatDayTitle, formatTimecode } from '@/core/format';
 import {
   displayRotationFor,
   groupMediaByDay,
@@ -676,7 +676,7 @@ function InfoPanel({
         <View style={styles.infoCard}>
           <InfoRow label="Captured" value={formatClockTime(item.capturedAt, tzOffsetMinutes)} />
           <InfoRow label="Kind" value={item.kind} />
-          <InfoRow label="Length" value={item.durationMs === null ? '—' : formatDuration(item.durationMs)} />
+          <InfoRow label="Length" value={item.durationMs === null ? '—' : formatTimecode(item.durationMs)} />
           <InfoRow label="Size on disk" value={`${Math.round(item.byteLength / 1024)} kB`} />
           <InfoRow label="Position" value={at ? `${at.lat.toFixed(5)}, ${at.lon.toFixed(5)}` : 'not known'} />
         </View>

@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatPace,
   formatSpeed,
+  formatTimecode,
   modeLabel,
 } from '../index';
 
@@ -85,6 +86,44 @@ describe('formatDuration', () => {
   it('shows a dash rather than a number it cannot mean', () => {
     expect(formatDuration(Number.NaN)).toBe('—');
     expect(formatDuration(-1)).toBe('—');
+  });
+});
+
+describe('formatTimecode', () => {
+  it.each([
+    [0, '0:00'],
+    [999, '0:00'],
+    [7_000, '0:07'],
+    [45_000, '0:45'],
+    [59_999, '0:59'],
+    [60_000, '1:00'],
+    [107_000, '1:47'],
+    [599_000, '9:59'],
+    [600_000, '10:00'],
+    [20 * 60_000, '20:00'],
+    [3_600_000, '1:00:00'],
+    [3_753_000, '1:02:33'],
+    [26 * 3_600_000, '26:00:00'],
+  ])('renders %p as %p', (ms, expected) => {
+    expect(formatTimecode(ms)).toBe(expected);
+  });
+
+  /**
+   * The bug this function was written for. A recording counter driven by
+   * `formatDuration` reads "1m" for every millisecond of the second minute, so
+   * it appears to stop counting a minute in — and the finished note then claims
+   * to be a minute long when it is nearly two.
+   */
+  it('advances every second where formatDuration stands still for sixty of them', () => {
+    const secondMinute = [60_000, 75_000, 90_000, 105_000, 119_000];
+    expect(new Set(secondMinute.map(formatDuration)).size).toBe(1);
+    expect(new Set(secondMinute.map(formatTimecode)).size).toBe(secondMinute.length);
+  });
+
+  it('shows a dash rather than a number it cannot mean', () => {
+    expect(formatTimecode(Number.NaN)).toBe('—');
+    expect(formatTimecode(-1)).toBe('—');
+    expect(formatTimecode(Number.POSITIVE_INFINITY)).toBe('—');
   });
 });
 
