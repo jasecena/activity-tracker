@@ -17,12 +17,16 @@ import type { Settings } from '@/services/settings';
  * Three properties hold it down, and all three are the mirror of what already
  * governs the write direction:
  *
- * **One key, no new secret.** The agenda is sealed with the same key the phone
- * already seals its own uploads with, so nothing is added to the device. What
- * makes the channel read-only in this direction is the bucket policy — the phone
- * may `GetObject` on `agenda/` and nothing else — which is now the only thing
- * standing between this app and a year of days. `unsealWithKey` says the same
- * from the other side.
+ * **Its own key, in its own bucket.** The agenda is sealed with the exchange
+ * key, never the backup's — because the machine that writes it must hold that
+ * key, and a machine that holds the backup's key could read every journey this
+ * phone has recorded. This used to be one bucket split by prefix, with a policy
+ * condition keeping the two apart; it is now two buckets and two keys, so the
+ * separation is structural rather than conditional. `Settings.exchangeBucket`
+ * argues it in full and `unsealWithKey` says the same from the other side.
+ *
+ * What the phone may do in that bucket is still narrow: `GetObject` on
+ * `agenda/` and nothing else, so it cannot read back the plans it sent.
  *
  * **One object, replaced whole.** No log to replay and no state to reconcile: a
  * phone that has been off for a week asks once and has the current answer.
@@ -45,18 +49,18 @@ export type AgendaResult = { readonly ok: true; readonly agenda: Agenda } | ({ r
 
 function bucketFor(settings: Settings): BucketConfig | null {
   if (
-    settings.backupBucket.length === 0 ||
-    settings.backupAccessKeyId.length === 0 ||
-    settings.backupSecretKey.length === 0 ||
-    settings.backupKeyHex.length === 0
+    settings.exchangeBucket.length === 0 ||
+    settings.exchangeAccessKeyId.length === 0 ||
+    settings.exchangeSecretKey.length === 0 ||
+    settings.exchangeKeyHex.length === 0
   ) {
     return null;
   }
   return {
-    bucket: settings.backupBucket,
-    region: settings.backupRegion,
-    accessKeyId: settings.backupAccessKeyId,
-    secretAccessKey: settings.backupSecretKey,
+    bucket: settings.exchangeBucket,
+    region: settings.exchangeRegion,
+    accessKeyId: settings.exchangeAccessKeyId,
+    secretAccessKey: settings.exchangeSecretKey,
   };
 }
 
@@ -74,7 +78,7 @@ export async function fetchAgenda(settings: Settings): Promise<AgendaResult> {
 
   let text: string;
   try {
-    text = new TextDecoder().decode(unsealWithKey(hexToBytes(settings.backupKeyHex), bytes));
+    text = new TextDecoder().decode(unsealWithKey(hexToBytes(settings.exchangeKeyHex), bytes));
   } catch (error) {
     // Wrong key or altered bytes, indistinguishable and not worth guessing
     // between — the same sentence the unseal path itself refuses with.

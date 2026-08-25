@@ -29,11 +29,12 @@ const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
 
 const CONFIGURED: Settings = {
   ...DEFAULT_SETTINGS,
-  backupBucket: 'my-bucket',
-  backupRegion: 'ap-southeast-2',
-  backupAccessKeyId: 'AKIA',
-  backupSecretKey: 'shhh',
-  backupKeyHex: '00'.repeat(32),
+  exchangeBucket: 'my-exchange-bucket',
+  exchangeRegion: 'ap-southeast-2',
+  exchangeAccessKeyId: 'AKIA',
+  exchangeSecretKey: 'shhh',
+  exchangeKeyHex: '00'.repeat(32),
+  exchangeSaltHex: 'aa'.repeat(16),
   transcriptionKey: 'el-key',
   transcriptionLanguage: 'fa',
 };
@@ -56,7 +57,17 @@ async function run(notes: readonly DayNote[], settings: Settings = CONFIGURED) {
   return { ...view, onTranscript };
 }
 
-const sent = () => (putObject as jest.Mock).mock.calls;
+/** Every PUT this hook made, in order. */
+const puts = () => (putObject as jest.Mock).mock.calls;
+/**
+ * The plans only.
+ *
+ * The manifest goes up before the first of them and is asserted on its own,
+ * below — keeping it out of this helper is what stops every count in the file
+ * being off by one and saying nothing about why.
+ */
+const sent = () => puts().filter((call) => String(call[1]).startsWith('plans/'));
+const manifests = () => puts().filter((call) => call[1] === 'manifest.json');
 const bodyOf = (call: unknown[]) => new TextDecoder().decode(call[2] as Uint8Array);
 
 /**
@@ -157,6 +168,54 @@ describe('sending a plan', () => {
     await rerender({});
 
     await waitFor(() => expect(sent()).toHaveLength(1));
+  });
+});
+
+describe('the manifest', () => {
+  /**
+   * **Without the salt up there, a plan is a receipt.** The machine at home has
+   * the passphrase you typed into it and nothing to run through scrypt, so
+   * every plan in the bucket is unopenable — and the failure surfaces at that
+   * end, days later, rather than here where it is fixable.
+   */
+  it('publishes the salt before it sends the first plan', async () => {
+    await run([plan(T0, 'fix the garden')]);
+
+    await waitFor(() => expect(sent()).toHaveLength(1));
+    expect(manifests()).toHaveLength(1);
+    expect(puts()[0]?.[1]).toBe('manifest.json');
+  });
+
+  it('carries this bucket’s salt, and never the backup’s', async () => {
+    await run([plan(T0, 'fix the garden')]);
+
+    await waitFor(() => expect(manifests()).toHaveLength(1));
+    const body = JSON.parse(bodyOf(manifests()[0] as unknown[]));
+    expect(body.salt).toBe('aa'.repeat(16));
+    expect(body.salt).not.toBe(CONFIGURED.backupSaltHex);
+  });
+
+  it('publishes it once, not before every plan', async () => {
+    const notes = [plan(T0, 'one'), plan(T0 + 1000, 'two')];
+    const { rerender } = await run(notes);
+
+    await waitFor(() => expect(sent()).toHaveLength(2));
+    await rerender({});
+
+    await waitFor(() => expect(manifests()).toHaveLength(1));
+  });
+
+  /**
+   * Ordering made structural rather than hoped for: if the salt cannot be
+   * published, nothing is sent that would depend on it.
+   */
+  it('holds the plans back if the salt cannot be published', async () => {
+    (putObject as jest.Mock).mockResolvedValue({ reason: 'unauthorized', detail: '403 AccessDenied' });
+
+    const { result } = await run([plan(T0, 'fix the garden')]);
+
+    await waitFor(() => expect(result.current.trouble?.reason).toBe('unauthorized'));
+    expect(sent()).toHaveLength(0);
   });
 });
 

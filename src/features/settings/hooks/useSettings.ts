@@ -40,6 +40,9 @@ export interface UseSettings {
   setBackupTarget: (target: { bucket: string; region: string; accessKeyId: string; secretKey: string }) => void;
   /** Returns false when one is already set, which is the whole rule made structural. */
   setBackupPassphrase: (passphrase: string) => boolean;
+  setExchangeTarget: (target: { bucket: string; region: string; accessKeyId: string; secretKey: string }) => void;
+  /** False if one is already set. It cannot be changed — see the implementation. */
+  setExchangePassphrase: (passphrase: string) => boolean;
   setTranscriptionKey: (key: string) => void;
   setTranscriptionLanguage: (code: string) => void;
   /**
@@ -252,6 +255,46 @@ export function useSettings(): UseSettings {
     [persist, settings],
   );
 
+  /**
+   * Where plans go. Four fields, all rotatable by retyping — and deliberately
+   * not the backup's four. See `Settings.exchangeBucket` for why this is a
+   * second set rather than a reuse of the first.
+   */
+  const setExchangeTarget = useCallback(
+    (target: { bucket: string; region: string; accessKeyId: string; secretKey: string }) =>
+      persist({
+        ...settings,
+        exchangeBucket: target.bucket.trim(),
+        exchangeRegion: target.region.trim(),
+        exchangeAccessKeyId: target.accessKeyId.trim(),
+        exchangeSecretKey: target.secretKey.trim(),
+      }),
+    [persist, settings],
+  );
+
+  /**
+   * Set the plans passphrase, once and for ever.
+   *
+   * **A different phrase from the backup's, and the app does not check that.**
+   * Typing the same one in both places would hand the machine at home a key
+   * that opens every journey in the backup, which is the single thing this
+   * split exists to prevent — but refusing a match here would mean holding the
+   * backup passphrase in a form that could be compared against, and the backup
+   * passphrase is deliberately not kept in any such form. The screen says so
+   * instead; the honest place for this rule is the sentence you read before you
+   * type, not a check that would cost the property it protects.
+   */
+  const setExchangePassphrase = useCallback(
+    (passphrase: string) => {
+      if (settings.exchangeKeyHex.length > 0) return false;
+      const salt = Crypto.getRandomBytes(16);
+      const key = backupKeyFrom(passphrase, salt);
+      persist({ ...settings, exchangeKeyHex: bytesToHex(key), exchangeSaltHex: bytesToHex(salt) });
+      return true;
+    },
+    [persist, settings],
+  );
+
   const setTranscriptionKey = useCallback(
     (transcriptionKey: string) => persist({ ...settings, transcriptionKey: transcriptionKey.trim() }),
     [persist, settings],
@@ -296,6 +339,8 @@ export function useSettings(): UseSettings {
     setMapsEnabled,
     setBackupTarget,
     setBackupPassphrase,
+    setExchangeTarget,
+    setExchangePassphrase,
     setTranscriptionKey,
     setTranscriptionLanguage,
     savingBattery,

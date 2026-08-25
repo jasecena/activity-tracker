@@ -16,14 +16,14 @@ sensitive thing on most people's phones, and the design treats it that way.
 **The threat model is not a determined attacker holding your unlocked phone.**
 Against that, nothing an app can do helps. It is the ordinary ways a file leaks:
 
-| Leak                                             | Mitigation                                                                                                                                                                                               |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key. Media is not sealed, so it is excluded from the backup outright — see below.     |
-| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                                                                             |
-| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                                                                            |
-| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                                                                            |
-| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                                                                      |
-| Data sent somewhere by accident                  | The app makes three kinds of request and each one is a press: map imagery, transcription, and a backup to a bucket you own. There is no telemetry and nothing happens on its own. See _Network posture_. |
+| Leak                                             | Mitigation                                                                                                                                                                                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud or iTunes backup                          | The encryption key is `THIS_DEVICE_ONLY`, so it is never in a backup. A restored backup contains ciphertext and no key. Media is not sealed, so it is excluded from the backup outright — see below.                             |
+| Device sold, lent or handed on                   | Same. Also, "Erase everything" destroys the key rather than hoping every row left the flash.                                                                                                                                     |
+| Forensic extraction of the container             | Every stored value is sealed with XChaCha20-Poly1305. Media files rely on the iOS container encryption alone.                                                                                                                    |
+| A bug in another app that can read the container | Same. iOS sandboxing is what stops another app reaching the container at all.                                                                                                                                                    |
+| A tampered or truncated store                    | Poly1305 authenticates. A modified store fails to decrypt rather than parsing into something that looks like a day.                                                                                                              |
+| Data sent somewhere by accident                  | The app makes four kinds of request: map imagery, transcription and a backup, each a press — and plans, which go on their own to a second bucket that has never held a coordinate. There is no telemetry. See _Network posture_. |
 
 ### Media at rest: the one place this changed
 
@@ -117,11 +117,12 @@ count is stated plainly and each entry names what leaves.
 **The property worth defending is that the list fits in a sentence**, not that
 the number is one.
 
-| Request                                | Gate                                                            | What leaves the phone                                                                                                                  |
-| -------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apple Maps imagery**                 | `settings.mapsEnabled`, **off on a fresh install**              | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                    |
-| **Transcription** (ElevenLabs)         | A key you typed, plus a press of Transcribe on one note         | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                            |
-| **Backup** to an S3 bucket **you own** | Credentials and a passphrase you typed, plus a press of Back up | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video. |
+| Request                                               | Gate                                                                | What leaves the phone                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apple Maps imagery**                                | `settings.mapsEnabled`, **off on a fresh install**                  | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                                |
+| **Transcription** (ElevenLabs)                        | A key you typed, plus a press of Transcribe on one note             | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                                        |
+| **Backup** to an S3 bucket **you own**                | Credentials and a passphrase you typed, plus a press of Back up     | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video.             |
+| **Plans** to a **second, separate** S3 bucket you own | A second set of credentials and a second passphrase, then automatic | The words and instant of anything filed under Plans, sealed on this phone first. Never its recording, never a diary entry, and never a coordinate. |
 
 With maps off, every map in the app is the offline canvas drawn from your own
 coordinates and nothing else. `components/MapCanvas.tsx` is the only file
@@ -130,10 +131,23 @@ knows the transcription endpoint exists.
 
 **The backup is one-way and the bucket holds ciphertext.** Sealing is
 ChaCha20-Poly1305 under a key `scrypt` derives from a passphrase that is stored
-nowhere, so its operator holds nothing readable. The app has no unseal path for
-any of it except one object it fetches back; what makes that safe is the bucket
-policy, and `infra/` carries the templates. Getting data back out is a script on
-a laptop.
+nowhere, so its operator holds nothing readable. The phone cannot read a single
+object back out of that bucket — the policy denies it `GetObject` outright — and
+getting data back is a script on a laptop.
+
+**Plans go to a different bucket, under a different key.** They have to go
+somewhere a machine at home can read them, and that machine must hold whichever
+key opens what it reads. So the question is not whether to trust it but how much
+to leave within its reach, and the answer is: the words and instant of a plan,
+and nothing else. It has no credential for the backup bucket, is named in an
+explicit `Deny` on it, and could not decrypt those objects if it somehow
+obtained them, because they are sealed under a passphrase it has never been
+given. A year of journeys is not one misconfigured policy condition away from
+it; it is in a different bucket behind a different key.
+
+The one object the phone reads back is `agenda/current.json`, in that second
+bucket, and the policy permits it that prefix and nothing else — so the phone
+cannot read back the plans it sent, either. `infra/` carries every template.
 
 There is still no analytics, no telemetry, no crash reporting upload, no remote
 config and no geocoder — which is still why a place has no name until you type

@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SendPlansAndTheManifest",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": [
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/plans/*",
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/manifest.json"
+      ],
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "StringEquals": { "s3:x-amz-storage-class": ["STANDARD"] }
+      }
+    },
+    {
+      "Sid": "ReadTheAgenda",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${EXCHANGE_BUCKET}/agenda/*",
+      "Condition": { "Bool": { "aws:SecureTransport": "true" } }
+    }
+  ]
+}
