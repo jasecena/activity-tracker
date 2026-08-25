@@ -75,3 +75,69 @@ describe('the fields that permit a request', () => {
     }
   });
 });
+
+/**
+ * The two buckets are two settings, and the thing worth testing is that they
+ * never quietly become one.
+ *
+ * A field that fell back to the backup's value would put plans in the bucket
+ * that holds the journeys, or seal them under the key the planner is not
+ * supposed to have — and either mistake reads as the feature working.
+ */
+describe('the plans bucket, which is not the backup bucket', () => {
+  it('keeps the two sets of credentials apart', () => {
+    const stored = {
+      backupBucket: 'the-backup',
+      backupRegion: 'us-east-1',
+      backupAccessKeyId: 'AKIA-BACKUP',
+      backupSecretKey: 'backup-secret',
+      exchangeBucket: 'the-plans',
+      exchangeRegion: 'ap-southeast-2',
+      exchangeAccessKeyId: 'AKIA-PLANS',
+      exchangeSecretKey: 'plans-secret',
+    };
+    const settings = normalizeSettings(stored);
+
+    expect(settings.backupBucket).toBe('the-backup');
+    expect(settings.exchangeBucket).toBe('the-plans');
+    expect(settings.exchangeAccessKeyId).not.toBe(settings.backupAccessKeyId);
+    expect(settings.exchangeSecretKey).not.toBe(settings.backupSecretKey);
+  });
+
+  /**
+   * **An unset plans bucket must not inherit the backup's.** This is the one
+   * failure that would send plans to the bucket full of coordinates while
+   * looking entirely healthy.
+   */
+  it('leaves the plans bucket empty rather than falling back to the backup', () => {
+    const settings = normalizeSettings({
+      backupBucket: 'the-backup',
+      backupAccessKeyId: 'AKIA-BACKUP',
+      backupSecretKey: 'backup-secret',
+      backupKeyHex: 'ab'.repeat(32),
+      backupSaltHex: 'cd'.repeat(16),
+    });
+
+    expect(settings.exchangeBucket).toBe('');
+    expect(settings.exchangeAccessKeyId).toBe('');
+    expect(settings.exchangeSecretKey).toBe('');
+    expect(settings.exchangeKeyHex).toBe('');
+    expect(settings.exchangeSaltHex).toBe('');
+  });
+
+  // Same rule as the backup's key: hex or nothing. A half-written key is not
+  // repaired into a different one, because it would seal plans nothing can open.
+  it('refuses a key or salt that is not the right hex', () => {
+    for (const bad of ['', 'not-hex', 'ab'.repeat(31), 'AB'.repeat(32), 12, null]) {
+      expect(normalizeSettings({ exchangeKeyHex: bad }).exchangeKeyHex).toBe('');
+      expect(normalizeSettings({ exchangeSaltHex: bad }).exchangeSaltHex).toBe('');
+    }
+    expect(normalizeSettings({ exchangeKeyHex: 'ab'.repeat(32) }).exchangeKeyHex).toBe('ab'.repeat(32));
+    expect(normalizeSettings({ exchangeSaltHex: 'cd'.repeat(16) }).exchangeSaltHex).toBe('cd'.repeat(16));
+  });
+
+  it('defaults the plans region rather than leaving it blank', () => {
+    expect(normalizeSettings({}).exchangeRegion).toBe('ap-southeast-2');
+    expect(normalizeSettings({ exchangeRegion: '  ' }).exchangeRegion).toBe('ap-southeast-2');
+  });
+});

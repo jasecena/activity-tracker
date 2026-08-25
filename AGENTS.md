@@ -380,8 +380,8 @@ value. The safe direction is the one that cannot lose a row: an entry whose kind
 cannot be read is still an entry, and the diary is where somebody would go
 looking for it. Same direction a recording's `locked` defaults in.
 
-**A plan goes to the bucket on its own, and it is the one thing in the app that
-does.** `usePlanSync`. Everything else waits to be asked — a map is drawn while
+**A plan goes to the plans bucket on its own, and it is the one thing in the app
+that does.** `usePlanSync`. Everything else waits to be asked — a map is drawn while
 you look at one, a recording is transcribed when you press Transcribe, the backup
 goes when you press Back up — and this does not. What holds the line is that your
 press still made the thing it sends: nothing already on the phone is swept into
@@ -391,9 +391,23 @@ to send until you have filed something under Plans.
 **Only the words leave.** The recording stays here — already swept by
 `sweepNoteAudio`, already spared by retention, already in the ordinary backup —
 and the thing reading the bucket reads text. `plans/<note-id>.json` holds the
-title, the text, the instant and how long the recording ran, sealed under the
-backup key and put with the same `putObject` the backup uses. A test asserts the
-file name is not in the bytes, because that is the promise Settings makes.
+title, the text, the instant and how long the recording ran, put with the same
+`putObject` the backup uses. A test asserts the file name is not in the bytes,
+because that is the promise Settings makes.
+
+**It is a different bucket, under a different key, reached with a different
+credential — and that is the load-bearing sentence.** `Settings.exchangeBucket`
+carries the argument in full; the short version is that the machine at home must
+hold whichever key opens what it reads, and the backup holds every journey this
+phone has recorded. One bucket split by prefix put that separation in a policy
+condition, one careless edit away from a year of coordinates. Two buckets and two
+passphrases put it in the structure, where no edit reaches it.
+
+What makes this safe to do at all is that `planPayload` has never carried a
+coordinate — an id, an instant, a title, text and a duration, and nothing else.
+**If that payload ever grows, this is the paragraph to come back to.** Tests
+assert the key is the plans key and the bucket is the plans bucket, because both
+mistakes look exactly like the feature working.
 
 **The one-way property is untouched, and that is why this shape was chosen.**
 The app still has no unseal path and still never reads an object back. No new
@@ -470,21 +484,26 @@ so that the day something wants it the link is already there rather than lost �
 and a test walks it end to end, from an agenda item to the recording on disk.
 
 **The agenda is the way back, and it is the only thing this app reads out of
-the bucket.** The machine at home publishes `agenda/current.json` — what it
-decided and, for a few of them, when — and the Plans list draws it above the
-plans it was decided from. `core/agenda` parses it, `services/agenda.ts` fetches
+either bucket.** The machine at home publishes `agenda/current.json` into the
+plans bucket — what it decided and, for a few of them, when — and the Plans list
+draws it above the plans it was decided from. `core/agenda` parses it, `services/agenda.ts` fetches
 it, and the format is documented **once**, in the server's own `agenda.py`, beside
 the code that writes it: a format described in two places is a format that
 drifts.
 
-**This narrowed a guarantee, and that is written down rather than discovered.**
-The backup's design chose one-way so a stolen phone could add to it
-and open none of it, and "the app has no unseal path at all" was half of what
-made that true. `unsealWithKey` exists now, so the other half — the bucket
-policy — is the whole of it: the phone may `GetObject` on `agenda/` and nothing
-else, and that `Condition` block is load-bearing rather than tidy. What did
-**not** change is that no key was added to the device: the agenda is sealed with
-the key the phone already seals with.
+**This narrowed a guarantee, then a second bucket gave most of it back.** The
+backup's design chose one-way so a stolen phone could add to it and open none of
+it, and "the app has no unseal path at all" was half of what made that true.
+`unsealWithKey` exists now — but it is pointed at a different bucket. The backup
+bucket denies the phone `GetObject` outright, exactly as it always did, with no
+prefix condition carrying the weight; the read path reaches only `agenda/` in the
+bucket that has never held a journey.
+
+What did change is that a second key now lives on the device. That is the cost of
+the split and it is the right way round: the added key opens plans and agendas,
+and the machine that holds a copy of it cannot open a backup. A single key would
+have been one secret rather than two, and that one secret would have opened
+everything.
 
 **One object, replaced whole, never a log.** A phone that has been off for a
 week asks once and has the current answer, and the two ends cannot disagree
@@ -849,10 +868,17 @@ There is no account-level retention switch to set instead; that was checked.
 **The third is the backup: the days that are over, to an S3 bucket you own.**
 Sealed on the phone first — `services/backup/seal.ts`, ChaCha20-Poly1305 under a
 key scrypt makes from a passphrase that is never stored — so the bucket holds
-ciphertext and its operator holds nothing. **One way**: the app has no unseal
-path at all and the bucket policy denies it every read of an object, so a stolen
-phone with these credentials can add to the backup and cannot open it. What gets
-data back is `scripts/unseal_backup.py`, on a laptop.
+ciphertext and its operator holds nothing. **One way**: the bucket policy denies
+the phone every read of an object, so a stolen phone with these credentials can
+add to the backup and cannot open it. What gets data back is
+`scripts/unseal_backup.py`, on a laptop.
+
+**The fourth is Plans, to a second bucket that is not that one.** Different
+bucket, different IAM user, different passphrase — because the machine that reads
+plans must hold the key to what it reads, and the backup is where the coordinates
+are. That machine is named in an explicit `Deny` on the backup bucket as well,
+which is the belt to the braces of simply not having the credential. `infra/`
+carries both sets of templates and the probes that prove them.
 
 **Nothing is automatic, and previous days only.** A day that is over cannot
 change, which is what makes it safe to send once; today is still being recorded.

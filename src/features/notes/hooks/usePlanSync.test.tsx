@@ -1,3 +1,4 @@
+import { bytesToHex } from '@noble/ciphers/utils.js';
 import { renderHook, waitFor } from '@testing-library/react-native';
 
 import { dayNoteId, type DayNote, type NoteVoice } from '@/core/day';
@@ -22,7 +23,24 @@ jest.mock('@/services/transcribe', () => ({ transcribe: jest.fn() }));
 jest.mock('@/services/backup/s3', () => ({ putObject: jest.fn(async () => null) }));
 // Identity, so the bytes reaching the bucket can be read in a test. The real
 // seal has its own format check against the Python script.
-jest.mock('@/services/backup', () => ({ sealObject: (_key: unknown, bytes: Uint8Array) => bytes }));
+/**
+ * The seal is stubbed, but **the key it was handed is kept**.
+ *
+ * Which key sealed a plan is the whole of the two-bucket guarantee, and a stub
+ * that threw its first argument away could not tell the right key from the one
+ * that opens every journey this phone has recorded.
+ *
+ * `KDF` is a real string rather than undefined because the manifest carries it,
+ * and a manifest naming no derivation is one the far end cannot act on.
+ */
+const sealedWith: Uint8Array[] = [];
+jest.mock('@/services/backup', () => ({
+  KDF: 'scrypt-n32768-r8-p1',
+  sealObject: (key: Uint8Array, bytes: Uint8Array) => {
+    sealedWith.push(key);
+    return bytes;
+  },
+}));
 jest.mock('@/services/noteAudio', () => ({ noteAudioUri: (name: string) => `file:///note-audio/${name}` }));
 
 const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
@@ -52,6 +70,7 @@ function plan(at: number, text: string, over: Partial<DayNote> = {}): DayNote {
 // silently never runs its effects, which is why one un-awaited helper failed
 // eight tests rather than one.
 async function run(notes: readonly DayNote[], settings: Settings = CONFIGURED) {
+  sealedWith.length = 0;
   const onTranscript = jest.fn();
   const view = await renderHook(() => usePlanSync({ notes, ready: true, settings, onTranscript }));
   return { ...view, onTranscript };
@@ -85,7 +104,14 @@ afterEach(async () => {
 });
 
 beforeEach(async () => {
+  // **`clearAllMocks` clears calls, not implementations.** A test that makes the
+  // bucket refuse — with `mockResolvedValue` — leaves it refusing for every test
+  // after it, and those then fail for a reason that has nothing to do with what
+  // they are checking. Costly to find, so the default is restored here rather
+  // than at the end of whichever test changed it.
   jest.clearAllMocks();
+  (putObject as jest.Mock).mockResolvedValue(null);
+  (transcribe as jest.Mock).mockReset();
   await writeJson(STORAGE_KEYS.planSync, { transcribed: {}, sent: {} });
 });
 
@@ -216,6 +242,61 @@ describe('the manifest', () => {
 
     await waitFor(() => expect(result.current.trouble?.reason).toBe('unauthorized'));
     expect(sent()).toHaveLength(0);
+  });
+});
+
+describe('which key it seals with, and which bucket it sends to', () => {
+  /**
+   * **The invariant the second bucket exists for.** The machine at home holds
+   * whichever key opens what it reads. If a plan were sealed under the backup
+   * key, giving that machine the plans passphrase would give it every journey,
+   * photo and recording — and nothing anywhere would report it, because the
+   * plans would still decrypt perfectly.
+   */
+  it('seals a plan with the plans key and never the backup key', async () => {
+    const settings: Settings = {
+      ...CONFIGURED,
+      backupBucket: 'the-backup',
+      backupKeyHex: 'bb'.repeat(32),
+      backupSaltHex: 'dd'.repeat(16),
+    };
+
+    await run([plan(T0, 'fix the garden')], settings);
+
+    await waitFor(() => expect(sent()).toHaveLength(1));
+    expect(sealedWith.length).toBeGreaterThan(0);
+    for (const key of sealedWith) {
+      expect(bytesToHex(key)).toBe(settings.exchangeKeyHex);
+      expect(bytesToHex(key)).not.toBe(settings.backupKeyHex);
+    }
+  });
+
+  it('addresses every request to the plans bucket', async () => {
+    const settings: Settings = { ...CONFIGURED, backupBucket: 'the-backup' };
+
+    await run([plan(T0, 'fix the garden')], settings);
+
+    await waitFor(() => expect(sent()).toHaveLength(1));
+    for (const call of puts()) {
+      const config = call[0] as { bucket: string; accessKeyId: string };
+      expect(config.bucket).toBe(settings.exchangeBucket);
+      expect(config.accessKeyId).toBe(settings.exchangeAccessKeyId);
+    }
+  });
+
+  it('sends nothing at all when only the backup is configured', async () => {
+    const backupOnly: Settings = {
+      ...DEFAULT_SETTINGS,
+      backupBucket: 'the-backup',
+      backupAccessKeyId: 'AKIA',
+      backupSecretKey: 'shhh',
+      backupKeyHex: 'bb'.repeat(32),
+    };
+
+    const { result } = await run([plan(T0, 'fix the garden')], backupOnly);
+
+    await waitFor(() => expect(result.current.busy).toBe(false));
+    expect(puts()).toHaveLength(0);
   });
 });
 
