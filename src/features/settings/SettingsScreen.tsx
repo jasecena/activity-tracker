@@ -20,6 +20,14 @@ interface SettingsScreenProps {
   readonly onOpenPlaces: () => void;
   /** Every journey you have named, on one map. */
   readonly onOpenJourneys: () => void;
+  /**
+   * Whether each thing that talks to the internet actually works.
+   *
+   * Its own page rather than a button beside each set of fields: the useful
+   * answer is the four lines together — a plans bucket that signs but has no
+   * passphrase reads very differently next to a backup bucket that works.
+   */
+  readonly onOpenDiagnostics: () => void;
 }
 
 const PERMISSION_TEXT: Readonly<Record<string, string>> = {
@@ -100,7 +108,14 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
   return `${count}: ${destinations.join('; ')}. Nothing else in the app talks to a network. ${automatic}`;
 }
 
-export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, onOpenJourneys }: SettingsScreenProps) {
+export function SettingsScreen({
+  settings,
+  rejected,
+  onOpenData,
+  onOpenPlaces,
+  onOpenJourneys,
+  onOpenDiagnostics,
+}: SettingsScreenProps) {
   const { settings: values } = settings;
 
   /**
@@ -687,6 +702,20 @@ export function SettingsScreen({ settings, rejected, onOpenData, onOpenPlaces, o
               <Text style={styles.rowTitle}>Raw data &amp; export</Text>
               <Text style={styles.rowDetail}>
                 {rejected ? `What is stored, why fixes were dropped, and CSV export` : 'What is stored, and CSV export'}
+              </Text>
+            </View>
+            <Text style={styles.tick}>›</Text>
+          </Pressable>
+          <Pressable
+            onPress={onOpenDiagnostics}
+            accessibilityRole="button"
+            accessibilityLabel="Check connections"
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Check connections</Text>
+              <Text style={styles.rowDetail}>
+                Whether transcription, the backup bucket and the plans bucket are working
               </Text>
             </View>
             <Text style={styles.tick}>›</Text>

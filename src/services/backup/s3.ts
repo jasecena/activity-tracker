@@ -24,7 +24,26 @@ import { signS3Request, type AwsCredentials } from './sigv4';
  * generic message read on a phone as "no connection".
  */
 
-export type BackupFailure = 'not-configured' | 'unauthorized' | 'no-such-bucket' | 'unreachable' | 'timeout' | 'failed';
+export type BackupFailure =
+  | 'not-configured'
+  /**
+   * The request was signed, accepted and answered — with a 404 for that key.
+   *
+   * **Separate from `not-configured`, and that separation is the whole value of
+   * this member.** The two used to be one: `getObject` reported a missing object
+   * as `not-configured`, so an agenda nobody has published yet and a phone with
+   * no credentials at all produced the identical result. That is fine for the
+   * Plans screen, which does the same thing either way, and useless for anything
+   * trying to find out which of the two is true — which is precisely what a
+   * diagnostic is for. A 404 is the strongest evidence there is that the
+   * credentials work: nothing else gets that far.
+   */
+  | 'not-found'
+  | 'unauthorized'
+  | 'no-such-bucket'
+  | 'unreachable'
+  | 'timeout'
+  | 'failed';
 
 export interface BackupError {
   readonly reason: BackupFailure;
@@ -122,9 +141,12 @@ export async function putObject(
 /**
  * One object, as bytes, or why it could not be had.
  *
- * A 404 comes back as `not-configured` rather than an error worth alarming
- * anybody about: an agenda that has not been published yet is the ordinary state
- * of a fresh install, not a fault.
+ * A 404 comes back as `not-found` rather than an error worth alarming anybody
+ * about: an agenda that has not been published yet is the ordinary state of a
+ * fresh install, not a fault. It is deliberately its own reason and not
+ * `not-configured` — see `BackupFailure`. A caller that treats the two alike is
+ * free to, and `fetchAgenda` does; one trying to tell a working credential from
+ * an absent one cannot, and that is the case this distinction exists for.
  */
 export async function getObject(config: BucketConfig, key: string, now: number): Promise<Uint8Array | BackupError> {
   const signed = signS3Request({
@@ -140,7 +162,13 @@ export async function getObject(config: BucketConfig, key: string, now: number):
     const response = await fetch(signed.url, { method: 'GET', headers: signed.headers, signal });
     if (!response.ok) {
       const said = await response.text().catch(() => '');
-      return { reason: response.status === 404 ? 'not-configured' : failureFor(response.status), detail: said };
+      // `detailFrom` rather than the raw body, as every other failure here
+      // already does: S3's XML is verbose and its <Code> and <Message> are the
+      // two lines worth putting on a screen.
+      return {
+        reason: response.status === 404 ? 'not-found' : failureFor(response.status),
+        detail: detailFrom(response.status, said),
+      };
     }
     return new Uint8Array(await response.arrayBuffer());
   } catch (error) {

@@ -71,8 +71,14 @@ export async function fetchAgenda(settings: Settings): Promise<AgendaResult> {
   const bytes = await getObject(config, AGENDA_KEY, readNow());
   if (!(bytes instanceof Uint8Array)) {
     // A 404 is the ordinary state of a bucket nothing has published to yet
-    // rather than a fault, and `getObject` already says so.
-    if (bytes.reason === 'not-configured') return { ok: false, kind: 'not-configured' };
+    // rather than a fault, and `getObject` already says so. Both reasons land
+    // here on purpose: this screen shows the same thing for "no bucket" and
+    // "nothing published", because there is the same nothing to draw. The
+    // diagnostics screen is where the two are worth telling apart, and
+    // `BackupFailure` keeps them distinct so it can.
+    if (bytes.reason === 'not-configured' || bytes.reason === 'not-found') {
+      return { ok: false, kind: 'not-configured' };
+    }
     return { ok: false, kind: 'error', reason: bytes.reason, detail: bytes.detail };
   }
 

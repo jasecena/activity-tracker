@@ -295,6 +295,27 @@ appId: ${APP_ID}
 # Not 'Settings' either — that is the tab label, visible from anywhere.
 - assertVisible: 'Erase everything'
 
+# --- The connection checks open -------------------------------------------
+# The fourth row in DATA, and the newest. It sits directly under 'Raw data &
+# export' in the same card, so it is on screen whenever that row is — which is
+# why this needs no scroll of its own after the one above.
+#
+# **Asserted on 'Run the checks', not on 'Check connections'.** That second
+# string is also the label of the Settings row just tapped, so it stays visible
+# whether or not anything opened — the identical trap the Places block above
+# already records, and an assertion that cannot fail is worse than none.
+#
+# Deliberately NOT pressed. It would make four real requests to ElevenLabs and
+# to two real buckets, which a smoke test has no business doing — the same rule
+# that keeps 'Back up now' asserted and untapped. With nothing configured on a
+# fresh install every check returns 'off' without a request anyway, so pressing
+# it would prove less than it costs. What each check sends is asserted in the
+# Jest suite.
+- tapOn: 'Check connections'
+- assertVisible: 'Run the checks'
+- tapOn: 'Back'
+- assertVisible: 'Erase everything'
+
 # --- Erase is present and asks first --------------------------------------
 # The one irreversible action in the app — it destroys the encryption key. It
 # must never be a single tap.

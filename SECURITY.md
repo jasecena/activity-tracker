@@ -109,25 +109,35 @@ and leaving the interesting part untested.
 
 ### Network posture
 
-The app makes **exactly three kinds of request, and every one of them is a press
-you made**. This section used to say "exactly one" and was left standing after
-the second and third arrived — which is the failure it exists to prevent, so the
-count is stated plainly and each entry names what leaves.
+The app makes **exactly five kinds of request, and every one of them is a press
+you made** — with one stated exception, Plans, which goes on its own once you
+have configured it. This section used to say "exactly one" and was left standing
+after the second and third arrived; it then said "three" while the table beneath
+it listed four. Both are the failure it exists to prevent, so the count is stated
+plainly, checked against the rows, and each entry names what leaves.
 
 **The property worth defending is that the list fits in a sentence**, not that
 the number is one.
 
-| Request                                               | Gate                                                                | What leaves the phone                                                                                                                              |
-| ----------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apple Maps imagery**                                | `settings.mapsEnabled`, **off on a fresh install**                  | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                                |
-| **Transcription** (ElevenLabs)                        | A key you typed, plus a press of Transcribe on one note             | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                                        |
-| **Backup** to an S3 bucket **you own**                | Credentials and a passphrase you typed, plus a press of Back up     | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video.             |
-| **Plans** to a **second, separate** S3 bucket you own | A second set of credentials and a second passphrase, then automatic | The words and instant of anything filed under Plans, sealed on this phone first. Never its recording, never a diary entry, and never a coordinate. |
+| Request                                               | Gate                                                                | What leaves the phone                                                                                                                                                                                     |
+| ----------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apple Maps imagery**                                | `settings.mapsEnabled`, **off on a fresh install**                  | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                                                                                       |
+| **Transcription** (ElevenLabs)                        | A key you typed, plus a press of Transcribe on one note             | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                                                                                               |
+| **Backup** to an S3 bucket **you own**                | Credentials and a passphrase you typed, plus a press of Back up     | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video.                                                                    |
+| **Plans** to a **second, separate** S3 bucket you own | A second set of credentials and a second passphrase, then automatic | The words and instant of anything filed under Plans, sealed on this phone first. Never its recording, never a diary entry, and never a coordinate.                                                        |
+| **Connection checks** (Settings → Check connections)  | A press of Run the checks                                           | An ElevenLabs account lookup — **no audio**; a listing of the backup bucket; a rewrite of the plans bucket's own `manifest.json`; a read of `agenda/`. Nothing that is not already one of the rows above. |
 
 With maps off, every map in the app is the offline canvas drawn from your own
 coordinates and nothing else. `components/MapCanvas.tsx` is the only file
 permitted to import `expo-maps`; `services/transcribe.ts` is the only file that
-knows the transcription endpoint exists.
+knows the **speech-to-text** endpoint exists.
+
+That last claim used to be about ElevenLabs as a whole and had to be narrowed
+when the connection checks arrived, because `services/diagnostics.ts` now names
+a second ElevenLabs URL — the account endpoint, which it asks about the key.
+Narrowing it rather than deleting it keeps the property that actually matters:
+**one file can send a recording**, and it is not the one with a Run button on
+it. The check deliberately sends no audio, for exactly this reason.
 
 **The backup is one-way and the bucket holds ciphertext.** Sealing is
 ChaCha20-Poly1305 under a key `scrypt` derives from a passphrase that is stored

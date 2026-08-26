@@ -49,6 +49,7 @@ import { usePlanSync } from '@/features/notes/hooks/usePlanSync';
 import { agendaAge, STALE_AFTER_MS, useAgenda } from '@/features/notes/hooks/useAgenda';
 import { planQueueLine } from '@/core/plans';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
+import { DiagnosticsScreen } from '@/features/settings/DiagnosticsScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
 import { silenceAudio } from '@/services/audioFocus';
@@ -77,7 +78,8 @@ type Page =
   | { readonly kind: 'places' }
   | { readonly kind: 'place'; readonly place: Place }
   | { readonly kind: 'journeys' }
-  | { readonly kind: 'data' };
+  | { readonly kind: 'data' }
+  | { readonly kind: 'diagnostics' };
 
 /**
  * What the note sheet is open for.
@@ -662,6 +664,10 @@ export function TabShell() {
         />
       );
     }
+    if (page.kind === 'diagnostics') {
+      return <DiagnosticsScreen settings={settings.settings} onBack={back} />;
+    }
+
     return (
       <DataScreen
         fixes={timeline.fixes}
@@ -794,6 +800,7 @@ export function TabShell() {
             onOpenData={() => stacks.settings.push({ kind: 'data' })}
             onOpenPlaces={() => stacks.settings.push({ kind: 'places' })}
             onOpenJourneys={() => stacks.settings.push({ kind: 'journeys' })}
+            onOpenDiagnostics={() => stacks.settings.push({ kind: 'diagnostics' })}
           />
           {stacks.settings.current ? (
             <SwipeBackPage onBack={stacks.settings.pop}>{renderPage('settings')}</SwipeBackPage>

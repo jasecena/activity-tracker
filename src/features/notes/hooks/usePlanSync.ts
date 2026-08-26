@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { DayNote } from '@/core/day';
 import { planKey, planPayload, plansToSend, plansWaiting, planToTranscribe } from '@/core/plans';
-import { KDF, sealObject } from '@/services/backup';
+import { sealObject } from '@/services/backup';
+import { manifestBytes, MANIFEST_KEY } from '@/services/backup/manifest';
 import { putObject, type BackupError, type BucketConfig } from '@/services/backup/s3';
 import { now as readNow } from '@/services/clock';
 import { noteAudioUri } from '@/services/noteAudio';
@@ -115,25 +116,20 @@ function bucketFor(settings: Settings): BucketConfig | null {
 }
 
 /**
- * What the exchange bucket is told about itself, in plaintext.
+ * The exchange bucket's manifest, and where it goes.
  *
- * The salt, so the machine at home can put the passphrase you typed there
- * through the same scrypt and arrive at the same key. Without it up there the
- * plans are unreadable by anything, for ever — the same reason the backup
- * publishes its own.
+ * Re-exported rather than rebuilt: `manifestBytes` is the one builder both
+ * buckets use, and it carries the argument for why a manifest has to exist at
+ * all. What is local to this file is *which salt goes in it*, and that is the
+ * part worth stating here.
  *
- * It is this bucket's salt and never the backup's. Publishing the backup's salt
- * here would not leak the backup — a salt is not a secret — but it would put
- * the two halves of that key derivation in the one place the planner can read,
- * and the point of the split is that nothing about the backup lives where the
- * planner looks.
+ * **It is this bucket's salt and never the backup's.** Publishing the backup's
+ * salt here would not leak the backup — a salt is not a secret — but it would
+ * put the two halves of that key derivation in the one place the planner can
+ * read, and the point of the split is that nothing about the backup lives where
+ * the planner looks.
  */
-function manifestFor(settings: Settings): Uint8Array {
-  return utf8ToBytes(JSON.stringify({ version: 1, salt: settings.exchangeSaltHex, kdf: KDF }, null, 2));
-}
-
-/** Where the salt goes. Fixed: both ends agree on it, as they do for the agenda. */
-export const MANIFEST_KEY = 'manifest.json';
+export { MANIFEST_KEY };
 
 export function usePlanSync({ notes, ready, settings, onTranscript }: UsePlanSyncInput): PlanSyncState {
   const [record, setRecord] = useState<PlanSyncRecord>(EMPTY);
@@ -251,7 +247,13 @@ export function usePlanSync({ notes, ready, settings, onTranscript }: UsePlanSyn
         // fresh bucket publishes again instead of trusting a tick set for a
         // bucket that is no longer the one being written to.
         if (settings.exchangeSaltHex.length > 0 && record.manifestSalt !== settings.exchangeSaltHex) {
-          const failure = await putObject(config, MANIFEST_KEY, manifestFor(settings), 'STANDARD', readNow());
+          const failure = await putObject(
+            config,
+            MANIFEST_KEY,
+            manifestBytes(settings.exchangeSaltHex),
+            'STANDARD',
+            readNow(),
+          );
           if (failure) {
             setTrouble(failure);
             return;

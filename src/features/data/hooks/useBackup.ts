@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { backupObjects, type BackupObject } from '@/core/backup';
 import type { DayGroup, DayNote } from '@/core/day';
-import { KDF, sealObject } from '@/services/backup';
+import { sealObject } from '@/services/backup';
+import { manifestBytes, MANIFEST_KEY } from '@/services/backup/manifest';
 import { listKeys, putObject, type BackupError, type BucketConfig } from '@/services/backup/s3';
 import { now as readNow, tzOffsetMinutes } from '@/services/clock';
 import { noteAudioUri } from '@/services/noteAudio';
@@ -52,11 +53,6 @@ export interface UseBackup {
 const COLD_ABOVE_BYTES = 128 * 1024;
 
 const IDLE: BackupProgress = { stage: 'idle', sent: 0, total: 0, error: null };
-
-/** What the bucket is told about itself, in plaintext, so a laptop can derive the key. */
-function manifestFor(settings: Settings): Uint8Array {
-  return utf8ToBytes(JSON.stringify({ version: 1, salt: settings.backupSaltHex, kdf: KDF }, null, 2));
-}
 
 export function configFrom(settings: Settings): BucketConfig | null {
   if (settings.backupBucket.length === 0 || settings.backupAccessKeyId.length === 0) return null;
@@ -143,8 +139,8 @@ export function useBackup(settings: Settings): UseBackup {
         const record = { ...sent };
         let done = 0;
 
-        const manifest = manifestFor(settings);
-        const manifestFailure = await putObject(config, 'manifest.json', manifest, 'STANDARD', readNow());
+        const manifest = manifestBytes(settings.backupSaltHex);
+        const manifestFailure = await putObject(config, MANIFEST_KEY, manifest, 'STANDARD', readNow());
         if (manifestFailure) {
           setProgress({ stage: 'failed', sent: 0, total: work.length + 1, error: manifestFailure });
           return;
