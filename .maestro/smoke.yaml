@@ -199,175 +199,209 @@ appId: ${APP_ID}
       text: 'Show routes on a map'
     direction: DOWN
 - assertVisible: 'Off — routes are drawn without tiles'
+# --- Everything below the fold, one scroll per row --------------------------
+#
+# **This used to be a single scroll to the bottom, and that is what kept
+# breaking it.** The idea was sound — scroll past the rows you want, then tap
+# them where they sit comfortably above the last element — and it held for as
+# long as the distance between the DATA card and the bottom of Settings did not
+# change. Three releases have now failed because it did:
+#
+#   v0.2.0  adding the Places row pushed 'Raw data & export' down to bounds
+#           ending at y=788 with the tab bar starting at 786. The tap reported
+#           success and the screen never changed.
+#   v0.13.0 the same thing at the other end: 'Erase everything' was flush with
+#           the bottom, the tap landed on the tab bar's middle button, and the
+#           flow carried on from the Media tab.
+#   v0.14.0 the opposite direction. Credentials moved three sections out of
+#           Settings and added a row, so Settings got *shorter* and the DATA
+#           card grew — and one scroll to the bottom now overshoots far enough
+#           that 'Places', the first row, is off the top. The screenshot at the
+#           failure shows the card starting at 'Named journeys'.
+#
+# Three failures, three different geometries, one cause: a tap whose position
+# depends on how much unrelated content happens to sit around it.
+#
+# So each row now gets its own `scrollUntilVisible` with `centerElement: true`
+# immediately before it is tapped. Centring is what makes this independent of
+# the layout: the row is put in the middle of the screen, nowhere near either
+# edge, and how many rows precede it stops mattering. Upstream gives up
+# centring after five tries and falls back to plain visibility, which is its
+# deliberate handling of a target at the end of a list that has stopped
+# scrolling — so this cannot hang.
+#
+# **Order matters and is not arbitrary.** `direction: DOWN` reveals what is
+# below, so a target above the current position is never found. These are
+# listed in the order they appear on the screen, and every page returns to the
+# scroll position it left, so each step only ever scrolls forwards.
+#
+# The assertion after each `Back` is a *neighbouring* row rather than the one
+# just visited: 'Places' is both the Settings row and the title of the page it
+# opens, so asserting it proves nothing about which of the two is on screen.
+# A neighbour appears on Settings and nowhere else.
 
-# --- Everything below the fold, from one scroll -----------------------------
-#
-# Scroll to the *last* element in the screen once, then tap the rows that are
-# now sitting comfortably above it. Every tab in this app keeps its scroll
-# position when a detail page opens over it and closes again, so one scroll
-# serves all three.
-#
-# `scrollUntilVisible` stops the moment its target is visible, which leaves that
-# target flush against the bottom edge of the scroll view — and the tab bar sits
-# directly under that edge. Scrolling *past* the rows we want is what makes this
-# independent of how many rows happen to be above them.
-#
-# The v0.2.0 release failed exactly here. Adding the Places row pushed "Raw data
-# & export" to bounds ending at y=788 with the tab bar starting at 786; the tap
-# reported success and the screen never changed.
-#
-# **And the v0.12.0 release failed here too, for a different reason worth
-# keeping apart from that one.** The PLANS section added roughly a screen of
-# Settings, and Maestro's defaults — speed 40, timeout 20000 — bought only five
-# scroll steps, which no longer spans the screen. It is not a missing element or
-# a bad label: the diagnostics show the button present in the tree with the
-# right `accessibilityText`, and the post-failure screenshot shows it on screen,
-# because the scrolling arrived a moment after the budget ran out.
-#
-# That is a nasty failure to read, so: the budget is now explicit rather than
-# inherited. It is a *ceiling*, paid only when the flow is genuinely broken —
-# `scrollUntilVisible` stops the instant its target is visible, so a healthy run
-# does not get slower. Adding a section to Settings should not cost a release.
 - scrollUntilVisible:
     element:
-      text: 'Erase everything'
+      text: 'Places'
     direction: DOWN
-    speed: 80
+    centerElement: true
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
     timeout: 60000
-
 # Places lost its tab to Replay and Capture, so this is also what proves the
-# page stack still reaches it. The sort controls exercise the place store.
-#
-# Asserted on a sort control rather than on "Places": that string is also the
-# label of the Settings row that was just tapped, so it stays visible whether or
-# not anything opened — an assertion that cannot fail is worse than none.
+# page stack still reaches it. The sort controls exercise the place store, and
+# they are what is asserted on rather than 'Places' itself.
 - tapOn: 'Places'
 - assertVisible: 'Sort by Time spent'
 - tapOn: 'Sort by Visits'
 - tapOn: 'Sort by Name'
 - tapOn: 'Sort by Time spent'
 - tapOn: 'Back'
-# Asserted on the erase button, not on 'Track my day': the flow is scrolled to
-# the bottom of Settings by this point, so the switch at the top is off screen.
-# Not 'Settings' either — that is the tab label, visible from anywhere.
-- assertVisible: 'Erase everything'
+- assertVisible: 'Named journeys'
 
 # Named journeys is where the label store is exercised. Empty on a fresh
 # install, which is what it should say rather than showing nothing at all.
+- scrollUntilVisible:
+    element:
+      text: 'Named journeys'
+    direction: DOWN
+    centerElement: true
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
+    timeout: 60000
 - tapOn: 'Named journeys'
-- assertVisible: 'Named journeys'
 - assertVisible: 'Nothing named yet. Open a journey from the timeline and give it a name.'
 - tapOn: 'Back'
-- assertVisible: 'Erase everything'
+- assertVisible: 'Raw data and export'
 
 # --- The raw data page opens ----------------------------------------------
 # Exercises the page stack and the counts. Deliberately does NOT tap an export
 # button: that opens the iOS share sheet, which has no Maestro affordance and
 # would hang the run waiting for a human.
+- scrollUntilVisible:
+    element:
+      text: 'Raw data and export'
+    direction: DOWN
+    centerElement: true
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
+    timeout: 60000
 - tapOn: 'Raw data and export'
 - assertVisible: 'Raw data'
 - assertVisible: 'Route points (all history): 0'
 
 # The backup button, which must be *present and disabled* on a fresh install:
-# there is no bucket and no passphrase, so there is nothing it could do. A
-# button that looked pressable here would be one that fails after a tap rather
-# than one that says why beforehand.
+# there is no bucket and no passphrase, so there is nothing it could do.
 #
-# **Scrolled to, and that is not a detail.** This assertion shipped as a bare
-# `assertVisible` and failed the v0.9.0 release: the section sits below the
-# counts, so the button was rendered and off screen — which is precisely the
-# distinction this file exists to draw, and precisely the mistake the note above
-# on 'Raw data & export' already records from v0.2.0. Jest cannot tell rendered
-# from visible. Maestro can, and did, twice.
-#
-# Deliberately not pressed. It would make a real request to a real bucket, which
-# a smoke test has no business doing — and with nothing configured it cannot
-# anyway. What the request itself does is asserted in the Jest suite and against
-# AWS's own published signing vector.
+# Deliberately not pressed. It would make a real request to a real bucket,
+# which a smoke test has no business doing — and with nothing configured it
+# cannot anyway.
 - scrollUntilVisible:
     element:
       text: 'Back up now'
     direction: DOWN
+    centerElement: true
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
+    timeout: 60000
 - assertVisible: 'Back up now'
 - tapOn: 'Back'
-# Asserted on the erase button, not on 'Track my day': the flow is scrolled to
-# the bottom of Settings by this point, so the switch at the top is off screen.
-# Not 'Settings' either — that is the tab label, visible from anywhere.
-- assertVisible: 'Erase everything'
+- assertVisible: 'Credentials'
 
 # --- Credentials opens ------------------------------------------------------
-# The fourth row in DATA. These three sections — the backup bucket, the plans
-# bucket, transcription — used to be most of the length of Settings itself; they
-# are the part you set once and never touch, so they moved to their own page and
-# Settings got about three hundred lines shorter.
-#
-# **Asserted on 'Backup bucket', not on 'Credentials'.** That second string is
-# also the label of the row just tapped, so it stays visible whether or not
-# anything opened — the trap the Places block above already records.
+# The backup bucket, the plans bucket and the transcription key. These three
+# sections were most of the length of Settings itself; they are the part you set
+# once and never touch, so they moved to their own page.
 #
 # Deliberately types nothing. Every field here writes to the encrypted store on
 # blur, and a smoke test that put junk in a credential field would leave a fresh
 # install configured with it.
+- scrollUntilVisible:
+    element:
+      text: 'Credentials'
+    direction: DOWN
+    centerElement: true
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
+    timeout: 60000
 - tapOn: 'Credentials'
 - assertVisible: 'Backup bucket'
 - assertVisible: 'Plans bucket'
 - tapOn: 'Back'
-- assertVisible: 'Erase everything'
+- assertVisible: 'Check connections'
 
 # --- The connection checks open -------------------------------------------
-# The fourth row in DATA, and the newest. It sits directly under 'Raw data &
-# export' in the same card, so it is on screen whenever that row is — which is
-# why this needs no scroll of its own after the one above.
-#
-# **Asserted on 'Run the checks', not on 'Check connections'.** That second
-# string is also the label of the Settings row just tapped, so it stays visible
-# whether or not anything opened — the identical trap the Places block above
-# already records, and an assertion that cannot fail is worse than none.
+# Asserted on 'Run the checks' rather than on 'Check connections', which is also
+# the row just tapped and would stay visible either way.
 #
 # Deliberately NOT pressed. It would make four real requests to ElevenLabs and
-# to two real buckets, which a smoke test has no business doing — the same rule
-# that keeps 'Back up now' asserted and untapped. With nothing configured on a
-# fresh install every check returns 'off' without a request anyway, so pressing
-# it would prove less than it costs. What each check sends is asserted in the
-# Jest suite.
+# to two real buckets, which a smoke test has no business doing — and on a fresh
+# install every check returns 'off' without a request anyway, so pressing it
+# would prove less than it costs.
+- scrollUntilVisible:
+    element:
+      text: 'Check connections'
+    direction: DOWN
+    centerElement: true
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
+    timeout: 60000
 - tapOn: 'Check connections'
 - assertVisible: 'Run the checks'
 - tapOn: 'Back'
-- assertVisible: 'Erase everything'
+- assertVisible: 'Credentials'
 
 # --- Erase is present and asks first --------------------------------------
 # The one irreversible action in the app — it destroys the encryption key. It
 # must never be a single tap.
 #
-# **Centred before it is tapped, and that is not belt-and-braces.** This is
-# where v0.13.0 died. `Erase everything` is the last element in Settings, so
-# the scroll that first brought it into view left it low on the screen — and
-# `getVisiblePercentage` measures an element against the *device screen*, not
-# against the scroll view it lives in. iOS still reports a layout frame for
-# content clipped below the viewport, so the button read as 100% visible while
-# it sat under the tab bar; XCUITest dispatched the tap at the centre of that
-# frame, the tab bar took the touch, and the flow carried on from the Media
-# tab and failed two steps later on a dialog that was never opened. Same
-# mechanism as the v0.2.0 note above, reached from the other end: adding the
-# 'Check connections' row moved this button just far enough down to tip it in.
-#
-# `visibilityPercentage` cannot fix it — it already defaults to 100, and 100
-# was what it reported. `centerElement` can, because it keeps swiping until the
-# element is near the middle of the screen rather than stopping at the first
-# sight of it. It cannot hang here either: it gives up centring after five
-# tries and falls back to the visibility test, which is deliberate upstream
-# behaviour for exactly this shape — a target that is the last thing in a list
-# that has stopped scrolling.
-#
-# Its own scroll rather than a change to the one above, because that one is
-# what positions the DATA rows this flow taps on the way here. Centring this
-# button pushes them off the top, and by this point they are all done with.
+# Centred like every other tap here, and this is the one that taught the lesson:
+# `getVisiblePercentage` measures against the *device screen*, not the scroll
+# view, and iOS reports a layout frame for content clipped below the viewport —
+# so a button under the tab bar reads as fully visible and the tap goes to the
+# tab bar. See the v0.13.0 note above.
 - scrollUntilVisible:
     element:
       text: 'Erase everything'
     direction: DOWN
     centerElement: true
-    speed: 80
+    # **No `speed` override.** 80 was added when Settings was long enough that
+    # the default budget ran out mid-scroll; Credentials took three sections out
+    # of it and that is no longer true. A fast swipe overshoots the centre and
+    # burns the five centring tries, which lands back on the plain-visibility
+    # fallback this whole section exists to stop relying on — and upstream's own
+    # tuning advice is to reduce speed above 50 for precision. The generous
+    # timeout stays, because it is a ceiling paid only when something is broken.
     timeout: 60000
 - tapOn: 'Erase everything'
 - assertVisible: 'Erase everything?'
