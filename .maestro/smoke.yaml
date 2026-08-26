@@ -215,10 +215,25 @@ appId: ${APP_ID}
 # The v0.2.0 release failed exactly here. Adding the Places row pushed "Raw data
 # & export" to bounds ending at y=788 with the tab bar starting at 786; the tap
 # reported success and the screen never changed.
+#
+# **And the v0.12.0 release failed here too, for a different reason worth
+# keeping apart from that one.** The PLANS section added roughly a screen of
+# Settings, and Maestro's defaults — speed 40, timeout 20000 — bought only five
+# scroll steps, which no longer spans the screen. It is not a missing element or
+# a bad label: the diagnostics show the button present in the tree with the
+# right `accessibilityText`, and the post-failure screenshot shows it on screen,
+# because the scrolling arrived a moment after the budget ran out.
+#
+# That is a nasty failure to read, so: the budget is now explicit rather than
+# inherited. It is a *ceiling*, paid only when the flow is genuinely broken —
+# `scrollUntilVisible` stops the instant its target is visible, so a healthy run
+# does not get slower. Adding a section to Settings should not cost a release.
 - scrollUntilVisible:
     element:
       text: 'Erase everything'
     direction: DOWN
+    speed: 80
+    timeout: 60000
 
 # Places lost its tab to Replay and Capture, so this is also what proves the
 # page stack still reaches it. The sort controls exercise the place store.
