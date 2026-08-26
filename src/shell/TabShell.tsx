@@ -253,8 +253,8 @@ export function TabShell() {
       const said = planSync.trouble.detail.trim();
       return `Could not send plans: ${planSync.trouble.reason}${said.length > 0 ? ` — ${said}` : ''}`;
     }
-    return planQueueLine(planSync.waiting, settings.settings.backupBucket.length > 0);
-  }, [planSync.trouble, planSync.waiting, settings.settings.backupBucket]);
+    return planQueueLine(planSync.waiting, settings.settings.exchangeBucket.length > 0);
+  }, [planSync.trouble, planSync.waiting, settings.settings.exchangeBucket]);
 
   /**
    * What the machine at home decided, read back out of the bucket.

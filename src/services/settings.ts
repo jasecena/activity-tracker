@@ -83,6 +83,49 @@ export interface Settings {
   readonly backupKeyHex: string;
   readonly backupSaltHex: string;
   /**
+   * Where plans go and the agenda comes from — **a different bucket, under a
+   * different key, reached with a different credential.**
+   *
+   * This is the one place in the app where the same four-fields-and-a-key shape
+   * appears twice, and the duplication is the feature. The backup holds every
+   * journey this phone has ever recorded: coordinates, stops, the shape of a
+   * week. The planner holds neither the credential nor the key that would open
+   * any of it, and cannot be given them by mistake, because they are not the
+   * ones it has.
+   *
+   * A single bucket split by prefix was the earlier design and it was weaker in
+   * a specific way: the separation lived in a policy condition, so one careless
+   * edit to that policy — or one credential reused across both halves — put
+   * location data in reach of a machine that only ever needed the words of a
+   * plan. Two buckets and two keys make the separation structural. There is no
+   * condition to get wrong.
+   *
+   * `plans/` carries what `planPayload` builds: an id, an instant, a title and
+   * text. No coordinates have ever been in it. That is what makes it safe to
+   * send somewhere the backup's key cannot reach, and it is worth re-checking
+   * if that payload ever grows.
+   */
+  readonly exchangeBucket: string;
+  readonly exchangeRegion: string;
+  readonly exchangeAccessKeyId: string;
+  readonly exchangeSecretKey: string;
+  /**
+   * The exchange bucket's own key and salt, from its own passphrase.
+   *
+   * **Never the backup's.** The machine at home must hold this one in order to
+   * read a plan and write an agenda, so anything sealed under it should be
+   * assumed readable by that machine. That is exactly why the backup is not
+   * sealed under it.
+   *
+   * Set once and never changed, for the same reason `backupKeyHex` is: there is
+   * no re-encrypt path, so a second passphrase would orphan everything written
+   * under the first. The salt is published in this bucket's own
+   * `manifest.json`, which is how the planner derives the same key from the
+   * passphrase you type at that end.
+   */
+  readonly exchangeKeyHex: string;
+  readonly exchangeSaltHex: string;
+  /**
    * The language Scribe is told to expect, as an ISO-639 code.
    *
    * **Pinned rather than detected**, and Persian by default. Declaring the
@@ -114,6 +157,12 @@ export const DEFAULT_SETTINGS: Settings = {
   backupSecretKey: '',
   backupKeyHex: '',
   backupSaltHex: '',
+  exchangeBucket: '',
+  exchangeRegion: 'ap-southeast-2',
+  exchangeAccessKeyId: '',
+  exchangeSecretKey: '',
+  exchangeKeyHex: '',
+  exchangeSaltHex: '',
   transcriptionLanguage: DEFAULT_TRANSCRIPTION_LANGUAGE,
   segmentation: DEFAULT_SEGMENT_CONFIG,
 };
@@ -171,6 +220,13 @@ export function normalizeSettings(input: unknown): Settings {
     // it would seal objects nothing can open, and silently.
     backupKeyHex: /^[0-9a-f]{64}$/.test(text(source.backupKeyHex)) ? text(source.backupKeyHex) : '',
     backupSaltHex: /^[0-9a-f]{32}$/.test(text(source.backupSaltHex)) ? text(source.backupSaltHex) : '',
+    exchangeBucket: text(source.exchangeBucket),
+    exchangeRegion: text(source.exchangeRegion) || DEFAULT_SETTINGS.exchangeRegion,
+    exchangeAccessKeyId: text(source.exchangeAccessKeyId),
+    exchangeSecretKey: text(source.exchangeSecretKey),
+    // Same rule as the backup's: hex or nothing, never a repaired half-key.
+    exchangeKeyHex: /^[0-9a-f]{64}$/.test(text(source.exchangeKeyHex)) ? text(source.exchangeKeyHex) : '',
+    exchangeSaltHex: /^[0-9a-f]{32}$/.test(text(source.exchangeSaltHex)) ? text(source.exchangeSaltHex) : '',
     transcriptionLanguage: normalizeLanguageCode(source.transcriptionLanguage),
     segmentation: normalizeSegmentConfig(source.segmentation),
   };

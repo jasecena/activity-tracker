@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { DayNote } from '@/core/day';
 import { planKey, planPayload, plansToSend, plansWaiting, planToTranscribe } from '@/core/plans';
-import { sealObject } from '@/services/backup';
+import { KDF, sealObject } from '@/services/backup';
 import { putObject, type BackupError, type BucketConfig } from '@/services/backup/s3';
 import { now as readNow } from '@/services/clock';
 import { noteAudioUri } from '@/services/noteAudio';
@@ -69,6 +69,14 @@ interface PlanSyncRecord {
   readonly transcribed: Record<string, true>;
   /** Object key to a fingerprint of what was sent under it. */
   readonly sent: Record<string, string>;
+  /**
+   * The salt this phone has already published, or absent.
+   *
+   * Compared against the current one rather than being a boolean, so a bucket
+   * that is repointed at a fresh one gets its manifest written again instead of
+   * silently keeping the old bucket's.
+   */
+  readonly manifestSalt?: string;
 }
 
 const EMPTY: PlanSyncRecord = { transcribed: {}, sent: {} };
@@ -82,22 +90,50 @@ interface UsePlanSyncInput {
   readonly onTranscript: (note: DayNote, text: string) => void;
 }
 
+/**
+ * The exchange bucket, or nothing.
+ *
+ * **Not the backup's bucket, and not the backup's key.** This queue sends to
+ * the one place the machine at home can read, and that machine must never be
+ * able to reach a journey. `Settings.exchangeBucket` carries the full argument.
+ */
 function bucketFor(settings: Settings): BucketConfig | null {
   if (
-    settings.backupBucket.length === 0 ||
-    settings.backupAccessKeyId.length === 0 ||
-    settings.backupSecretKey.length === 0 ||
-    settings.backupKeyHex.length === 0
+    settings.exchangeBucket.length === 0 ||
+    settings.exchangeAccessKeyId.length === 0 ||
+    settings.exchangeSecretKey.length === 0 ||
+    settings.exchangeKeyHex.length === 0
   ) {
     return null;
   }
   return {
-    bucket: settings.backupBucket,
-    region: settings.backupRegion,
-    accessKeyId: settings.backupAccessKeyId,
-    secretAccessKey: settings.backupSecretKey,
+    bucket: settings.exchangeBucket,
+    region: settings.exchangeRegion,
+    accessKeyId: settings.exchangeAccessKeyId,
+    secretAccessKey: settings.exchangeSecretKey,
   };
 }
+
+/**
+ * What the exchange bucket is told about itself, in plaintext.
+ *
+ * The salt, so the machine at home can put the passphrase you typed there
+ * through the same scrypt and arrive at the same key. Without it up there the
+ * plans are unreadable by anything, for ever — the same reason the backup
+ * publishes its own.
+ *
+ * It is this bucket's salt and never the backup's. Publishing the backup's salt
+ * here would not leak the backup — a salt is not a secret — but it would put
+ * the two halves of that key derivation in the one place the planner can read,
+ * and the point of the split is that nothing about the backup lives where the
+ * planner looks.
+ */
+function manifestFor(settings: Settings): Uint8Array {
+  return utf8ToBytes(JSON.stringify({ version: 1, salt: settings.exchangeSaltHex, kdf: KDF }, null, 2));
+}
+
+/** Where the salt goes. Fixed: both ends agree on it, as they do for the agenda. */
+export const MANIFEST_KEY = 'manifest.json';
 
 export function usePlanSync({ notes, ready, settings, onTranscript }: UsePlanSyncInput): PlanSyncState {
   const [record, setRecord] = useState<PlanSyncRecord>(EMPTY);
@@ -114,7 +150,11 @@ export function usePlanSync({ notes, ready, settings, onTranscript }: UsePlanSyn
     void (async () => {
       const stored = await readJson<PlanSyncRecord>(STORAGE_KEYS.planSync);
       if (!live) return;
-      setRecord({ transcribed: stored?.transcribed ?? {}, sent: stored?.sent ?? {} });
+      setRecord({
+        transcribed: stored?.transcribed ?? {},
+        sent: stored?.sent ?? {},
+        manifestSalt: stored?.manifestSalt,
+      });
       setLoaded(true);
     })();
     return () => {
@@ -202,6 +242,28 @@ export function usePlanSync({ notes, ready, settings, onTranscript }: UsePlanSyn
           return;
         }
 
+        // **The salt goes up before the first plan does.** A sealed plan in a
+        // bucket whose manifest is missing is not a plan, it is a receipt: the
+        // machine at home has the passphrase but nothing to run it through, and
+        // the failure would arrive there rather than here, where it is fixable.
+        //
+        // Compared against the salt rather than a flag, so repointing at a
+        // fresh bucket publishes again instead of trusting a tick set for a
+        // bucket that is no longer the one being written to.
+        if (settings.exchangeSaltHex.length > 0 && record.manifestSalt !== settings.exchangeSaltHex) {
+          const failure = await putObject(config, MANIFEST_KEY, manifestFor(settings), 'STANDARD', readNow());
+          if (failure) {
+            setTrouble(failure);
+            return;
+          }
+          const next: PlanSyncRecord = { ...record, manifestSalt: settings.exchangeSaltHex };
+          await writeJson(STORAGE_KEYS.planSync, next);
+          setRecord(next);
+          // Round again for the plans themselves. The list has not changed but
+          // the record has, and that is what brings this effect back.
+          return;
+        }
+
         const sent = { ...record.sent };
         // **Only written when something actually changed.** `record` is a
         // dependency of this effect, so setting it to a fresh object that says
@@ -217,7 +279,7 @@ export function usePlanSync({ notes, ready, settings, onTranscript }: UsePlanSyn
           const failure = await putObject(
             config,
             planKey(plan.id),
-            sealObject(hexToBytes(settings.backupKeyHex), bytes),
+            sealObject(hexToBytes(settings.exchangeKeyHex), bytes),
             'STANDARD',
             readNow(),
           );

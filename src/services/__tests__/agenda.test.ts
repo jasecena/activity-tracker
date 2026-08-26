@@ -24,11 +24,11 @@ const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
 
 const CONFIGURED: Settings = {
   ...DEFAULT_SETTINGS,
-  backupBucket: 'my-bucket',
-  backupRegion: 'ap-southeast-2',
-  backupAccessKeyId: 'AKIA',
-  backupSecretKey: 'shhh',
-  backupKeyHex: bytesToHex(KEY),
+  exchangeBucket: 'my-exchange-bucket',
+  exchangeRegion: 'ap-southeast-2',
+  exchangeAccessKeyId: 'AKIA',
+  exchangeSecretKey: 'shhh',
+  exchangeKeyHex: bytesToHex(KEY),
 };
 
 function agendaBytes(body: unknown): Uint8Array {
@@ -109,7 +109,7 @@ it('reports what the bucket said when it refuses', async () => {
  * producing something plausible.
  */
 it('refuses an object it cannot authenticate', async () => {
-  const wrongKey = { ...CONFIGURED, backupKeyHex: bytesToHex(new Uint8Array(32).fill(9)) };
+  const wrongKey = { ...CONFIGURED, exchangeKeyHex: bytesToHex(new Uint8Array(32).fill(9)) };
   (getObject as jest.Mock).mockResolvedValue(agendaBytes({ version: AGENDA_VERSION, generatedAt: T0, items: [] }));
 
   const result = await fetchAgenda(wrongKey);

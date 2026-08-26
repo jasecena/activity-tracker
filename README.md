@@ -252,9 +252,14 @@ files are simply not published. What a reader needs in order to understand or
 change the code is in `AGENTS.md`, in `SECURITY.md`, and in the comments
 themselves, which carry the reasoning rather than pointing at it.
 
-**The other half.** The backup bucket is also read by a small Python service
-that runs on a machine at home. It shares a file format with this app and no
-code, and it lives in its own repository.
+**The other half.** A small Python service on a machine at home reads the plans
+bucket and writes an agenda back into it. It shares a file format with this app
+and no code, and it lives in its own repository.
+
+It reads the **plans** bucket and never the backup one — a separate bucket, a
+separate IAM user, and a separate passphrase, so the machine that reads what you
+meant to do cannot open where you have been. The backup bucket names that user
+in an explicit `Deny`. `infra/` has the templates for both.
 
 ## Licence
 

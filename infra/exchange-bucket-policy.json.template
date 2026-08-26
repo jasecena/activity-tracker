@@ -1,0 +1,76 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TlsOnly",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::${EXCHANGE_BUCKET}",
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/*"
+      ],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    },
+
+    {
+      "Sid": "ThePhoneReadsOnlyTheAgenda",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::${ACCOUNT_ID}:user/${EXCHANGE_USER}" },
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "NotResource": "arn:aws:s3:::${EXCHANGE_BUCKET}/agenda/*"
+    },
+
+    {
+      "Sid": "ThePhoneWritesOnlyPlansAndItsManifest",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::${ACCOUNT_ID}:user/${EXCHANGE_USER}" },
+      "Action": ["s3:PutObject", "s3:PutObjectAcl"],
+      "NotResource": [
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/plans/*",
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/manifest.json"
+      ]
+    },
+
+    {
+      "Sid": "ThePlannerReadsOnlyPlansAndTheManifest",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::${ACCOUNT_ID}:user/${PLANNER_USER}" },
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "NotResource": [
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/plans/*",
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/manifest.json"
+      ]
+    },
+
+    {
+      "Sid": "ThePlannerWritesOnlyTheAgenda",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::${ACCOUNT_ID}:user/${PLANNER_USER}" },
+      "Action": ["s3:PutObject", "s3:PutObjectAcl"],
+      "NotResource": "arn:aws:s3:::${EXCHANGE_BUCKET}/agenda/*"
+    },
+
+    {
+      "Sid": "NeitherEndCanDeleteOrReconfigure",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::${ACCOUNT_ID}:user/${EXCHANGE_USER}",
+          "arn:aws:iam::${ACCOUNT_ID}:user/${PLANNER_USER}"
+        ]
+      },
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketVersioning",
+        "s3:PutLifecycleConfiguration"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${EXCHANGE_BUCKET}",
+        "arn:aws:s3:::${EXCHANGE_BUCKET}/*"
+      ]
+    }
+  ]
+}

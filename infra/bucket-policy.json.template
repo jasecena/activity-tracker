@@ -12,6 +12,7 @@
       ],
       "Condition": { "Bool": { "aws:SecureTransport": "false" } }
     },
+
     {
       "Sid": "ThePhoneCanNeverDeleteOrRead",
       "Effect": "Deny",
@@ -24,6 +25,17 @@
         "s3:PutBucketVersioning",
         "s3:PutLifecycleConfiguration"
       ],
+      "Resource": [
+        "arn:aws:s3:::${BUCKET}",
+        "arn:aws:s3:::${BUCKET}/*"
+      ]
+    },
+
+    {
+      "Sid": "ThePlannerHasNoBusinessHere",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::${ACCOUNT_ID}:user/${PLANNER_USER}" },
+      "Action": "s3:*",
       "Resource": [
         "arn:aws:s3:::${BUCKET}",
         "arn:aws:s3:::${BUCKET}/*"

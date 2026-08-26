@@ -82,3 +82,79 @@ jobs:
 
       - name: Expo doctor
         run: npx --yes expo-doctor@latest
+
+  # **These files decide who can read a year of journeys.** They are applied by
+  # hand, from an admin profile, on a day when something is already going wrong
+  # — which is the worst moment to discover that one of them is not valid JSON,
+  # or that a rename left `${EXCHANGE_BUCKET}` in a file nothing substitutes.
+  #
+  # `envsubst` first, because a template is not JSON until it has been rendered:
+  # the placeholders are bare and would fail a parse on their own.
+  infra:
+    name: The bucket policies parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Every template renders to valid JSON
+        run: |
+          set -euo pipefail
+          export BUCKET=example-backup EXCHANGE_BUCKET=example-exchange
+          export ACCOUNT_ID=000000000000
+          export EXCHANGE_USER=activity-tracker-exchange
+          export PLANNER_USER=activity-tracker-planner
+          for f in infra/*.json.template; do
+            envsubst < "$f" | python3 -c 'import json,sys; json.load(sys.stdin)'
+            echo "  $f ok"
+          done
+
+      - name: Nothing is left unsubstituted
+        run: |
+          set -euo pipefail
+          export BUCKET=example-backup EXCHANGE_BUCKET=example-exchange
+          export ACCOUNT_ID=000000000000
+          export EXCHANGE_USER=activity-tracker-exchange
+          export PLANNER_USER=activity-tracker-planner
+          violations=0
+          for f in infra/*.json.template; do
+            if envsubst < "$f" | grep -n '\${' ; then
+              echo "::error file=${f}::a placeholder survived envsubst — nothing sets it"
+              violations=$((violations + 1))
+            fi
+          done
+          if (( violations > 0 )); then exit 1; fi
+          echo "every placeholder is one the setup instructions actually export"
+
+      - name: The planner is denied the backup bucket
+        run: |
+          set -euo pipefail
+          export BUCKET=example-backup ACCOUNT_ID=000000000000
+          export PLANNER_USER=activity-tracker-planner
+          envsubst < infra/bucket-policy.json.template > /tmp/backup.json
+          python3 - <<'PY'
+          import json
+
+          PLANNER = "arn:aws:iam::000000000000:user/activity-tracker-planner"
+
+
+          def principals(statement):
+              # `Principal` is "*" for the TLS rule and a dict elsewhere, and its
+              # `AWS` is a string or a list. All four shapes are legal JSON here.
+              value = statement.get("Principal")
+              if not isinstance(value, dict):
+                  return []
+              aws = value.get("AWS", [])
+              return aws if isinstance(aws, list) else [aws]
+
+
+          policy = json.load(open("/tmp/backup.json"))
+          denies = [
+              s for s in policy["Statement"]
+              if s["Effect"] == "Deny" and PLANNER in principals(s)
+          ]
+          assert denies, "the backup bucket policy must explicitly deny the planner"
+          assert any(s["Action"] == "s3:*" for s in denies), \
+              "the deny must cover every action, not a list a new one escapes"
+          print("the planner is denied s3:* on the backup bucket")
+          PY
