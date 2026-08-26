@@ -319,6 +319,37 @@ appId: ${APP_ID}
 # --- Erase is present and asks first --------------------------------------
 # The one irreversible action in the app — it destroys the encryption key. It
 # must never be a single tap.
+#
+# **Centred before it is tapped, and that is not belt-and-braces.** This is
+# where v0.13.0 died. `Erase everything` is the last element in Settings, so
+# the scroll that first brought it into view left it low on the screen — and
+# `getVisiblePercentage` measures an element against the *device screen*, not
+# against the scroll view it lives in. iOS still reports a layout frame for
+# content clipped below the viewport, so the button read as 100% visible while
+# it sat under the tab bar; XCUITest dispatched the tap at the centre of that
+# frame, the tab bar took the touch, and the flow carried on from the Media
+# tab and failed two steps later on a dialog that was never opened. Same
+# mechanism as the v0.2.0 note above, reached from the other end: adding the
+# 'Check connections' row moved this button just far enough down to tip it in.
+#
+# `visibilityPercentage` cannot fix it — it already defaults to 100, and 100
+# was what it reported. `centerElement` can, because it keeps swiping until the
+# element is near the middle of the screen rather than stopping at the first
+# sight of it. It cannot hang here either: it gives up centring after five
+# tries and falls back to the visibility test, which is deliberate upstream
+# behaviour for exactly this shape — a target that is the last thing in a list
+# that has stopped scrolling.
+#
+# Its own scroll rather than a change to the one above, because that one is
+# what positions the DATA rows this flow taps on the way here. Centring this
+# button pushes them off the top, and by this point they are all done with.
+- scrollUntilVisible:
+    element:
+      text: 'Erase everything'
+    direction: DOWN
+    centerElement: true
+    speed: 80
+    timeout: 60000
 - tapOn: 'Erase everything'
 - assertVisible: 'Erase everything?'
 - tapOn: 'Cancel'
