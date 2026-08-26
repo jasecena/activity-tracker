@@ -147,5 +147,11 @@ export function planPayload(note: DayNote): PlanPayload {
 export function planQueueLine(waiting: number, configured: boolean): string | null {
   if (waiting === 0) return null;
   const count = waiting === 1 ? '1 plan' : `${waiting} plans`;
-  return configured ? `${count} still to send.` : `${count} held on this phone. Add a bucket in Settings to send them.`;
+  // **"still to send" implied something was going to send them**, which was
+  // true while this drained on its own and is not any more. A count above a
+  // button should say what the button is for; a count that sounds like a
+  // progress bar is a phone that looks busy while nothing happens.
+  return configured
+    ? `${count} not sent yet. A spoken plan needs its words first — open it and press Transcribe.`
+    : `${count} held on this phone. Add a bucket in Settings to send them.`;
 }

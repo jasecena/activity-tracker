@@ -49,6 +49,18 @@ export interface BackupError {
   readonly reason: BackupFailure;
   /** What the other end actually said, for the screen. Never logged. */
   readonly detail: string;
+  /**
+   * S3's own `<Code>`, where it sent one.
+   *
+   * **Because a status is not enough to act on.** `AccessDenied` and
+   * `SignatureDoesNotMatch` are both 403 and they mean opposite things: the
+   * first says the request was signed, accepted and then refused on policy —
+   * the credentials are good — and the second says the secret is wrong. A
+   * caller that can only see `unauthorized` has to send somebody to re-check
+   * four fields that may be perfectly correct, which is exactly the afternoon
+   * this file's header says the detail line exists to save.
+   */
+  readonly code?: string;
 }
 
 export interface BucketConfig extends AwsCredentials {
@@ -73,9 +85,13 @@ function failureFor(status: number): BackupFailure {
 function detailFrom(status: number, body: string): string {
   // S3's XML is verbose and its <Message> is the sentence worth reading.
   const message = /<Message>([^<]*)<\/Message>/.exec(body)?.[1];
-  const code = /<Code>([^<]*)<\/Code>/.exec(body)?.[1];
-  const said = [code, message].filter(Boolean).join(': ');
+  const said = [codeFrom(body), message].filter(Boolean).join(': ');
   return said.length > 0 ? `HTTP ${status} — ${said}` : `HTTP ${status}`;
+}
+
+/** S3's `<Code>` on its own, for callers that need to branch on it. */
+function codeFrom(body: string): string | undefined {
+  return /<Code>([^<]*)<\/Code>/.exec(body)?.[1];
 }
 
 function failureFromThrow(error: unknown, aborted: boolean): BackupError {
@@ -118,7 +134,7 @@ export async function putObject(
     });
     if (response.ok) return null;
     const text = await response.text().catch(() => '');
-    return { reason: failureFor(response.status), detail: detailFrom(response.status, text) };
+    return { reason: failureFor(response.status), detail: detailFrom(response.status, text), code: codeFrom(text) };
   } catch (error) {
     return failureFromThrow(error, signal.aborted);
   } finally {
@@ -168,6 +184,7 @@ export async function getObject(config: BucketConfig, key: string, now: number):
       return {
         reason: response.status === 404 ? 'not-found' : failureFor(response.status),
         detail: detailFrom(response.status, said),
+        code: codeFrom(said),
       };
     }
     return new Uint8Array(await response.arrayBuffer());
@@ -202,7 +219,8 @@ export async function listKeys(config: BucketConfig, now: number): Promise<reado
     try {
       const response = await fetch(signed.url, { method: 'GET', headers: signed.headers, signal });
       const text = await response.text();
-      if (!response.ok) return { reason: failureFor(response.status), detail: detailFrom(response.status, text) };
+      if (!response.ok)
+        return { reason: failureFor(response.status), detail: detailFrom(response.status, text), code: codeFrom(text) };
 
       for (const match of text.matchAll(/<Key>([^<]+)<\/Key>/g)) {
         if (match[1]) keys.push(match[1]);

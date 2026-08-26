@@ -295,6 +295,25 @@ appId: ${APP_ID}
 # Not 'Settings' either — that is the tab label, visible from anywhere.
 - assertVisible: 'Erase everything'
 
+# --- Credentials opens ------------------------------------------------------
+# The fourth row in DATA. These three sections — the backup bucket, the plans
+# bucket, transcription — used to be most of the length of Settings itself; they
+# are the part you set once and never touch, so they moved to their own page and
+# Settings got about three hundred lines shorter.
+#
+# **Asserted on 'Backup bucket', not on 'Credentials'.** That second string is
+# also the label of the row just tapped, so it stays visible whether or not
+# anything opened — the trap the Places block above already records.
+#
+# Deliberately types nothing. Every field here writes to the encrypted store on
+# blur, and a smoke test that put junk in a credential field would leave a fresh
+# install configured with it.
+- tapOn: 'Credentials'
+- assertVisible: 'Backup bucket'
+- assertVisible: 'Plans bucket'
+- tapOn: 'Back'
+- assertVisible: 'Erase everything'
+
 # --- The connection checks open -------------------------------------------
 # The fourth row in DATA, and the newest. It sits directly under 'Raw data &
 # export' in the same card, so it is on screen whenever that row is — which is

@@ -75,8 +75,31 @@ describe('the agenda read', () => {
     expect(result.summary).toContain('nothing has been published');
   });
 
+  /**
+   * The correction the `not-found` split did not anticipate: this bucket never
+   * sends a 404. `activity-tracker-exchange` has no `s3:ListBucket`, and S3
+   * will not confirm an object's absence to a caller who may not enumerate —
+   * so the ordinary state of a perfectly configured phone is `AccessDenied`.
+   */
+  it('counts AccessDenied as working, because this key may not list the bucket', async () => {
+    (getObject as jest.Mock).mockResolvedValue({
+      reason: 'unauthorized',
+      detail: 'HTTP 403 — AccessDenied: not authorized to perform: s3:ListBucket',
+      code: 'AccessDenied',
+    });
+
+    const result = await checkPlansRead(PLANS);
+
+    expect(result.status).toBe('ok');
+    expect(result.summary).toContain('credentials are good');
+  });
+
   it('counts a 403 as a failure and names the two fields to check', async () => {
-    (getObject as jest.Mock).mockResolvedValue({ reason: 'unauthorized', detail: 'HTTP 403 — SignatureDoesNotMatch' });
+    (getObject as jest.Mock).mockResolvedValue({
+      reason: 'unauthorized',
+      detail: 'HTTP 403 — SignatureDoesNotMatch',
+      code: 'SignatureDoesNotMatch',
+    });
 
     const result = await checkPlansRead(PLANS);
 
@@ -160,19 +183,51 @@ describe('the backup bucket', () => {
 });
 
 describe('transcription', () => {
-  it('proves the key without sending audio, and says how much credit is left', async () => {
-    answering(200, { character_count: 1000, character_limit: 100_000 });
+  /**
+   * The bug this check shipped with, and the reason it was rewritten.
+   *
+   * The first version asked the account endpoint for the character quota. That
+   * endpoint needs `user_read`; transcription does not. A key scoped to exactly
+   * what the app needs came back `missing_permissions`, so the check went red
+   * while the feature worked — and sent its owner to re-check a key that was
+   * correct. A test that requires a permission the app does not need is not a
+   * test of the app.
+   */
+  it('asks the endpoint the app transcribes against, not the account endpoint', async () => {
+    answering(422, { detail: [{ loc: ['body', 'file'], msg: 'field required' }] });
+
+    await checkTranscription({ ...DEFAULT_SETTINGS, transcriptionKey: 'xi-key' });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toContain('/v1/speech-to-text');
+    expect(String(url)).not.toContain('/v1/user');
+    expect((init.headers as Record<string, string>)['xi-api-key']).toBe('xi-key');
+  });
+
+  it('reads a complaint about the missing file as proof the key works', async () => {
+    answering(422, { detail: [{ loc: ['body', 'file'], msg: 'field required' }] });
 
     const result = await checkTranscription({ ...DEFAULT_SETTINGS, transcriptionKey: 'xi-key' });
 
+    // Getting past authentication is the whole question; what it then complains
+    // about is not. Branching on "not an auth failure" rather than on one exact
+    // status is deliberate — 400 and 422 mean the same thing here.
     expect(result.status).toBe('ok');
-    expect(result.summary).toContain('99,000');
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toContain('/v1/user/subscription');
-    expect((init.headers as Record<string, string>)['xi-api-key']).toBe('xi-key');
+    expect(result.detail).toContain('No audio was sent');
+  });
+
+  it('sends the model and the language, and never a recording', async () => {
+    answering(422, {});
+
+    await checkTranscription({ ...DEFAULT_SETTINGS, transcriptionKey: 'xi-key' });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const form = init.body as FormData;
+    expect(form.get('model_id')).toBe('scribe_v2');
+    expect(form.get('enable_logging')).toBe('false');
     // The rule the whole app is built on: nothing sends a recording without a
     // press on the note it belongs to, and this screen is not an exception.
-    expect(init.body).toBeUndefined();
+    expect(form.get('file')).toBeNull();
   });
 
   it('says a 401 means one of two things, because ElevenLabs uses it for both', async () => {
@@ -183,6 +238,20 @@ describe('transcription', () => {
     expect(result.status).toBe('failed');
     expect(result.summary).toContain('no credit left');
     expect(result.detail).toContain('quota_exceeded');
+  });
+
+  /**
+   * `missing_permissions` against *this* endpoint is a real failure, where
+   * against the account endpoint it was a false alarm. Same string, opposite
+   * meaning, decided entirely by which permission the app actually needs.
+   */
+  it('treats missing_permissions on the transcription endpoint as a real failure', async () => {
+    answering(401, { detail: { status: 'missing_permissions', message: 'missing the permission speech_to_text' } });
+
+    const result = await checkTranscription({ ...DEFAULT_SETTINGS, transcriptionKey: 'xi-key' });
+
+    expect(result.status).toBe('failed');
+    expect(result.summary).toContain('not permitted to transcribe');
   });
 
   it('is off, not broken, with no key', async () => {

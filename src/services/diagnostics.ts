@@ -3,6 +3,7 @@ import { getObject, listKeys, putObject, type BackupError, type BucketConfig } f
 import { AGENDA_KEY } from '@/services/agenda';
 import { now as readNow } from '@/services/clock';
 import type { Settings } from '@/services/settings';
+import { MODEL_ID } from '@/services/transcribe';
 
 /**
  * Asking each integration whether it actually works, and saying what it said.
@@ -106,7 +107,20 @@ function bucketSentence(error: BackupError): string {
   }
 }
 
-const ELEVENLABS_SUBSCRIPTION = 'https://api.elevenlabs.io/v1/user/subscription';
+/**
+ * The endpoint the app actually transcribes against.
+ *
+ * **The same URL `transcribe.ts` posts to, deliberately.** The first version of
+ * this check asked the account endpoint for the character quota, and it was
+ * wrong in a way worth recording: that endpoint needs the `user_read`
+ * permission, transcription does not, and a key scoped to exactly what the app
+ * needs came back `missing_permissions`. So the check failed while the feature
+ * worked, and it sent its owner to re-check a key that was perfectly correct.
+ *
+ * A test that requires a permission the app does not need is not a test of the
+ * app. This one asks the endpoint that matters, with the header that matters.
+ */
+const ELEVENLABS_STT = 'https://api.elevenlabs.io/v1/speech-to-text';
 
 /** Long enough for a phone on a slow connection, short enough to stop being "still going". */
 const TIMEOUT_MS = 30_000;
@@ -132,26 +146,31 @@ function threwAs(error: unknown, aborted: boolean): { summary: string; detail: s
 }
 
 /**
- * Is the ElevenLabs key good, without sending a recording.
+ * Is the key good for transcription, without sending a recording.
  *
- * **No audio leaves the phone for this**, and that is a requirement rather than
- * an optimisation. `transcribe` is the only thing in the app that sends a
+ * **No audio leaves the phone**, and that is a requirement rather than an
+ * optimisation. `transcribe` is the only thing in the app that sends a
  * recording and its first rule is that nothing happens without a press on the
  * note it belongs to. A diagnostic that quietly uploaded a voice note to prove
  * the key works would break that rule in the one screen whose whole job is
  * telling the truth about what leaves.
  *
- * So it asks the account endpoint instead, which authenticates with the same
- * `xi-api-key` header the transcription uses. That proves the three things worth
- * proving — the key is real, the service is reachable, the account is live — and
- * it also reads back the quota, which is worth having: ElevenLabs answers a
- * spent quota with a 401, indistinguishable at the transcription endpoint from a
- * key that was never valid. A check that says how many characters are left
- * answers that question before it gets asked.
+ * So it posts to the transcription endpoint with the model and the language and
+ * **no file**, which the service rejects as a malformed request — after it has
+ * authenticated it. That is the whole trick: the interesting part of the answer
+ * is not whether it succeeded but *how* it failed.
  *
- * What it cannot prove is that the *model* accepts a given recording — a 422 on
- * a bad `language_code` or an unreadable file is still only findable by
- * transcribing. That is stated on the screen rather than papered over.
+ * **Anything that is not a 401 or a 403 proves the key.** A validation
+ * complaint about the missing file means the request got past authentication
+ * and authorisation on the exact endpoint and the exact permission that
+ * transcription uses — which is the strongest statement this check can make
+ * without a recording. Branching on "not an auth failure" rather than on one
+ * specific status is deliberate: the service is free to call a missing file a
+ * 422 or a 400 and the conclusion is identical either way.
+ *
+ * What it cannot prove is that the model will accept a *given* recording — a
+ * bad `language_code`, an unreadable file. That is stated on the screen rather
+ * than papered over.
  */
 export async function checkTranscription(settings: Settings): Promise<CheckResult> {
   const base = { id: 'transcription', title: CHECK_TITLES['transcription'] } as const;
@@ -160,40 +179,59 @@ export async function checkTranscription(settings: Settings): Promise<CheckResul
     return { ...base, status: 'off', summary: 'No key, so transcription is off. Nothing was sent.' };
   }
 
+  // Everything a real transcription sends except the recording itself.
+  const form = new FormData();
+  form.append('model_id', MODEL_ID);
+  form.append('language_code', settings.transcriptionLanguage);
+  form.append('enable_logging', 'false');
+
   const { signal, done } = abortAfter(TIMEOUT_MS);
   try {
-    const response = await fetch(ELEVENLABS_SUBSCRIPTION, { headers: { 'xi-api-key': key }, signal });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const summary =
-        response.status === 401 || response.status === 403
-          ? 'The key was refused. Either it is wrong or the account has no credit left — ElevenLabs answers both with a 401.'
-          : response.status === 429
-            ? 'Rate limited. The key is good; there have been too many requests.'
-            : 'ElevenLabs answered, and not with anything this understands.';
-      return { ...base, status: 'failed', summary, detail: clipped(`HTTP ${response.status} — ${body}`) };
+    const response = await fetch(ELEVENLABS_STT, {
+      method: 'POST',
+      // No `Content-Type`: `fetch` generates the multipart boundary itself, and
+      // setting it by hand omits the boundary. Same rule as `transcribe`.
+      headers: { 'xi-api-key': key },
+      body: form,
+      signal,
+    });
+
+    const body = await response.text().catch(() => '');
+
+    if (response.status === 401 || response.status === 403) {
+      // The one case the old check got backwards. `missing_permissions` means
+      // the key authenticated and was refused on scope — so if it appears
+      // *here*, on the transcription endpoint, the key genuinely cannot do the
+      // one thing this app needs, and that is a real failure rather than the
+      // false alarm it was against the account endpoint.
+      const scoped = /missing_permissions/.test(body);
+      return {
+        ...base,
+        status: 'failed',
+        summary: scoped
+          ? 'The key is valid but is not permitted to transcribe. Give it speech-to-text access, or use a key that has it.'
+          : 'The key was refused. Either it is wrong or the account has no credit left — ElevenLabs answers both with a 401.',
+        detail: clipped(`HTTP ${response.status} — ${body}`),
+      };
     }
 
-    const body: unknown = await response.json().catch(() => null);
-    const quota =
-      typeof body === 'object' && body !== null
-        ? (body as { character_count?: unknown; character_limit?: unknown })
-        : {};
-    const used = typeof quota.character_count === 'number' ? quota.character_count : null;
-    const limit = typeof quota.character_limit === 'number' ? quota.character_limit : null;
-    const left =
-      used !== null && limit !== null
-        ? `${(limit - used).toLocaleString()} of ${limit.toLocaleString()} characters left.`
-        : 'The account answered.';
+    if (response.status === 429) {
+      return {
+        ...base,
+        status: 'failed',
+        summary: 'Rate limited. The key is good; there have been too many requests.',
+        detail: clipped(`HTTP ${response.status} — ${body}`),
+      };
+    }
 
+    // Everything else got past authentication, which is the whole question.
     return {
       ...base,
       status: 'ok',
-      summary: `The key works. ${left}`,
-      // Said plainly rather than left for somebody to discover: a good key is
-      // not the same claim as a recording this model will accept.
+      summary: 'The key works, and is permitted to transcribe.',
       detail:
-        'No audio was sent. This proves the key and the account, not that a particular recording will transcribe.',
+        'No audio was sent — the request was made without a recording and the service answered past authentication. ' +
+        'This proves the key and its permission, not that a particular recording will transcribe.',
     };
   } catch (error) {
     const { summary, detail } = threwAs(error, signal.aborted);
@@ -345,14 +383,30 @@ export async function checkPlansWrite(settings: Settings): Promise<CheckResult> 
 /**
  * Can the phone read the agenda back.
  *
- * **A 404 is a pass**, and saying so is most of the point of this check. The
- * agenda is written by a computer in somebody's house that may never have run
- * yet; a bucket that answers "no such key" has accepted the signature, matched
- * the credential and applied the policy, which is everything the read path
- * needs. It used to be impossible to see that from inside the app — `getObject`
- * reported a 404 as `not-configured`, the same answer a phone with no
- * credentials gives — and `BackupFailure` now keeps the two apart precisely so
- * this line can be written.
+ * **A missing agenda is a pass, and getting there took two corrections.**
+ *
+ * The first: `getObject` used to report a 404 as `not-configured`, so a bucket
+ * whose planner had never run and a phone with no credentials at all gave the
+ * identical answer. `BackupFailure` now separates `not-found`.
+ *
+ * The second, which the first did not anticipate: **this bucket does not answer
+ * 404 at all.** `activity-tracker-exchange` is deliberately not granted
+ * `s3:ListBucket`, and S3's documented behaviour is that a caller without it
+ * gets `403 AccessDenied` for an object that does not exist rather than a 404 —
+ * it will not confirm absence to somebody who may not enumerate. So the
+ * ordinary state of this check, with everything configured perfectly, is a 403.
+ *
+ * That is why it branches on S3's `<Code>` and not on the status. `AccessDenied`
+ * and `SignatureDoesNotMatch` are both 403 and mean opposite things: the first
+ * says the request was signed, accepted, and then refused on policy — which
+ * proves the credentials — and the second says the secret is wrong.
+ *
+ * **What it deliberately does not claim.** Once `AccessDenied` is the answer to
+ * both "nothing is published" and "you may not read this", no request can tell
+ * them apart until an agenda exists. So the summary says the signature is
+ * proven and says plainly that the read permission is not yet — rather than
+ * printing a green tick that quietly means more than it knows. The one screen
+ * whose job is honesty is the wrong place to round that up.
  */
 export async function checkPlansRead(settings: Settings): Promise<CheckResult> {
   const base = { id: 'plans-read', title: CHECK_TITLES['plans-read'] } as const;
@@ -368,6 +422,8 @@ export async function checkPlansRead(settings: Settings): Promise<CheckResult> {
   }
 
   const error = result as BackupError;
+
+  // A plain 404, which this bucket will not send but another might.
   if (error.reason === 'not-found') {
     return {
       ...base,
@@ -375,6 +431,17 @@ export async function checkPlansRead(settings: Settings): Promise<CheckResult> {
       summary: `Signed and accepted, and nothing has been published to ${AGENDA_KEY} yet. That is the ordinary state until the machine at home runs.`,
     };
   }
+
+  if (error.code === 'AccessDenied') {
+    return {
+      ...base,
+      status: 'ok',
+      summary:
+        'Signed and accepted — the bucket knew who was asking, so the credentials are good. Nothing has been published yet, and this key may not list the bucket, so S3 answers a missing agenda this way rather than with a 404. Reading one will be proven the first time there is one to read.',
+      detail: clipped(error.detail),
+    };
+  }
+
   return { ...base, status: 'failed', summary: bucketSentence(error), detail: clipped(error.detail) };
 }
 

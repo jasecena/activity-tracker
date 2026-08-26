@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { RejectionReason } from '@/core/geo';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -28,6 +27,14 @@ interface SettingsScreenProps {
    * passphrase reads very differently next to a backup bucket that works.
    */
   readonly onOpenDiagnostics: () => void;
+  /**
+   * Everywhere the app can be given a key, on one page.
+   *
+   * Directly above Check connections, because entering a credential and testing
+   * it are the same errand — and this is the page you come back from when a
+   * check goes red.
+   */
+  readonly onOpenCredentials: () => void;
 }
 
 const PERMISSION_TEXT: Readonly<Record<string, string>> = {
@@ -85,10 +92,7 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
     // reason there are two, which makes it worth a clause here rather than a
     // sentence somewhere nobody reads.
     canSendPlans &&
-      'anything you file under Plans is sealed and sent to a second, separate bucket on its own, without a press — its words only, never its recording, never anything from the diary, and under a different passphrase from the backup, so whatever reads your plans cannot open your journeys',
-    canSendPlans &&
-      canTranscribe &&
-      "a plan's recording is uploaded to ElevenLabs on its own too, to fetch the words that get sent",
+      'anything you file under Plans is sealed and sent to a second, separate bucket when you press Send — its words only, never its recording, never anything from the diary, and under a different passphrase from the backup, so whatever reads your plans cannot open your journeys',
   ].filter((entry): entry is string => typeof entry === 'string');
 
   if (destinations.length === 0) {
@@ -97,13 +101,20 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
 
   const count =
     destinations.length === 1 ? 'One thing leaves this phone' : `${destinations.length} things leave this phone`;
-  // **"None of it happens on its own" was true until Plans existed, and saying
-  // it now would be the third string in this app's history to promise more than
-  // it provides.** So the sentence names the exception instead of dropping the
-  // claim: everything else still waits to be asked, and the one thing that does
-  // not is the one you filed under a list that says so.
+  // **"None of it happens on its own" was true, then false, and is true again.**
+  //
+  // It was written when nothing here was automatic, left standing when Plans
+  // arrived and started uploading unattended, and corrected to admit the
+  // exception. Plans is a press again — because what it sends reaches a machine
+  // that hands it to a model and writes the result into a database, so an
+  // unreviewed transcript becomes a wrong row somebody has to go and find.
+  //
+  // Restoring the original sentence rather than keeping a hedged one: the claim
+  // is simple again and should read that way. What must not happen is the third
+  // version of this comment being written because somebody made something
+  // automatic and left the sentence alone.
   const automatic = canSendPlans
-    ? 'Everything but the Plans list waits to be asked; a plan goes as soon as you have made one.'
+    ? 'None of it happens on its own: every one of these waits for you to press something.'
     : 'None of it happens on its own.';
   return `${count}: ${destinations.join('; ')}. Nothing else in the app talks to a network. ${automatic}`;
 }
@@ -115,104 +126,10 @@ export function SettingsScreen({
   onOpenPlaces,
   onOpenJourneys,
   onOpenDiagnostics,
+  onOpenCredentials,
 }: SettingsScreenProps) {
   const { settings: values } = settings;
 
-  /**
-   * The bucket's four fields, held locally and written on blur.
-   *
-   * Persisting per keystroke would seal and write the store on every letter of
-   * a secret key. They are drafts of one setting rather than four settings.
-   */
-  const [bucket, setBucket] = useState(values.backupBucket);
-  const [region, setRegion] = useState(values.backupRegion);
-  const [accessKeyId, setAccessKeyId] = useState(values.backupAccessKeyId);
-  const [secretKey, setSecretKey] = useState(values.backupSecretKey);
-  const saveTarget = () => settings.setBackupTarget({ bucket, region, accessKeyId, secretKey });
-
-  /**
-   * The plans bucket's four, held the same way and kept deliberately separate.
-   *
-   * Four more fields is not nothing, and the reason they are not one shared set
-   * is the whole point of the feature: the credential typed here reaches a
-   * bucket that has never held a coordinate, and the machine at home is given
-   * this one and never the other.
-   */
-  const [exBucket, setExBucket] = useState(values.exchangeBucket);
-  const [exRegion, setExRegion] = useState(values.exchangeRegion);
-  const [exAccessKeyId, setExAccessKeyId] = useState(values.exchangeAccessKeyId);
-  const [exSecretKey, setExSecretKey] = useState(values.exchangeSecretKey);
-  const saveExchangeTarget = () =>
-    settings.setExchangeTarget({
-      bucket: exBucket,
-      region: exRegion,
-      accessKeyId: exAccessKeyId,
-      secretKey: exSecretKey,
-    });
-
-  const [exPhrase, setExPhrase] = useState('');
-  const [exPhraseAgain, setExPhraseAgain] = useState('');
-  const saveExchangePassphrase = () => {
-    if (exPhrase.length === 0 || exPhrase !== exPhraseAgain) return;
-    Alert.alert(
-      'Set this passphrase for good?',
-      'Use a different one from your backup passphrase. Whatever reads your plans holds this key — and if it is the same key, it can open every journey in your backup too. It cannot be changed afterwards.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Set it',
-          onPress: () => {
-            settings.setExchangePassphrase(exPhrase);
-            setExPhrase('');
-            setExPhraseAgain('');
-          },
-        },
-      ],
-    );
-  };
-
-  /**
-   * The passphrase, twice.
-   *
-   * It can never be changed and the app can never read the bucket back to check
-   * it, so a typo is permanent and silent — confirming is the only defence, and
-   * it costs one field. Both drafts are dropped the moment it is set: what is
-   * kept is the key scrypt makes, never the phrase.
-   */
-  const [phrase, setPhrase] = useState('');
-  const [phraseAgain, setPhraseAgain] = useState('');
-  const savePassphrase = () => {
-    if (phrase.length === 0 || phrase !== phraseAgain) return;
-    Alert.alert(
-      'Set this passphrase for good?',
-      'It cannot be changed afterwards, and nothing in this app can recover it. Everything backed up will be sealed with it — without it, the bucket cannot be opened by anybody, including you.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Set it',
-          onPress: () => {
-            settings.setBackupPassphrase(phrase);
-            setPhrase('');
-            setPhraseAgain('');
-          },
-        },
-      ],
-    );
-  };
-
-  /**
-   * Two prompts, not one, and the second is not a repeat of the first.
-   *
-   * The first says what is destroyed. The second says that it is already gone
-   * by the time you could regret it — there is no key escrow, no backup to
-   * restore from and, until the sync lands, nothing off this phone at all. A
-   * single destructive alert is the pattern for an action that can be redone;
-   * this one cannot be, and the whole store is behind it.
-   *
-   * The second prompt asks a *different* question so that a person tapping
-   * through by reflex has to read something. Repeating "Erase everything?"
-   * twice trains exactly the muscle memory the second prompt exists to break.
-   */
   const confirmEraseFinal = () => {
     Alert.alert(
       'There is no way back',
@@ -343,296 +260,6 @@ export function SettingsScreen({
             passphrase that is typed twice and then gone. What is stored is the
             key scrypt makes from it, never the phrase — a phone taken apart
             yields something that opens this backup and nothing else. */}
-        <Text style={styles.sectionLabel}>BACKUP</Text>
-        <View style={styles.card}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Bucket</Text>
-            <Text style={styles.rowDetail}>
-              {values.backupBucket.length > 0 ? `${values.backupBucket} · ${values.backupRegion}` : 'Not set'}
-            </Text>
-          </View>
-          <TextInput
-            value={bucket}
-            onChangeText={setBucket}
-            onBlur={saveTarget}
-            placeholder="bucket name"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Backup bucket"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            value={region}
-            onChangeText={setRegion}
-            onBlur={saveTarget}
-            placeholder="ap-southeast-2"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Backup region"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            value={accessKeyId}
-            onChangeText={setAccessKeyId}
-            onBlur={saveTarget}
-            placeholder="AKIA..."
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Backup access key id"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            value={secretKey}
-            onChangeText={setSecretKey}
-            onBlur={saveTarget}
-            placeholder="secret access key"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Backup secret key"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-          />
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Passphrase</Text>
-            <Text style={styles.rowDetail}>
-              {values.backupKeyHex.length > 0
-                ? 'Set. It cannot be changed, and nothing here can recover it.'
-                : 'Type it twice. It is never stored and can never be changed.'}
-            </Text>
-          </View>
-          {values.backupKeyHex.length === 0 ? (
-            <>
-              <TextInput
-                value={phrase}
-                onChangeText={setPhrase}
-                placeholder="passphrase"
-                placeholderTextColor={colors.textMuted}
-                style={styles.keyInput}
-                accessibilityLabel="Backup passphrase"
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-              <TextInput
-                value={phraseAgain}
-                onChangeText={setPhraseAgain}
-                placeholder="passphrase again"
-                placeholderTextColor={colors.textMuted}
-                style={styles.keyInput}
-                accessibilityLabel="Backup passphrase again"
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-              <Pressable
-                onPress={savePassphrase}
-                disabled={phrase.length === 0 || phrase !== phraseAgain}
-                accessibilityRole="button"
-                accessibilityLabel="Set the backup passphrase"
-                style={({ pressed }) => [
-                  styles.action,
-                  (phrase.length === 0 || phrase !== phraseAgain) && styles.actionOff,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.actionText}>
-                  {phrase.length > 0 && phrase !== phraseAgain ? 'They do not match' : 'Set it, for good'}
-                </Text>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
-        <Text style={styles.footnote}>
-          Backing up sends the days that are over to your own S3 bucket, sealed on this phone first. It happens only
-          when you press the button on the Raw data screen — nothing is automatic. The passphrase is asked for twice
-          because a typo in it is permanent and silent: it can never be changed, and the app cannot read the bucket back
-          to check. Write it down somewhere that is not this phone.
-        </Text>
-
-        {/* **The second bucket, and why there is one.**
-
-            Plans go up so something at home can read them and send back an
-            agenda. That something must hold the key to whatever it reads — so
-            the question is not whether to trust it, but how much to put within
-            its reach. A separate bucket under a separate passphrase answers
-            that: it can read what you filed under Plans, and it cannot open a
-            single journey, photo or recording in the backup. */}
-        <Text style={styles.sectionLabel}>PLANS</Text>
-        <View style={styles.card}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Bucket</Text>
-            <Text style={styles.rowDetail}>
-              {values.exchangeBucket.length > 0
-                ? `${values.exchangeBucket} · ${values.exchangeRegion}`
-                : 'Not set — plans stay on this phone'}
-            </Text>
-          </View>
-          <TextInput
-            value={exBucket}
-            onChangeText={setExBucket}
-            onBlur={saveExchangeTarget}
-            placeholder="bucket name"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Plans bucket"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            value={exRegion}
-            onChangeText={setExRegion}
-            onBlur={saveExchangeTarget}
-            placeholder="ap-southeast-2"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Plans region"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            value={exAccessKeyId}
-            onChangeText={setExAccessKeyId}
-            onBlur={saveExchangeTarget}
-            placeholder="AKIA..."
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Plans access key id"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            value={exSecretKey}
-            onChangeText={setExSecretKey}
-            onBlur={saveExchangeTarget}
-            placeholder="secret access key"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Plans secret key"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-          />
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Plans passphrase</Text>
-            <Text style={styles.rowDetail}>
-              {values.exchangeKeyHex.length > 0
-                ? 'Set. It cannot be changed, and nothing here can recover it.'
-                : 'A different one from the backup passphrase. Type it twice.'}
-            </Text>
-          </View>
-          {values.exchangeKeyHex.length === 0 ? (
-            <>
-              <TextInput
-                value={exPhrase}
-                onChangeText={setExPhrase}
-                placeholder="plans passphrase"
-                placeholderTextColor={colors.textMuted}
-                style={styles.keyInput}
-                accessibilityLabel="Plans passphrase"
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-              <TextInput
-                value={exPhraseAgain}
-                onChangeText={setExPhraseAgain}
-                placeholder="plans passphrase again"
-                placeholderTextColor={colors.textMuted}
-                style={styles.keyInput}
-                accessibilityLabel="Plans passphrase again"
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-              <Pressable
-                onPress={saveExchangePassphrase}
-                disabled={exPhrase.length === 0 || exPhrase !== exPhraseAgain}
-                accessibilityRole="button"
-                accessibilityLabel="Set the plans passphrase"
-                style={({ pressed }) => [
-                  styles.action,
-                  (exPhrase.length === 0 || exPhrase !== exPhraseAgain) && styles.actionOff,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.actionText}>
-                  {exPhrase.length > 0 && exPhrase !== exPhraseAgain ? 'They do not match' : 'Set it, for good'}
-                </Text>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
-        <Text style={styles.footnote}>
-          A plan goes up on its own as soon as you have made one — its words and the time, never its recording and never
-          anything from the diary. It goes to a different bucket from your backup, under a different passphrase, so that
-          whatever reads your plans at home cannot open a single journey. Use the same passphrase for both and you have
-          given it all of them; the app cannot check that for you, because it does not keep the backup passphrase in any
-          form it could compare.
-        </Text>
-
-        <Text style={styles.sectionLabel}>TRANSCRIBING VOICE NOTES</Text>
-        <View style={styles.card}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>ElevenLabs API key</Text>
-            <Text style={styles.rowDetail}>
-              {values.transcriptionKey.length > 0
-                ? 'Set — a Transcribe button appears on notes that have a recording'
-                : 'Not set — voice notes stay on this phone and cannot be transcribed'}
-            </Text>
-          </View>
-          <TextInput
-            value={values.transcriptionKey}
-            onChangeText={settings.setTranscriptionKey}
-            placeholder="xi-..."
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="ElevenLabs API key"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-          />
-
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Language</Text>
-            <Text style={styles.rowDetail}>
-              An ISO code, pinned rather than detected. Telling the service which language to expect is most of its
-              accuracy.
-            </Text>
-          </View>
-          <TextInput
-            value={values.transcriptionLanguage}
-            onChangeText={settings.setTranscriptionLanguage}
-            placeholder="fa"
-            placeholderTextColor={colors.textMuted}
-            style={styles.keyInput}
-            accessibilityLabel="Transcription language code"
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={3}
-          />
-        </View>
-        {/* The plainest statement in the app, because it is the only feature
-            that sends a recording of its owner anywhere. */}
-        <Text style={styles.footnote}>
-          The second thing that talks to the internet, and the only one that sends anything you recorded.{' '}
-          <Text style={styles.footnoteStrong}>Nothing is transcribed automatically.</Text> When you press Transcribe on
-          a note, that one recording is uploaded to ElevenLabs and the text comes back and is added to the end of the
-          note. Nothing else goes with it — not what you typed, not the title, not the day, not where you were. The
-          request also asks them not to keep the recording, though whether they honour that is theirs to decide, not
-          this app&apos;s. Clear the key and the button disappears. Your key is stored encrypted on this phone and never
-          leaves it.
-        </Text>
-
         <Text style={styles.sectionLabel}>HISTORY</Text>
         <View style={styles.card}>
           {RETENTION_CHOICES.map((choice) => {
@@ -703,6 +330,18 @@ export function SettingsScreen({
               <Text style={styles.rowDetail}>
                 {rejected ? `What is stored, why fixes were dropped, and CSV export` : 'What is stored, and CSV export'}
               </Text>
+            </View>
+            <Text style={styles.tick}>›</Text>
+          </Pressable>
+          <Pressable
+            onPress={onOpenCredentials}
+            accessibilityRole="button"
+            accessibilityLabel="Credentials"
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Credentials</Text>
+              <Text style={styles.rowDetail}>The backup bucket, the plans bucket, and the transcription key</Text>
             </View>
             <Text style={styles.tick}>›</Text>
           </Pressable>

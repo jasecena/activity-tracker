@@ -181,9 +181,17 @@ describe('what the list says about its queue', () => {
     expect(planQueueLine(0, false)).toBeNull();
   });
 
-  it('counts what is still to go', () => {
-    expect(planQueueLine(1, true)).toBe('1 plan still to send.');
-    expect(planQueueLine(4, true)).toBe('4 plans still to send.');
+  /**
+   * **Not "still to send", which implied something was going to.** That was
+   * true while the queue drained on its own; it is a button now, and a count
+   * that sounds like a progress bar is a phone looking busy while nothing
+   * happens.
+   */
+  it('counts what has not gone, and says what the hold-up usually is', () => {
+    expect(planQueueLine(1, true)).toBe(
+      '1 plan not sent yet. A spoken plan needs its words first — open it and press Transcribe.',
+    );
+    expect(planQueueLine(4, true)).toContain('4 plans not sent yet.');
   });
 
   /**

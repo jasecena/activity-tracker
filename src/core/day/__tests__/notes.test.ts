@@ -670,3 +670,41 @@ describe('a note about a capture', () => {
     expect(found.map((note) => note.title)).toEqual(['In the moment', 'That evening']);
   });
 });
+
+/**
+ * The same words twice, which is never what anybody meant.
+ *
+ * Two independent callers append — the automatic plan queue and the Transcribe
+ * button — and the queue can reach one recording twice, because it appends the
+ * words before it records "already asked". A phone asleep in that window comes
+ * back, sees an unmarked recording and asks again.
+ */
+describe('appending the same transcript twice', () => {
+  it('does not append a transcript the note already ends with', () => {
+    const once = appendTranscript('', 'باید باغچه رو درست کنم');
+    expect(appendTranscript(once, 'باید باغچه رو درست کنم')).toBe(once);
+  });
+
+  it('does not append it after other words either', () => {
+    const typed = appendTranscript('Saturday morning', 'fix the back garden');
+    expect(appendTranscript(typed, 'fix the back garden')).toBe(typed);
+  });
+
+  it('still appends a different transcript', () => {
+    const once = appendTranscript('', 'fix the back garden');
+    const twice = appendTranscript(once, 'and call the plumber');
+    expect(twice).toContain('fix the back garden');
+    expect(twice).toContain('and call the plumber');
+  });
+
+  /**
+   * Only the tail is compared. A sentence somebody genuinely said twice in one
+   * long note is an ordinary repetition, and eating that would be a worse bug
+   * than the one this guards against.
+   */
+  it('leaves a repetition that is not the tail alone', () => {
+    const note = appendTranscript(appendTranscript('', 'go home'), 'buy milk');
+    expect(appendTranscript(note, 'go home')).toContain('buy milk');
+    expect(appendTranscript(note, 'go home').endsWith('go home')).toBe(true);
+  });
+});

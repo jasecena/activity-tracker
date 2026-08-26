@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  appendTranscript,
   dayKeyOf,
   daysWorthOpening,
   groupByDay,
@@ -49,6 +48,7 @@ import { usePlanSync } from '@/features/notes/hooks/usePlanSync';
 import { agendaAge, STALE_AFTER_MS, useAgenda } from '@/features/notes/hooks/useAgenda';
 import { planQueueLine } from '@/core/plans';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
+import { CredentialsScreen } from '@/features/settings/CredentialsScreen';
 import { DiagnosticsScreen } from '@/features/settings/DiagnosticsScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { useSettings } from '@/features/settings/hooks/useSettings';
@@ -79,7 +79,8 @@ type Page =
   | { readonly kind: 'place'; readonly place: Place }
   | { readonly kind: 'journeys' }
   | { readonly kind: 'data' }
-  | { readonly kind: 'diagnostics' };
+  | { readonly kind: 'diagnostics' }
+  | { readonly kind: 'credentials' };
 
 /**
  * What the note sheet is open for.
@@ -226,22 +227,20 @@ export function TabShell() {
   const notes = useDayNotes();
 
   /**
-   * Plans, out to the bucket, and the words fetched for the spoken ones.
+   * Plans, out to the bucket, when Send is pressed.
    *
-   * Hoisted here rather than living on the Notes tab because it must keep going
-   * while you are looking at the map — a queue that only drains on one screen is
-   * a queue that drains when you happen to visit it. `onTranscript` appends
-   * rather than replaces, so nothing this does can eat what somebody typed.
+   * **It used to drain on its own and it no longer does.** Hoisting it here was
+   * once about keeping the queue going while you looked at the map; it stays
+   * here because the count belongs to the Plans list wherever you are, and the
+   * press now comes from that list. What leaves does not stop at a bucket — a
+   * machine at home reads it and writes what a model decided into a database —
+   * so an unread transcript is a wrong row somebody has to go and find. The
+   * hook's own header argues it in full.
    */
   const planSync = usePlanSync({
     notes: notes.notes,
     ready: notes.ready && settings.ready,
     settings: settings.settings,
-    onTranscript: useCallback(
-      (note: DayNote, text: string) =>
-        notes.edit(note, note.at, note.title, appendTranscript(note.text, text), note.voice, note.mediaId),
-      [notes],
-    ),
   });
   /**
    * One line under the Plans switch: how many are still to go, or where to
@@ -257,6 +256,20 @@ export function TabShell() {
     }
     return planQueueLine(planSync.waiting, settings.settings.exchangeBucket.length > 0);
   }, [planSync.trouble, planSync.waiting, settings.settings.exchangeBucket]);
+
+  /**
+   * Whether the Plans list offers a Send button, and what it does.
+   *
+   * Absent entirely when there is no bucket: a control that cannot work is
+   * worse than none, and `planNote` above already says to add one in Settings.
+   */
+  const planSend = useMemo(
+    () =>
+      settings.settings.exchangeBucket.length > 0
+        ? { waiting: planSync.waiting, busy: planSync.busy, onSend: planSync.send }
+        : null,
+    [settings.settings.exchangeBucket, planSync.waiting, planSync.busy, planSync.send],
+  );
 
   /**
    * What the machine at home decided, read back out of the bucket.
@@ -664,6 +677,10 @@ export function TabShell() {
         />
       );
     }
+    if (page.kind === 'credentials') {
+      return <CredentialsScreen settings={settings} onBack={back} />;
+    }
+
     if (page.kind === 'diagnostics') {
       return <DiagnosticsScreen settings={settings.settings} onBack={back} />;
     }
@@ -784,6 +801,7 @@ export function TabShell() {
             onForget={notes.forget}
             thumbFor={noteThumbs.uriFor}
             planNote={planNote}
+            planSend={planSend}
             agenda={{
               agenda: agenda.agenda,
               busy: agenda.busy,
@@ -800,6 +818,7 @@ export function TabShell() {
             onOpenData={() => stacks.settings.push({ kind: 'data' })}
             onOpenPlaces={() => stacks.settings.push({ kind: 'places' })}
             onOpenJourneys={() => stacks.settings.push({ kind: 'journeys' })}
+            onOpenCredentials={() => stacks.settings.push({ kind: 'credentials' })}
             onOpenDiagnostics={() => stacks.settings.push({ kind: 'diagnostics' })}
           />
           {stacks.settings.current ? (

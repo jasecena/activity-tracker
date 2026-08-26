@@ -88,6 +88,22 @@ interface NotesScreenProps {
    * perfectly healthy.
    */
   readonly planNote?: string | null;
+  /**
+   * The Send button, or nothing when there is no bucket to send to.
+   *
+   * **A press, because this used to happen by itself.** Plans go somewhere a
+   * machine reads them and writes what a model decided into a database, so a
+   * transcript nobody read becomes a wrong row somebody has to go and find.
+   * Sending is now the moment you say the words are right — which is why the
+   * button sits under the count rather than anywhere else, and why it is absent
+   * rather than disabled when no bucket is configured: `planNote` already says
+   * to add one, and a dead control says it worse.
+   */
+  readonly planSend?: {
+    readonly waiting: number;
+    readonly busy: boolean;
+    readonly onSend: () => void;
+  } | null;
   /** What the machine at home decided, and the controls for it. Plans list only. */
   readonly agenda?: {
     readonly agenda: Agenda;
@@ -130,6 +146,7 @@ export function NotesScreen({
   onForget,
   thumbFor,
   planNote,
+  planSend,
   agenda,
 }: NotesScreenProps) {
   /**
@@ -257,6 +274,20 @@ export function NotesScreen({
       <NoteKindSwitch kind={kind} onChange={changeKind} counts={counts} />
 
       {plans && planNote ? <Text style={styles.planNote}>{planNote}</Text> : null}
+
+      {plans && planSend && planSend.waiting > 0 ? (
+        <Pressable
+          onPress={planSend.onSend}
+          disabled={planSend.busy}
+          accessibilityRole="button"
+          accessibilityLabel="Send plans"
+          style={({ pressed }) => [styles.send, pressed && styles.sendPressed, planSend.busy && styles.sendBusy]}
+        >
+          <Text style={styles.sendText}>
+            {planSend.busy ? 'Sending…' : planSend.waiting === 1 ? 'Send 1 plan' : `Send ${planSend.waiting} plans`}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* **Above the plans, and inside the scroller.** What is next is why you
@@ -450,6 +481,17 @@ function SwipeToDelete({
 }
 
 const styles = StyleSheet.create({
+  send: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  sendBusy: { opacity: 0.4 },
+  sendPressed: { opacity: 0.6 },
+  sendText: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
   planNote: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,

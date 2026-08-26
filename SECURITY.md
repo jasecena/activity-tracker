@@ -110,22 +110,29 @@ and leaving the interesting part untested.
 ### Network posture
 
 The app makes **exactly five kinds of request, and every one of them is a press
-you made** — with one stated exception, Plans, which goes on its own once you
-have configured it. This section used to say "exactly one" and was left standing
-after the second and third arrived; it then said "three" while the table beneath
-it listed four. Both are the failure it exists to prevent, so the count is stated
-plainly, checked against the rows, and each entry names what leaves.
+you made.** There is no longer an exception. This section used to say "exactly
+one" and was left standing after the second and third arrived; it then said
+"three" while the table beneath it listed four; it then had to admit that Plans
+uploaded unattended. Each of those is the failure it exists to prevent, so the
+count is stated plainly, checked against the rows, and each entry names what
+leaves.
+
+Plans became a press again on 26 August 2026, and the reason is worth keeping
+here rather than only in the code: what that bucket receives is read by a machine
+at home, handed to a model, and written into a database. A transcript nobody read
+is a wrong record somebody has to go and find. Review is the point of the
+button.
 
 **The property worth defending is that the list fits in a sentence**, not that
 the number is one.
 
-| Request                                               | Gate                                                                | What leaves the phone                                                                                                                                                                                     |
-| ----------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apple Maps imagery**                                | `settings.mapsEnabled`, **off on a fresh install**                  | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                                                                                       |
-| **Transcription** (ElevenLabs)                        | A key you typed, plus a press of Transcribe on one note             | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                                                                                               |
-| **Backup** to an S3 bucket **you own**                | Credentials and a passphrase you typed, plus a press of Back up     | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video.                                                                    |
-| **Plans** to a **second, separate** S3 bucket you own | A second set of credentials and a second passphrase, then automatic | The words and instant of anything filed under Plans, sealed on this phone first. Never its recording, never a diary entry, and never a coordinate.                                                        |
-| **Connection checks** (Settings → Check connections)  | A press of Run the checks                                           | An ElevenLabs account lookup — **no audio**; a listing of the backup bucket; a rewrite of the plans bucket's own `manifest.json`; a read of `agenda/`. Nothing that is not already one of the rows above. |
+| Request                                               | Gate                                                                      | What leaves the phone                                                                                                                                                                                     |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apple Maps imagery**                                | `settings.mapsEnabled`, **off on a fresh install**                        | Which part of the map is on screen. Never your track — the route is an overlay drawn on the device.                                                                                                       |
+| **Transcription** (ElevenLabs)                        | A key you typed, plus a press of Transcribe on one note                   | That recording, the model, the language and `enable_logging=false`. Nothing else — asserted as an equality.                                                                                               |
+| **Backup** to an S3 bucket **you own**                | Credentials and a passphrase you typed, plus a press of Back up           | Finished days — segments and notes — and note recordings, each sealed on this phone first. Never today. Never a photograph or a video.                                                                    |
+| **Plans** to a **second, separate** S3 bucket you own | A second set of credentials and a second passphrase, plus a press of Send | The words and instant of anything filed under Plans, sealed on this phone first. Never its recording, never a diary entry, and never a coordinate.                                                        |
+| **Connection checks** (Settings → Check connections)  | A press of Run the checks                                                 | An ElevenLabs account lookup — **no audio**; a listing of the backup bucket; a rewrite of the plans bucket's own `manifest.json`; a read of `agenda/`. Nothing that is not already one of the rows above. |
 
 With maps off, every map in the app is the offline canvas drawn from your own
 coordinates and nothing else. `components/MapCanvas.tsx` is the only file

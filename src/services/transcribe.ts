@@ -39,8 +39,13 @@ const ENDPOINT = 'https://api.elevenlabs.io/v1/speech-to-text';
  * Scribe v2. Named here rather than made configurable: it is the model § 15
  * chose on Persian accuracy, and a wrong value is a 422 rather than a worse
  * transcript.
+ *
+ * Exported so the connection check can send the same one. That check posts to
+ * this endpoint without a recording to prove the key, and a second copy of this
+ * string would let the two drift — at which point the check would be testing a
+ * model the app does not use.
  */
-const MODEL_ID = 'scribe_v2';
+export const MODEL_ID = 'scribe_v2';
 
 /**
  * How long to wait before giving up, in ms.

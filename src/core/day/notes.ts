@@ -254,6 +254,26 @@ export function appendTranscript(text: string, transcript: string): string {
   const body = text.trim();
   if (body.length === 0) return addition;
 
+  // **The same words, twice, is never what anybody meant.**
+  //
+  // Two independent callers append: the automatic plan queue and the Transcribe
+  // button on the note sheet. Neither knows about the other, and the queue can
+  // reach the same recording twice — it appends the words first and records
+  // "already asked" afterwards, so a phone put to sleep in that window comes
+  // back, sees an unmarked recording, asks ElevenLabs again and appends the
+  // identical answer under the first one. Pressing Transcribe on a plan the
+  // queue already did lands in the same place from the other direction.
+  //
+  // Guarding here rather than at either call site is what makes it hold for
+  // both, and for whatever appends next. It is not a guess about which caller
+  // is at fault: appending a transcript a note already ends with is wrong
+  // whoever asks for it, because the recording it came from has not changed.
+  //
+  // Only the tail is compared. The same sentence occurring earlier in a long
+  // note is an ordinary repetition somebody said twice, and eating that would
+  // be a worse bug than the one this fixes.
+  if (body === addition || body.endsWith(`${TRANSCRIPT_SEPARATOR}${addition}`)) return text;
+
   return `${body}${TRANSCRIPT_SEPARATOR}${addition}`;
 }
 
