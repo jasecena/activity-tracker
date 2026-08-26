@@ -117,7 +117,7 @@ cp .env.example .env      # then set IOS_BUNDLE_IDENTIFIER to something you own
 npm run ios
 ```
 
-`npm run verify` runs the whole check suite — typecheck, lint, format and 1,055
+`npm run verify` runs the whole check suite — typecheck, lint, format and 1,066
 tests — in well under a minute, entirely on Linux.
 
 Full first-time setup, including the Apple side, is in the deployment notes —

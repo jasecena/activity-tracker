@@ -12,7 +12,7 @@ document describing an app that no longer exists.
 
 ```bash
 npm install
-npm run verify      # typecheck, lint, format, 1,055 tests — well under a minute
+npm run verify      # typecheck, lint, format, 1,066 tests — well under a minute
 ```
 
 `npm run verify` is the gate. It runs entirely on Linux and needs no simulator,
