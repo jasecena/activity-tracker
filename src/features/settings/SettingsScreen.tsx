@@ -77,6 +77,25 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
  * is not the question anybody is asking. What they want to know is what of
  * theirs is in the request.
  */
+/**
+ * The hand-off, which is not a request and is still worth saying.
+ *
+ * **Said in both branches, including the one that claims no network requests at
+ * all.** That claim stays literally true — opening a link is iOS's business and
+ * this app never opens a socket for it — but somebody reading "no network
+ * requests of any kind" is being told that nothing about them goes anywhere,
+ * and pressing Open in Maps puts one of their coordinates into Apple's Maps
+ * app. The distinction between "we sent it" and "you took it somewhere" is real
+ * and is not what that sentence is understood to mean.
+ *
+ * This paragraph has been wrong twice — once claiming captures were sealed a
+ * release after they stopped being, once promising recordings were never
+ * uploaded while a network feature was shipping. Both times the code moved and
+ * the sentence did not. This is the third opportunity and it is being taken.
+ */
+const HANDOFF =
+  'Separately: opening a stay or a place in Maps hands that one coordinate to the Maps app, which is Apple’s and not this one. That is you taking something somewhere rather than this app sending it, it happens only when you press the link, and nothing else about the stay goes with it.';
+
 function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: boolean, canSendPlans: boolean): string {
   const destinations = [
     mapsEnabled &&
@@ -96,7 +115,7 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
   ].filter((entry): entry is string => typeof entry === 'string');
 
   if (destinations.length === 0) {
-    return 'The app makes no network requests of any kind — there is no server to send anything to.';
+    return `The app makes no network requests of any kind — there is no server to send anything to. ${HANDOFF}`;
   }
 
   const count =
@@ -116,7 +135,7 @@ function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: bo
   const automatic = canSendPlans
     ? 'None of it happens on its own: every one of these waits for you to press something.'
     : 'None of it happens on its own.';
-  return `${count}: ${destinations.join('; ')}. Nothing else in the app talks to a network. ${automatic}`;
+  return `${count}: ${destinations.join('; ')}. Nothing else in the app talks to a network. ${automatic} ${HANDOFF}`;
 }
 
 export function SettingsScreen({
