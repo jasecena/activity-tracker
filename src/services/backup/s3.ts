@@ -154,50 +154,6 @@ export async function putObject(
  * running two years is past that. A truncated listing that looked complete would
  * quietly re-upload everything beyond the first page, for ever.
  */
-/**
- * One object, as bytes, or why it could not be had.
- *
- * A 404 comes back as `not-found` rather than an error worth alarming anybody
- * about: an agenda that has not been published yet is the ordinary state of a
- * fresh install, not a fault. It is deliberately its own reason and not
- * `not-configured` — see `BackupFailure`. A caller that treats the two alike is
- * free to, and `fetchAgenda` does; one trying to tell a working credential from
- * an absent one cannot, and that is the case this distinction exists for.
- */
-export async function getObject(config: BucketConfig, key: string, now: number): Promise<Uint8Array | BackupError> {
-  const signed = signS3Request({
-    method: 'GET',
-    bucket: config.bucket,
-    key,
-    body: new Uint8Array(),
-    credentials: config,
-    now,
-  });
-  const { signal, done } = abortAfter(TIMEOUT_MS);
-  try {
-    const response = await fetch(signed.url, { method: 'GET', headers: signed.headers, signal });
-    if (!response.ok) {
-      const said = await response.text().catch(() => '');
-      // `detailFrom` rather than the raw body, as every other failure here
-      // already does: S3's XML is verbose and its <Code> and <Message> are the
-      // two lines worth putting on a screen.
-      return {
-        reason: response.status === 404 ? 'not-found' : failureFor(response.status),
-        detail: detailFrom(response.status, said),
-        code: codeFrom(said),
-      };
-    }
-    return new Uint8Array(await response.arrayBuffer());
-  } catch (error) {
-    return {
-      reason: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'unreachable',
-      detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
-    };
-  } finally {
-    done();
-  }
-}
-
 export async function listKeys(config: BucketConfig, now: number): Promise<readonly string[] | BackupError> {
   const keys: string[] = [];
   let token: string | undefined;

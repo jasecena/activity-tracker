@@ -4,7 +4,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { formatDayTitle, formatDuration, formatTimecode } from '@/core/format';
-import type { Agenda } from '@/core/agenda';
 import {
   groupNotesByDay,
   notesOfKind,
@@ -19,7 +18,6 @@ import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
-import { AgendaSection } from './components/AgendaSection';
 import { NoteKindSwitch } from './components/NoteKindSwitch';
 import { RecordButton } from './components/RecordButton';
 import { MAX_VOICE_MS, useVoiceNote } from './hooks/useVoiceNote';
@@ -104,13 +102,6 @@ interface NotesScreenProps {
     readonly busy: boolean;
     readonly onSend: () => void;
   } | null;
-  /** What the machine at home decided, and the controls for it. Plans list only. */
-  readonly agenda?: {
-    readonly agenda: Agenda;
-    readonly busy: boolean;
-    readonly note: string | null;
-    readonly onRefresh: () => void;
-  };
 }
 
 /**
@@ -147,7 +138,6 @@ export function NotesScreen({
   thumbFor,
   planNote,
   planSend,
-  agenda,
 }: NotesScreenProps) {
   /**
    * What has happened and what has not, read in opposite directions.
@@ -284,22 +274,6 @@ export function NotesScreen({
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* **Above the plans, and inside the scroller.** What is next is why you
-            opened this list, so it is the first thing; but it scrolls away,
-            because the plans underneath are what the microphone writes into and
-            a permanently pinned panel would take the top of the page from them.
-            The same trade the Day screen makes with its map. */}
-        {plans && agenda ? (
-          <AgendaSection
-            agenda={agenda.agenda}
-            tzOffsetMinutes={tzOffsetMinutes}
-            now={now}
-            busy={agenda.busy}
-            note={agenda.note}
-            onRefresh={agenda.onRefresh}
-          />
-        ) : null}
-
         {/* **Ahead of now, in a dashed box at the top.** Dashed rather than a
             colour or a badge: an outline that is not solid reads as "not settled
             yet" without needing a legend, and it survives the greyscale and

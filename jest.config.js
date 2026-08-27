@@ -82,7 +82,6 @@ module.exports = {
     './src/core/power/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/backup/': { branches: 90, functions: 100, lines: 95, statements: 95 },
     './src/core/plans/': { branches: 90, functions: 100, lines: 95, statements: 95 },
-    './src/core/agenda/': { branches: 90, functions: 100, lines: 95, statements: 95 },
   },
   coverageReporters: ['text-summary', 'lcov'],
 };

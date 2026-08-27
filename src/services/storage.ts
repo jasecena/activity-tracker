@@ -115,17 +115,6 @@ export const STORAGE_KEYS = {
    */
   planSync: `${PREFIX}plan-sync`,
   /**
-   * The last agenda the machine at home published, as this build read it.
-   *
-   * **A cache, never a source of truth.** Everything in it is derived at the
-   * other end from plans this phone sent, so it can be thrown away and asked for
-   * again. It is kept only because that machine is a computer in a house rather
-   * than a service: it will be off for a weekend, and a phone that showed
-   * nothing whenever it could not reach the bucket would be useless exactly when
-   * somebody is away from their desk.
-   */
-  agenda: `${PREFIX}agenda`,
-  /**
    * The index of captured photos, video and voice notes.
    *
    * Only the index. The bytes live in `services/mediaStore.ts`, sealed under

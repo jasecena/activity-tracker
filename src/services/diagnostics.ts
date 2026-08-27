@@ -1,6 +1,5 @@
 import { manifestBytes, MANIFEST_KEY } from '@/services/backup/manifest';
-import { getObject, listKeys, putObject, type BackupError, type BucketConfig } from '@/services/backup/s3';
-import { AGENDA_KEY } from '@/services/agenda';
+import { listKeys, putObject, type BackupError, type BucketConfig } from '@/services/backup/s3';
 import { now as readNow } from '@/services/clock';
 import type { Settings } from '@/services/settings';
 import { MODEL_ID } from '@/services/transcribe';
@@ -56,7 +55,7 @@ export interface CheckResult {
   readonly detail?: string;
 }
 
-export type CheckId = 'transcription' | 'backup' | 'plans-write' | 'plans-read';
+export type CheckId = 'transcription' | 'backup' | 'plans-write';
 
 /**
  * The name of each check, in one place.
@@ -70,7 +69,6 @@ export const CHECK_TITLES: Readonly<Record<CheckId, string>> = {
   transcription: 'Transcription — ElevenLabs',
   backup: 'Backup bucket',
   'plans-write': 'Plans bucket — sending',
-  'plans-read': 'Plans bucket — the agenda',
 };
 
 /** How much of a service's answer is worth putting on a phone screen. */
@@ -380,71 +378,6 @@ export async function checkPlansWrite(settings: Settings): Promise<CheckResult> 
   };
 }
 
-/**
- * Can the phone read the agenda back.
- *
- * **A missing agenda is a pass, and getting there took two corrections.**
- *
- * The first: `getObject` used to report a 404 as `not-configured`, so a bucket
- * whose planner had never run and a phone with no credentials at all gave the
- * identical answer. `BackupFailure` now separates `not-found`.
- *
- * The second, which the first did not anticipate: **this bucket does not answer
- * 404 at all.** `activity-tracker-exchange` is deliberately not granted
- * `s3:ListBucket`, and S3's documented behaviour is that a caller without it
- * gets `403 AccessDenied` for an object that does not exist rather than a 404 —
- * it will not confirm absence to somebody who may not enumerate. So the
- * ordinary state of this check, with everything configured perfectly, is a 403.
- *
- * That is why it branches on S3's `<Code>` and not on the status. `AccessDenied`
- * and `SignatureDoesNotMatch` are both 403 and mean opposite things: the first
- * says the request was signed, accepted, and then refused on policy — which
- * proves the credentials — and the second says the secret is wrong.
- *
- * **What it deliberately does not claim.** Once `AccessDenied` is the answer to
- * both "nothing is published" and "you may not read this", no request can tell
- * them apart until an agenda exists. So the summary says the signature is
- * proven and says plainly that the read permission is not yet — rather than
- * printing a green tick that quietly means more than it knows. The one screen
- * whose job is honesty is the wrong place to round that up.
- */
-export async function checkPlansRead(settings: Settings): Promise<CheckResult> {
-  const base = { id: 'plans-read', title: CHECK_TITLES['plans-read'] } as const;
-  const config = exchangeConfig(settings);
-  if (!config) {
-    return { ...base, status: 'off', summary: 'No plans bucket set, so there is no agenda to read.' };
-  }
-
-  const result = await getObject(config, AGENDA_KEY, readNow());
-  if (result instanceof Uint8Array) {
-    const bytes = result.length === 1 ? '1 byte' : `${result.length.toLocaleString()} bytes`;
-    return { ...base, status: 'ok', summary: `Read ${AGENDA_KEY} — ${bytes}. The machine at home has published.` };
-  }
-
-  const error = result as BackupError;
-
-  // A plain 404, which this bucket will not send but another might.
-  if (error.reason === 'not-found') {
-    return {
-      ...base,
-      status: 'ok',
-      summary: `Signed and accepted, and nothing has been published to ${AGENDA_KEY} yet. That is the ordinary state until the machine at home runs.`,
-    };
-  }
-
-  if (error.code === 'AccessDenied') {
-    return {
-      ...base,
-      status: 'ok',
-      summary:
-        'Signed and accepted — the bucket knew who was asking, so the credentials are good. Nothing has been published yet, and this key may not list the bucket, so S3 answers a missing agenda this way rather than with a 404. Reading one will be proven the first time there is one to read.',
-      detail: clipped(error.detail),
-    };
-  }
-
-  return { ...base, status: 'failed', summary: bucketSentence(error), detail: clipped(error.detail) };
-}
-
 /** The checks, in the order they are shown and run. */
 export const CHECKS: readonly {
   readonly id: CheckId;
@@ -453,5 +386,4 @@ export const CHECKS: readonly {
   { id: 'transcription', run: checkTranscription },
   { id: 'backup', run: checkBackupBucket },
   { id: 'plans-write', run: checkPlansWrite },
-  { id: 'plans-read', run: checkPlansRead },
 ];

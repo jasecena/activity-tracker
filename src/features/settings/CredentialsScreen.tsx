@@ -236,12 +236,17 @@ export function CredentialsScreen({ settings, onBack }: CredentialsScreenProps) 
 
         {/* **The second bucket, and why there is one.**
 
-            Plans go up so something at home can read them and send back an
-            agenda. That something must hold the key to whatever it reads — so
-            the question is not whether to trust it, but how much to put within
-            its reach. A separate bucket under a separate passphrase answers
-            that: it can read what you filed under Plans, and it cannot open a
-            single journey, photo or recording in the backup. */}
+            Plans go up so the machine at home can read them. **One way only,
+            and that is now the whole of it** — what it works out is read on its
+            own web page, on the VPN, and never comes back here. One source of
+            truth, edited in one place, rather than two copies of a plan drifting
+            apart between a phone and a database.
+
+            That machine must hold the key to whatever it reads — so the
+            question is not whether to trust it, but how much to put within its
+            reach. A separate bucket under a separate passphrase answers that: it
+            can read what you filed under Plans, and it cannot open a single
+            journey, photo or recording in the backup. */}
         <Text style={styles.sectionLabel}>PLANS</Text>
         <View style={styles.card}>
           <View style={styles.rowText}>

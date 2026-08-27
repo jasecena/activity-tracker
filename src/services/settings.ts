@@ -83,8 +83,12 @@ export interface Settings {
   readonly backupKeyHex: string;
   readonly backupSaltHex: string;
   /**
-   * Where plans go and the agenda comes from — **a different bucket, under a
-   * different key, reached with a different credential.**
+   * Where plans go — **a different bucket, under a different key, reached with
+   * a different credential.**
+   *
+   * One way. Nothing is read back: what the machine at home makes of a plan is
+   * shown on its own page and stays there, so there is one copy of a plan to
+   * edit rather than two that have to be kept in step.
    *
    * This is the one place in the app where the same four-fields-and-a-key shape
    * appears twice, and the duplication is the feature. The backup holds every
@@ -113,8 +117,8 @@ export interface Settings {
    * The exchange bucket's own key and salt, from its own passphrase.
    *
    * **Never the backup's.** The machine at home must hold this one in order to
-   * read a plan and write an agenda, so anything sealed under it should be
-   * assumed readable by that machine. That is exactly why the backup is not
+   * read a plan, so anything sealed under it should be assumed readable by that
+   * machine. That is exactly why the backup is not
    * sealed under it.
    *
    * Set once and never changed, for the same reason `backupKeyHex` is: there is

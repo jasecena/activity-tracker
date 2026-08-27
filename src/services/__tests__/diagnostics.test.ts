@@ -1,8 +1,8 @@
 import { bytesToHex } from '@noble/ciphers/utils.js';
 
 import { MANIFEST_KEY } from '@/services/backup/manifest';
-import { getObject, listKeys, putObject } from '@/services/backup/s3';
-import { checkBackupBucket, checkPlansRead, checkPlansWrite, checkTranscription } from '@/services/diagnostics';
+import { listKeys, putObject } from '@/services/backup/s3';
+import { checkBackupBucket, checkPlansWrite, checkTranscription } from '@/services/diagnostics';
 import { DEFAULT_SETTINGS, type Settings } from '@/services/settings';
 
 /**
@@ -21,7 +21,6 @@ import { DEFAULT_SETTINGS, type Settings } from '@/services/settings';
  */
 
 jest.mock('@/services/backup/s3', () => ({
-  getObject: jest.fn(),
   listKeys: jest.fn(),
   putObject: jest.fn(),
 }));
@@ -64,60 +63,6 @@ function answering(status: number, body: unknown): void {
     json: async () => body,
   });
 }
-
-describe('the agenda read', () => {
-  it('counts a 404 as working, because nothing has published yet', async () => {
-    (getObject as jest.Mock).mockResolvedValue({ reason: 'not-found', detail: 'HTTP 404 — NoSuchKey' });
-
-    const result = await checkPlansRead(PLANS);
-
-    expect(result.status).toBe('ok');
-    expect(result.summary).toContain('nothing has been published');
-  });
-
-  /**
-   * The correction the `not-found` split did not anticipate: this bucket never
-   * sends a 404. `activity-tracker-exchange` has no `s3:ListBucket`, and S3
-   * will not confirm an object's absence to a caller who may not enumerate —
-   * so the ordinary state of a perfectly configured phone is `AccessDenied`.
-   */
-  it('counts AccessDenied as working, because this key may not list the bucket', async () => {
-    (getObject as jest.Mock).mockResolvedValue({
-      reason: 'unauthorized',
-      detail: 'HTTP 403 — AccessDenied: not authorized to perform: s3:ListBucket',
-      code: 'AccessDenied',
-    });
-
-    const result = await checkPlansRead(PLANS);
-
-    expect(result.status).toBe('ok');
-    expect(result.summary).toContain('credentials are good');
-  });
-
-  it('counts a 403 as a failure and names the two fields to check', async () => {
-    (getObject as jest.Mock).mockResolvedValue({
-      reason: 'unauthorized',
-      detail: 'HTTP 403 — SignatureDoesNotMatch',
-      code: 'SignatureDoesNotMatch',
-    });
-
-    const result = await checkPlansRead(PLANS);
-
-    expect(result.status).toBe('failed');
-    expect(result.summary).toContain('access key id');
-    // The service's own words, which is the line that makes it fixable.
-    expect(result.detail).toContain('SignatureDoesNotMatch');
-  });
-
-  it('reports a published agenda by size, without opening it', async () => {
-    (getObject as jest.Mock).mockResolvedValue(new Uint8Array(1234));
-
-    const result = await checkPlansRead(PLANS);
-
-    expect(result.status).toBe('ok');
-    expect(result.summary).toContain('1,234 bytes');
-  });
-});
 
 describe('the plans write', () => {
   it('writes the real manifest, to the real key', async () => {
