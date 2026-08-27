@@ -1,13 +1,33 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { formatClockTime, formatDistance, formatDuration, formatPace, formatSpeed, modeLabel } from '@/core/format';
+import { directionsUrl, mapsUrl } from '@/core/geo';
 import { matchPlace, type Place } from '@/core/places';
 import { averageSpeedMps, durationMs, type Segment } from '@/core/segments';
 import { MapCanvas } from '@/components/MapCanvas';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { openInMaps, openRouteInMaps } from '@/services/openMap';
 import { StatTile } from '@/components/StatTile';
 import { colors, modeColors, radius, spacing, typography } from '@/theme/tokens';
+
+/**
+ * Open something in Maps, and say so when it will not.
+ *
+ * **A failure here is worth a dialog rather than a silence.** Every other
+ * outcome of pressing this is a whole other app appearing, so nothing happening
+ * reads as a dead button — and a dead button is the one people press again.
+ */
+async function showOnMap(open: () => Promise<{ ok: boolean; reason?: string }>) {
+  const outcome = await open();
+  if (outcome.ok) return;
+  Alert.alert(
+    'Could not open Maps',
+    outcome.reason === 'no-coordinate'
+      ? 'This has no usable position, so there is nowhere to open.'
+      : 'iOS would not open the link. Maps may be restricted on this device.',
+  );
+}
 
 interface SegmentScreenProps {
   readonly segment: Segment;
@@ -52,17 +72,30 @@ export function SegmentScreen({
           title={place?.name ?? 'Unnamed place'}
           subtitle={`${span} · ${formatDuration(elapsed)}`}
           onBack={onBack}
-          actions={
-            onNamePlace
+          actions={[
+            // **Beside the map of it, which is where you are already looking.**
+            // The canvas below draws the centre and its radius to scale; this
+            // opens the same point in Maps, where the streets have names and
+            // you can work out what the building actually was.
+            ...(mapsUrl(segment.center)
+              ? [
+                  {
+                    label: 'Open this stop in Maps',
+                    icon: 'map-outline' as const,
+                    onPress: () => void showOnMap(() => openInMaps(segment.center, place?.name ?? 'Stop')),
+                  },
+                ]
+              : []),
+            ...(onNamePlace
               ? [
                   {
                     label: place ? 'Rename this place' : 'Name this place',
-                    icon: 'pricetag-outline',
+                    icon: 'pricetag-outline' as const,
                     onPress: onNamePlace,
                   },
                 ]
-              : undefined
-          }
+              : []),
+          ]}
         />
         {/* iOS's own inset, so the field is scrolled clear of the keyboard
             rather than typed into from behind it. A plain scrolling page needs
@@ -120,17 +153,30 @@ export function SegmentScreen({
         title={segment.label ?? modeLabel(segment.mode)}
         subtitle={`${span} · ${formatDuration(elapsed)}`}
         onBack={onBack}
-        actions={
-          onNameJourney
+        actions={[
+          // **A route, not a pin.** Where a journey went is the question, and
+          // Maps will draw it from the two ends. It is Maps' own idea of the
+          // route rather than the one walked — the fixes behind it are gone
+          // once the day is frozen — which is honest for orienting yourself.
+          ...(directionsUrl(segment.path.at(0), segment.path.at(-1))
+            ? [
+                {
+                  label: 'Open this journey in Maps',
+                  icon: 'map-outline' as const,
+                  onPress: () => void showOnMap(() => openRouteInMaps(segment.path.at(0), segment.path.at(-1))),
+                },
+              ]
+            : []),
+          ...(onNameJourney
             ? [
                 {
                   label: segment.label ? 'Rename this journey' : 'Name this journey',
-                  icon: 'pricetag-outline',
+                  icon: 'pricetag-outline' as const,
                   onPress: onNameJourney,
                 },
               ]
-            : undefined
-        }
+            : []),
+        ]}
       />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.stats}>

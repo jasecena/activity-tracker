@@ -7,7 +7,7 @@
  */
 export { bearingDeg, centroid, distanceM, EARTH_RADIUS_M, pathLengthM } from './distance';
 export { judgeFix } from './filter';
-export { mapsUrl } from './maps';
+export { directionsUrl, mapsUrl } from './maps';
 export type { FixFilterConfig, FixVerdict, RejectionReason } from './filter';
 export {
   boundsOf,

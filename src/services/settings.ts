@@ -142,8 +142,31 @@ export interface Settings {
    * able to change languages later without a migration.
    */
   readonly transcriptionLanguage: string;
+  /**
+   * Where the planner's web view is, or empty.
+   *
+   * **Not a network destination for this app**, which is why it is not in
+   * `networkNote` and why it is a plain string rather than a switch. Nothing
+   * here ever fetches it: the icon on the Plans list hands the address to the
+   * browser, exactly as a stay is handed to Maps, and what happens next is
+   * between the browser and a machine on the VPN.
+   *
+   * Empty hides the control. Defaulted to the address that exists rather than
+   * to nothing, because there is one planner and typing its name into a phone
+   * is friction for no gain.
+   */
+  readonly plannerUrl: string;
   readonly segmentation: SegmentConfig;
 }
+
+/**
+ * The planner's own address, on the VPN.
+ *
+ * A default rather than a blank field: there is one of these and it is not
+ * reachable from anywhere else, so pre-filling costs nothing and saves typing a
+ * hostname into a phone keyboard.
+ */
+export const DEFAULT_PLANNER_URL = 'https://tracker.triplec.ai';
 
 /** Persian. The recordings this was built for are entirely in it. */
 export const DEFAULT_TRANSCRIPTION_LANGUAGE = 'fa';
@@ -154,6 +177,7 @@ export const DEFAULT_SETTINGS: Settings = {
   trackingEnabled: false,
   retentionDays: null,
   mapsEnabled: false,
+  plannerUrl: DEFAULT_PLANNER_URL,
   transcriptionKey: '',
   backupBucket: '',
   backupRegion: 'ap-southeast-2',
@@ -213,6 +237,14 @@ export function normalizeSettings(input: unknown): Settings {
     // back to *off*, because the failure it guards is a network request nobody
     // asked for.
     mapsEnabled: source.mapsEnabled === true,
+    // Only https survives. A stored `javascript:` or `file:` is not a website,
+    // and this value is handed to `Linking` — so the check is here as well as
+    // at the call site, because a normaliser is where a bad stored value is
+    // supposed to stop.
+    plannerUrl:
+      typeof source.plannerUrl === 'string' && /^https:\/\//i.test(source.plannerUrl.trim())
+        ? source.plannerUrl.trim()
+        : DEFAULT_PLANNER_URL,
     // Trimmed, because a key pasted from a web page arrives with whitespace on
     // it and a leading space is an authentication failure nobody can see.
     transcriptionKey: typeof source.transcriptionKey === 'string' ? source.transcriptionKey.trim() : '',

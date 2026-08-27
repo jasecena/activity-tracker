@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 
-import { mapsUrl } from '@/core/geo';
+import { directionsUrl, mapsUrl } from '@/core/geo';
 import type { LatLon } from '@/core/geo/types';
 
 /**
@@ -42,6 +42,53 @@ export async function openInMaps(at: LatLon | null | undefined, label = ''): Pro
     // cost a round trip through the bridge to learn it — and on iOS it needs
     // the scheme declared in `LSApplicationQueriesSchemes` to answer usefully
     // at all. Trying and reporting the failure is both simpler and truer.
+    return { ok: false, reason: 'failed', detail: error instanceof Error ? error.message : undefined };
+  }
+}
+
+/**
+ * The route between two points, handed to Maps the same way.
+ *
+ * Separate from `openInMaps` rather than an optional second argument: a caller
+ * either has one coordinate or two, and a function that quietly does something
+ * different depending on whether an argument was null is a function whose
+ * behaviour has to be read rather than known.
+ */
+export async function openRouteInMaps(
+  from: LatLon | null | undefined,
+  to: LatLon | null | undefined,
+): Promise<OpenMapOutcome> {
+  const url = directionsUrl(from, to);
+  if (!url) return { ok: false, reason: 'no-coordinate' };
+  try {
+    await Linking.openURL(url);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: 'failed', detail: error instanceof Error ? error.message : undefined };
+  }
+}
+
+/**
+ * Open a page in the browser.
+ *
+ * **Here rather than in a file of its own**, because this module is already
+ * what it says it is: the one place that hands something to another app. A
+ * second module for a second URL would be a boundary around one caller.
+ *
+ * The planner is on the VPN, so this fails in the ordinary way when the phone
+ * is not on it — which is a browser saying it cannot reach the site, not
+ * something this app can usefully pre-empt.
+ */
+export async function openPlanner(url: string): Promise<OpenMapOutcome> {
+  const trimmed = url.trim();
+  // https only. A settings field is a text box, and the two schemes worth
+  // refusing outright are `javascript:` and `file:` — neither is a website, and
+  // both are things `openURL` would otherwise be asked to do.
+  if (!/^https:\/\//i.test(trimmed)) return { ok: false, reason: 'no-coordinate' };
+  try {
+    await Linking.openURL(trimmed);
+    return { ok: true };
+  } catch (error) {
     return { ok: false, reason: 'failed', detail: error instanceof Error ? error.message : undefined };
   }
 }

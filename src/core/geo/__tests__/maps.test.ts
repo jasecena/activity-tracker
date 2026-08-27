@@ -1,4 +1,4 @@
-import { mapsUrl } from '../maps';
+import { directionsUrl, mapsUrl } from '../maps';
 
 /**
  * The string is the whole feature.
@@ -56,5 +56,31 @@ describe('a link to one coordinate', () => {
 
   it('accepts the edges of the coordinate system, which are real places', () => {
     expect(mapsUrl({ lat: -90, lon: 180 }, 'edge')).toContain('ll=-90.000000,180.000000');
+  });
+});
+
+describe('a link to a route', () => {
+  const from = { lat: -37.814218, lon: 144.963161 };
+  const to = { lat: -37.8, lon: 144.99 };
+
+  it('asks Maps to draw the way between two points', () => {
+    expect(directionsUrl(from, to)).toBe(
+      'https://maps.apple.com/?saddr=-37.814218,144.963161&daddr=-37.800000,144.990000&dirflg=w',
+    );
+  });
+
+  it('asks for walking, which is the mode that follows paths', () => {
+    // Not because every journey was walked — because driving directions route a
+    // walk through a park around it by road, and that is not where you went.
+    expect(directionsUrl(from, to)).toContain('dirflg=w');
+  });
+
+  it.each([
+    ['no start', null, { lat: 0, lon: 0 }],
+    ['no end', { lat: 0, lon: 0 }, null],
+    ['a NaN in the start', { lat: NaN, lon: 0 }, { lat: 0, lon: 0 }],
+    ['a longitude off the planet', { lat: 0, lon: 0 }, { lat: 0, lon: 181 }],
+  ])('refuses %s', (_what, a, b) => {
+    expect(directionsUrl(a as never, b as never)).toBeNull();
   });
 });

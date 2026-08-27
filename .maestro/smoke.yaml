@@ -174,7 +174,17 @@ appId: ${APP_ID}
 # The empty line is per list rather than shared: the diary's says to write
 # something, and this one says what a plan is for.
 - assertVisible: 'No plans yet. Tap the microphone to say what you want to happen.'
+# **The way to the planner, and it is on this list only.** The machine at home
+# reads plans and has never seen the diary, so an icon offering it from the
+# notes list would point at a page about something else. Asserted here because
+# it is drawn from a setting — an empty address hides it — and a header action
+# that silently stopped rendering is precisely what Jest cannot tell from one
+# that is there.
+- assertVisible: 'Open the planner in the browser'
 - tapOn: 'Notes, 0 entries'
+# And it is gone again on the diary, which is the half worth proving: the icon
+# is conditional, so a version that always drew it would pass the line above.
+- assertNotVisible: 'Open the planner in the browser'
 - assertVisible: 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'
 
 # The gallery's own gestures and panels cannot be reached here: `clearState`

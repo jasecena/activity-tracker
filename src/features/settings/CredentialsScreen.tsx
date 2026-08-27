@@ -67,6 +67,8 @@ export function CredentialsScreen({ settings, onBack }: CredentialsScreenProps) 
       secretKey: exSecretKey,
     });
 
+  const [plannerUrl, setPlannerUrlDraft] = useState(values.plannerUrl);
+
   const [exPhrase, setExPhrase] = useState('');
   const [exPhraseAgain, setExPhraseAgain] = useState('');
   const saveExchangePassphrase = () => {
@@ -249,6 +251,31 @@ export function CredentialsScreen({ settings, onBack }: CredentialsScreenProps) 
             journey, photo or recording in the backup. */}
         <Text style={styles.sectionLabel}>PLANS</Text>
         <View style={styles.card}>
+          {/* **Not a credential, and it sits here anyway.** It is the address of
+              the machine the bucket below exists to feed, so this is where
+              somebody looking for it will look. Nothing in this app ever
+              fetches it — the icon on the Plans list hands it to the browser —
+              which is why it is absent from the network paragraph. */}
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Planner</Text>
+            <Text style={styles.rowDetail}>
+              {values.plannerUrl.length > 0
+                ? 'Opens in your browser, on the VPN. Empty it to hide the button.'
+                : 'Not set — the Plans list has no link to it'}
+            </Text>
+          </View>
+          <TextInput
+            value={plannerUrl}
+            onChangeText={setPlannerUrlDraft}
+            onBlur={() => settings.setPlannerUrl(plannerUrl)}
+            placeholder="https://…"
+            placeholderTextColor={colors.textMuted}
+            style={styles.keyInput}
+            accessibilityLabel="Planner address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Bucket</Text>
             <Text style={styles.rowDetail}>

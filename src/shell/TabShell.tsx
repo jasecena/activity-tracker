@@ -768,6 +768,7 @@ export function TabShell() {
             thumbFor={noteThumbs.uriFor}
             planNote={planNote}
             planSend={planSend}
+            plannerUrl={settings.settings.plannerUrl}
           />
         </View>
 

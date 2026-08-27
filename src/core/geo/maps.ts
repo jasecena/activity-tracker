@@ -57,3 +57,28 @@ export function mapsUrl(at: LatLon | null | undefined, label = ''): string | nul
   const name = label.trim();
   return name ? `${url}&q=${encodeURIComponent(name)}` : url;
 }
+
+/**
+ * A link that opens the route between two points.
+ *
+ * **A journey is not a pin.** Opening one at its midpoint answers nothing —
+ * what you want to see is where it went, and Apple Maps will draw that from a
+ * start and an end. It is the Maps app's own idea of the route rather than the
+ * one actually walked, which is a real difference and an acceptable one: the
+ * fixes behind it are gone once the day is frozen, and this is for orienting
+ * yourself rather than for evidence.
+ *
+ * `dirflg=w` asks for walking directions. Not because every journey was walked,
+ * but because it is the mode that follows paths rather than roads, so a route
+ * through a park comes out looking like the one you took instead of a detour
+ * round it.
+ */
+export function directionsUrl(from: LatLon | null | undefined, to: LatLon | null | undefined): string | null {
+  if (!from || !to) return null;
+  if (!usable(from.lat, 90) || !usable(from.lon, 180)) return null;
+  if (!usable(to.lat, 90) || !usable(to.lon, 180)) return null;
+
+  const start = `${from.lat.toFixed(DECIMALS)},${from.lon.toFixed(DECIMALS)}`;
+  const end = `${to.lat.toFixed(DECIMALS)},${to.lon.toFixed(DECIMALS)}`;
+  return `https://maps.apple.com/?saddr=${start}&daddr=${end}&dirflg=w`;
+}

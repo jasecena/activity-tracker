@@ -41,6 +41,8 @@ export interface UseSettings {
   /** Returns false when one is already set, which is the whole rule made structural. */
   setBackupPassphrase: (passphrase: string) => boolean;
   setExchangeTarget: (target: { bucket: string; region: string; accessKeyId: string; secretKey: string }) => void;
+  /** Where the planner's web view is. Anything that is not https is refused. */
+  setPlannerUrl: (url: string) => void;
   /** False if one is already set. It cannot be changed — see the implementation. */
   setExchangePassphrase: (passphrase: string) => boolean;
   setTranscriptionKey: (key: string) => void;
@@ -272,6 +274,19 @@ export function useSettings(): UseSettings {
     [persist, settings],
   );
 
+  const setPlannerUrl = useCallback(
+    (url: string) => {
+      const trimmed = url.trim();
+      // Emptying it is how the button is turned off, so an empty string is a
+      // value rather than a rejection. Anything else has to be a website: this
+      // string is handed to `Linking`, and a stored `javascript:` would be
+      // handed over too.
+      if (trimmed && !/^https:\/\//i.test(trimmed)) return;
+      persist({ ...settings, plannerUrl: trimmed });
+    },
+    [persist, settings],
+  );
+
   /**
    * Set the plans passphrase, once and for ever.
    *
@@ -340,6 +355,7 @@ export function useSettings(): UseSettings {
     setBackupTarget,
     setBackupPassphrase,
     setExchangeTarget,
+    setPlannerUrl,
     setExchangePassphrase,
     setTranscriptionKey,
     setTranscriptionLanguage,

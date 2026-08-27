@@ -16,6 +16,7 @@ import {
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { openPlanner } from '@/services/openMap';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { NoteKindSwitch } from './components/NoteKindSwitch';
@@ -97,6 +98,14 @@ interface NotesScreenProps {
    * rather than disabled when no bucket is configured: `planNote` already says
    * to add one, and a dead control says it worse.
    */
+  /**
+   * Where the planner is, or empty.
+   *
+   * **A setting rather than a constant**, because it is one machine on one VPN
+   * and the address is the owner's rather than the app's. Empty hides the
+   * control: an icon that opens nothing is worse than no icon.
+   */
+  readonly plannerUrl?: string;
   readonly planSend?: {
     readonly waiting: number;
     readonly busy: boolean;
@@ -137,6 +146,7 @@ export function NotesScreen({
   onForget,
   thumbFor,
   planNote,
+  plannerUrl = '',
   planSend,
 }: NotesScreenProps) {
   /**
@@ -249,9 +259,22 @@ export function NotesScreen({
         // what the list on screen is *for* instead of repeating the arithmetic.
         subtitle={plans ? 'Things you want to happen' : "Everything you've written"}
         actions={[
+          // **Only on the Plans list, because that is what the page shows.**
+          // The planner reads plans and nothing else — it has never seen the
+          // diary — so an icon offering it from the notes list would be
+          // pointing at a page about something the reader is not looking at.
+          ...(plans && plannerUrl
+            ? [
+                {
+                  label: 'Open the planner in the browser',
+                  icon: 'globe-outline' as const,
+                  onPress: () => void openPlanner(plannerUrl),
+                },
+              ]
+            : []),
           {
             label: plans ? 'Write a plan' : 'Write a note',
-            icon: 'create-outline',
+            icon: 'create-outline' as const,
             onPress: () => onWrite(kind),
           },
         ]}

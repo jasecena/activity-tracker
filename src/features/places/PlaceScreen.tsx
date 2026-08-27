@@ -5,6 +5,8 @@ import { formatClockTime, formatDayTitle, formatDistance, formatDuration } from 
 import { distanceM, mapsUrl } from '@/core/geo';
 import { visitsByPlace, type Place } from '@/core/places';
 import type { Segment, StaySegment } from '@/core/segments';
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { MenuSheet } from '@/components/MenuSheet';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { openInMaps } from '@/services/openMap';
@@ -75,7 +77,21 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
             : 'No visits recorded yet'
         }
         onBack={onBack}
-        actions={[{ label: 'Place options', icon: 'ellipsis-horizontal', onPress: () => setMenuOpen(true) }]}
+        actions={[
+          // **An icon, beside the one that was already there.** The link used
+          // to be a line of blue text on the card below; a header action is
+          // where the other thing you do to a whole place already lives.
+          ...(mapsUrl(place)
+            ? [
+                {
+                  label: `Open ${place.name} in Maps`,
+                  icon: 'map-outline' as const,
+                  onPress: () => void showOnMap(place, place.name),
+                },
+              ]
+            : []),
+          { label: 'Place options', icon: 'ellipsis-horizontal' as const, onPress: () => setMenuOpen(true) },
+        ]}
       />
 
       {renaming ? (
@@ -103,16 +119,6 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
           <Text style={styles.cardNote}>
             Any stay this close counts as here. It widens automatically when you confirm a visit that fell just outside.
           </Text>
-          {mapsUrl(place) ? (
-            <Pressable
-              style={styles.mapLink}
-              accessibilityRole="link"
-              accessibilityLabel={`Open ${place.name} in Maps`}
-              onPress={() => void showOnMap(place, place.name)}
-            >
-              <Text style={styles.mapLinkText}>Open the centre in Maps</Text>
-            </Pressable>
-          ) : null}
         </View>
 
         <Text style={styles.sectionLabel}>VISITS</Text>
@@ -137,8 +143,9 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
                 {mapsUrl(visit.center) ? (
                   <Pressable
                     style={styles.mapLink}
-                    accessibilityRole="link"
+                    accessibilityRole="button"
                     accessibilityLabel={`Open the stay on ${formatDayTitle(visit.startedAt, tzOffsetMinutes)} in Maps`}
+                    hitSlop={8}
                     onPress={() =>
                       void showOnMap(
                         visit.center,
@@ -152,7 +159,8 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
                         where the phone actually sat, and a stay eighty metres
                         out is how you find out the radius is wrong or that two
                         places are being read as one. */}
-                    <Text style={styles.mapLinkText}>Open in Maps{offsetNote(visit, place)}</Text>
+                    <Ionicons name="map-outline" size={16} color={colors.move} />
+                    <Text style={styles.mapLinkText}>{offsetNote(visit, place) || 'Open in Maps'}</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -187,7 +195,7 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
  */
 function offsetNote(visit: StaySegment, place: Place): string {
   const away = distanceM(visit.center, { lat: place.lat, lon: place.lon });
-  return away >= NOTABLE_OFFSET_M ? ` · ${formatDistance(away)} from the centre` : '';
+  return away >= NOTABLE_OFFSET_M ? `${formatDistance(away)} from the centre` : '';
 }
 
 /**
@@ -210,7 +218,7 @@ const styles = StyleSheet.create({
   visitDetail: { ...typography.caption, color: colors.textSecondary },
   visitPurpose: { ...typography.body, color: colors.stay, marginTop: spacing.xs },
   empty: { ...typography.caption, color: colors.textMuted, paddingVertical: spacing.md },
-  mapLink: { paddingTop: spacing.xs },
+  mapLink: { paddingTop: spacing.xs, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   mapLinkText: { ...typography.caption, color: colors.move, fontWeight: '600' },
   renameRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   input: {
