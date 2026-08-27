@@ -267,12 +267,6 @@ export function NotesScreen({
         ]}
       />
 
-      {/* Above the scroller rather than inside it: the way between the two lists
-          must not be able to scroll off the top, which is the same reasoning
-          that makes the Day screen's bar sticky. It is a plain sibling here, so
-          it needs none of the wrapper that a `stickyHeaderIndices` child does. */}
-      <NoteKindSwitch kind={kind} onChange={changeKind} counts={counts} />
-
       {plans && planNote ? <Text style={styles.planNote}>{planNote}</Text> : null}
 
       {plans && planSend && planSend.waiting > 0 ? (
@@ -376,7 +370,16 @@ export function NotesScreen({
           )}
         </View>
 
-        <RecordButton size={QUICK_MIC_SIZE} recording={recorder.recording} onStart={start} onStop={recorder.stop} />
+        {/* **The two lists and the microphone, on one row, at thumb height.**
+            The switch used to sit above the scroller so it could not be
+            scrolled away. That reasoning was about it staying visible; it is
+            pinned here for the same reason and reachable as well, which the top
+            of a phone is not. The microphone between them is not decoration:
+            the tab you are standing in is the mode it records into, so the
+            control and the thing it governs now touch. */}
+        <NoteKindSwitch kind={kind} onChange={changeKind} counts={counts}>
+          <RecordButton size={QUICK_MIC_SIZE} recording={recorder.recording} onStart={start} onStop={recorder.stop} />
+        </NoteKindSwitch>
       </View>
     </View>
   );
@@ -510,10 +513,11 @@ const styles = StyleSheet.create({
     paddingBottom: QUICK_MIC_SIZE + DOCK_BOTTOM + spacing.xxl,
     gap: spacing.md,
   },
-  dock: { position: 'absolute', left: 0, right: 0, bottom: DOCK_BOTTOM, alignItems: 'center', gap: spacing.xs },
+  dock: { position: 'absolute', left: 0, right: 0, bottom: DOCK_BOTTOM, alignItems: 'stretch', gap: spacing.xs },
   // Its own ground, because it floats over whatever the list happens to have
   // scrolled under it.
   dockLabel: {
+    alignSelf: 'center',
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
