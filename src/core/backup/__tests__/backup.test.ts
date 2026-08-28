@@ -193,10 +193,11 @@ describe('the two things that were missing', () => {
     // `core` cannot read storage and should not want to: a day of readings is
     // hundreds of kilobytes, and deciding what to upload is a question about
     // names.
-    const [object] = fixObjects(['2026-01-05']);
+    const objects = fixObjects(['2026-01-05']);
 
-    expect(object.body).toBeNull();
-    expect(object.archiveDay).toBe('2026-01-05');
+    expect(objects).toHaveLength(1);
+    expect(objects[0]?.body).toBeNull();
+    expect(objects[0]?.archiveDay).toBe('2026-01-05');
   });
 
   it('puts all four kinds in one backup', () => {
