@@ -1,4 +1,5 @@
 import { dayKeyOf, notesForDay, voiceFilesOf, type DayGroup, type DayNote } from '../day';
+import type { Place } from '../places';
 
 /**
  * What a backup is made of, decided without a clock, a network or a key.
@@ -19,10 +20,20 @@ import { dayKeyOf, notesForDay, voiceFilesOf, type DayGroup, type DayNote } from
 export interface BackupObject {
   /** Where it goes. Stable, so pressing the button twice overwrites rather than duplicates. */
   readonly key: string;
-  /** JSON for a day; a file to read for a recording. Never both. */
+  /** JSON, where the bytes are known here. Null when something has to be read. */
   readonly body: string | null;
   /** The name in `Documents/note-audio`, for a recording. */
   readonly fileName: string | null;
+  /**
+   * The archived day whose readings are the body, for a day of raw fixes.
+   *
+   * **Named rather than carried, because `core` cannot read storage and should
+   * not want to.** A day of readings is hundreds of kilobytes; handing every one
+   * of them to this function to decide what should be uploaded would mean
+   * holding a year of them in memory to answer a question about names. The
+   * caller reads one at a time, which is also how it writes them.
+   */
+  readonly archiveDay?: string;
 }
 
 /**
@@ -95,11 +106,16 @@ export function backupObjects(
   notes: readonly DayNote[],
   now: number,
   tzOffsetMinutes: number,
+  places: readonly Place[] = [],
+  archivedDayKeys: readonly string[] = [],
 ): readonly BackupObject[] {
   const eligible = previousDays(days, now, tzOffsetMinutes);
+  const named = placesObject(places);
   return [
     ...eligible.map((day) => dayObject(day, notes, tzOffsetMinutes)),
     ...voiceObjects(eligible, notes, tzOffsetMinutes),
+    ...(named ? [named] : []),
+    ...fixObjects(archivedDayKeys),
   ];
 }
 
@@ -127,4 +143,42 @@ export function daysAboutToBeLost(
   return previousDays(days, now, tzOffsetMinutes)
     .filter((day) => day.startedAt <= cutoff && !uploadedKeys.has(`days/${day.key}`))
     .map((day) => day.key);
+}
+
+/**
+ * The named places, as one object.
+ *
+ * **One object replaced whole, never one per place.** The list is short, it
+ * changes when somebody names somewhere, and what a reader wants on a laptop is
+ * the list — not to reassemble it from forty files. The same shape, and the same
+ * reasoning, as a manifest.
+ *
+ * This was missing and the gap was quiet: a stay is backed up as a coordinate
+ * and a radius, so a restored backup had every journey and not one name for
+ * anywhere. "Home" is not derivable from anything.
+ */
+export function placesObject(places: readonly Place[]): BackupObject | null {
+  if (places.length === 0) return null;
+  return {
+    key: 'places/current',
+    body: JSON.stringify({ version: 1, places: [...places].sort((a, b) => a.id.localeCompare(b.id)) }),
+    fileName: null,
+  };
+}
+
+/**
+ * The raw readings behind the days that are over, one object per day.
+ *
+ * **One per day, matching how the phone stores them.** A single object would
+ * mean reading and rewriting a year of readings to add this morning's — the
+ * same failure `pruneBuffer` avoids on disk, for the same reason, and it
+ * degrades over months rather than failing where anyone would see it.
+ *
+ * Sorted, and today's is never among them: a day is archived when it is frozen,
+ * so an archive key existing at all means that day is over.
+ */
+export function fixObjects(archivedDayKeys: readonly string[]): readonly BackupObject[] {
+  return [...archivedDayKeys]
+    .sort()
+    .map((day) => ({ key: `fixes/${day}`, body: null, fileName: null, archiveDay: day }));
 }

@@ -866,6 +866,17 @@ has an unhappy history with strings that promised more protection than existed.
 There is no account-level retention switch to set instead; that was checked.
 
 **The third is the backup: the days that are over, to an S3 bucket you own.**
+It holds four kinds of object — `days/` (the segments and the notes about that
+day), `note-audio/` (the recordings on those notes), `places/current` (the names
+you have given places, as one object) and `fixes/` (the raw readings behind each
+frozen day, one object per day). **Photos and video are still not in it**, which
+is item 12's remaining half and the largest thing by volume.
+
+The last two were added on 28 August 2026 after the question "what is in the
+backup?" turned up an answer nobody had written down: a stay is backed up as a
+coordinate and a radius, so a restored backup held every journey and not one
+name for anywhere, and a frozen day's readings existed only on the phone that
+took them. Neither is derivable from anything.
 Sealed on the phone first — `services/backup/seal.ts`, ChaCha20-Poly1305 under a
 key scrypt makes from a passphrase that is never stored — so the bucket holds
 ciphertext and its operator holds nothing. **One way**: the bucket policy denies

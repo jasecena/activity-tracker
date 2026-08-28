@@ -1,6 +1,15 @@
 import type { DayGroup, DayNote } from '../../day';
 import type { Segment } from '../../segments';
-import { backupObjects, dayObject, daysAboutToBeLost, previousDays, voiceObjects } from '../index';
+import type { Place } from '../../places';
+import {
+  backupObjects,
+  dayObject,
+  daysAboutToBeLost,
+  fixObjects,
+  placesObject,
+  previousDays,
+  voiceObjects,
+} from '../index';
 
 /**
  * What belongs in the bucket, decided without a bucket.
@@ -144,5 +153,64 @@ describe('what retention is about to take', () => {
   /** Today is not eligible for backup, so it cannot be "about to be lost" either. */
   it('never warns about today', () => {
     expect(daysAboutToBeLost([TODAY], new Set(), 1, NOW, UTC)).toEqual([]);
+  });
+});
+
+describe('the two things that were missing', () => {
+  /**
+   * **A stay is backed up as a coordinate and a radius**, so a restored backup
+   * held every journey and not one name for anywhere. "Home" is not derivable
+   * from anything, and neither are the readings a frozen day was folded from.
+   */
+  const place = (id: string, name: string): Place => ({ id, name, lat: 0, lon: 0, radiusM: 120 });
+
+  it('sends the place names as one object rather than one each', () => {
+    // What a reader wants on a laptop is the list, not to reassemble it from
+    // forty files. The same shape as the manifest, for the same reason.
+    const object = placesObject([place('p-2', 'Work'), place('p-1', 'Home')]);
+
+    expect(object?.key).toBe('places/current');
+    expect(JSON.parse(object!.body!).places.map((p: Place) => p.id)).toEqual(['p-1', 'p-2']);
+  });
+
+  it('sends nothing at all when nowhere has been named', () => {
+    // An empty object in the bucket would look like a successful backup of a
+    // list somebody had emptied.
+    expect(placesObject([])).toBeNull();
+  });
+
+  it('sends the archived readings one object per day', () => {
+    // One object would mean reading and rewriting a year of readings to add
+    // this morning's — the failure `pruneBuffer` avoids on disk, for the same
+    // reason, and it degrades over months rather than failing where anyone
+    // would see it.
+    const objects = fixObjects(['2026-01-06', '2026-01-05']);
+
+    expect(objects.map((o) => o.key)).toEqual(['fixes/2026-01-05', 'fixes/2026-01-06']);
+  });
+
+  it('names an archived day rather than carrying it', () => {
+    // `core` cannot read storage and should not want to: a day of readings is
+    // hundreds of kilobytes, and deciding what to upload is a question about
+    // names.
+    const [object] = fixObjects(['2026-01-05']);
+
+    expect(object.body).toBeNull();
+    expect(object.archiveDay).toBe('2026-01-05');
+  });
+
+  it('puts all four kinds in one backup', () => {
+    const objects = backupObjects(
+      [YESTERDAY],
+      [note(Date.UTC(2026, 0, 9, 9), 'Something', RECORDING)],
+      NOW,
+      UTC,
+      [place('p-1', 'Home')],
+      ['2026-01-09'],
+    );
+
+    expect(objects.map((o) => o.key.split('/')[0])).toEqual(
+      expect.arrayContaining(['days', 'note-audio', 'places', 'fixes']),
+    );
   });
 });

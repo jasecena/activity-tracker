@@ -243,10 +243,10 @@ export function DataScreen({
             onPress={() =>
               Alert.alert(
                 'Back up the days that are over?',
-                `${eligibleDays.length - backedUp.length} day(s) will be sealed on this phone and sent to your bucket. Today is not included — it is still being recorded. Anything you write after this stays on the phone until you press it again.`,
+                `${eligibleDays.length - backedUp.length} day(s) will be sealed on this phone and sent to your bucket, along with your place names and the raw readings behind those days. Today is not included — it is still being recorded. Photos and video are not included. Anything you write after this stays on the phone until you press it again.`,
                 [
                   { text: 'Cancel', style: 'cancel' },
-                  { text: 'Back up', onPress: () => void backup.run(days, notes) },
+                  { text: 'Back up', onPress: () => void backup.run(days, notes, places) },
                 ],
               )
             }

@@ -5,13 +5,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { backupObjects, type BackupObject } from '@/core/backup';
 import type { DayGroup, DayNote } from '@/core/day';
+import type { Place } from '@/core/places';
 import { sealObject } from '@/services/backup';
 import { manifestBytes, MANIFEST_KEY } from '@/services/backup/manifest';
 import { listKeys, putObject, type BackupError, type BucketConfig } from '@/services/backup/s3';
 import { now as readNow, tzOffsetMinutes } from '@/services/clock';
 import { noteAudioUri } from '@/services/noteAudio';
 import type { Settings } from '@/services/settings';
-import { readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
+import { archivedDayKeys, archiveKeyFor, readJson, STORAGE_KEYS, writeJson } from '@/services/storage';
 import { holdScreenAwake, releaseScreenAwake } from '@/services/wakefulness';
 
 /**
@@ -46,7 +47,7 @@ export interface UseBackup {
   /** Keys known to be in the bucket, for the counts and the retention warning. */
   readonly uploaded: ReadonlySet<string>;
   readonly ready: boolean;
-  readonly run: (days: readonly DayGroup[], notes: readonly DayNote[]) => Promise<void>;
+  readonly run: (days: readonly DayGroup[], notes: readonly DayNote[], places?: readonly Place[]) => Promise<void>;
 }
 
 /** Below this an object stays Standard: the cold classes bill a minimum size. */
@@ -86,7 +87,7 @@ export function useBackup(settings: Settings): UseBackup {
   }, []);
 
   const run = useCallback(
-    async (days: readonly DayGroup[], notes: readonly DayNote[]) => {
+    async (days: readonly DayGroup[], notes: readonly DayNote[], places: readonly Place[] = []) => {
       const config = configFrom(settings);
       if (!config) {
         setProgress({ stage: 'failed', sent: 0, total: 0, error: { reason: 'not-configured', detail: '' } });
@@ -118,7 +119,11 @@ export function useBackup(settings: Settings): UseBackup {
         const present = new Set<string>(listed);
 
         const offset = tzOffsetMinutes();
-        const wanted = backupObjects(days, notes, readNow(), offset);
+        // The place names and the archived readings were both missing, and both
+        // are things nothing else can reconstruct: a stay is a coordinate and a
+        // radius, so a restored backup had every journey and not one name for
+        // anywhere.
+        const wanted = backupObjects(days, notes, readNow(), offset, places, await archivedDayKeys());
 
         // The manifest first and every time, because it is small and because a
         // bucket holding objects and no manifest cannot be opened at all.
@@ -190,6 +195,20 @@ export function useBackup(settings: Settings): UseBackup {
  */
 async function bytesFor(object: BackupObject): Promise<Uint8Array | null> {
   if (object.body !== null) return utf8ToBytes(object.body);
+
+  // A day of archived readings, read one at a time rather than all at once: a
+  // year of them is a hundred megabytes, and the point of one object per day is
+  // that nothing ever has to hold more than one.
+  if (object.archiveDay) {
+    const fixes = await readJson<unknown>(archiveKeyFor(object.archiveDay));
+    // An archived day that has gone — retention trimmed it between the listing
+    // and here — is skipped rather than uploaded empty, the same rule a missing
+    // recording follows. An empty object would look like a successful backup of
+    // a day that no longer exists.
+    if (!Array.isArray(fixes) || fixes.length === 0) return null;
+    return utf8ToBytes(JSON.stringify({ version: 1, day: object.archiveDay, fixes }));
+  }
+
   if (!object.fileName) return null;
 
   const uri = noteAudioUri(object.fileName);
