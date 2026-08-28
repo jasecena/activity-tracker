@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 
 import type { Place } from '@/core/places';
 import type { StaySegment } from '@/core/segments';
@@ -56,7 +56,10 @@ describe('the map links on a place', () => {
   let open: jest.SpyInstance;
 
   beforeEach(() => {
-    open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    // The page opens over the app now rather than in another one, so this is
+    // what to watch. `Linking` is only the fallback for a device that will
+    // not present a browser at all.
+    open = jest.spyOn(WebBrowser, 'openBrowserAsync').mockResolvedValue({ type: 'dismiss' } as never);
   });
 
   afterEach(() => {
@@ -71,8 +74,8 @@ describe('the map links on a place', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     const [url] = open.mock.calls[0] as [string];
     // 80 m north of the origin, not the origin the place is registered at.
-    expect(url).toContain('ll=0.000719,0.000000');
-    expect(url).not.toContain('ll=0.000000,0.000000');
+    expect(url).toContain('query=0.000719,0.000000');
+    expect(url).not.toContain('query=0.000000,0.000000');
   });
 
   it('says how far out the stay sat, which is the point of looking', async () => {
@@ -94,16 +97,22 @@ describe('the map links on a place', () => {
     await fireEvent.press(screen.getByLabelText('Open Home in Maps'));
 
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-    expect(open.mock.calls[0][0]).toContain('ll=0.000000,0.000000');
+    expect(open.mock.calls[0][0]).toContain('query=0.000000,0.000000');
   });
 
-  it('names the pin, so Maps does not open on an unlabelled dot', async () => {
+  it('opens the coordinate itself, because the pin cannot carry a name', async () => {
+    // Google's documented Maps URLs form takes either a place to search for or
+    // a coordinate to mark, and a name attached to a coordinate is not
+    // something it expresses. The undocumented `?q=lat,lon(Name)` does it and
+    // is specified nowhere. The screen the link came from says which stay it is.
     await show([stay(80)]);
 
     await fireEvent.press(screen.getByLabelText(/Open the stay on .* in Maps/));
 
     await waitFor(() => expect(open).toHaveBeenCalled());
-    expect(open.mock.calls[0][0]).toContain('&q=Home');
+    const [url] = open.mock.calls[0] as [string];
+    expect(url).toContain('/maps/search/?api=1&query=');
+    expect(url).not.toContain('Home');
   });
 
   it('offers no link for a stay with an unusable position', async () => {

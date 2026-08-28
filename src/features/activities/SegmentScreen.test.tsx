@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 
 import type { MoveSegment, StaySegment } from '@/core/segments';
 
@@ -59,7 +59,10 @@ describe('opening a timeline row in Maps', () => {
   let open: jest.SpyInstance;
 
   beforeEach(() => {
-    open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    // The page opens over the app now rather than in another one, so this is
+    // what to watch. `Linking` is only the fallback for a device that will
+    // not present a browser at all.
+    open = jest.spyOn(WebBrowser, 'openBrowserAsync').mockResolvedValue({ type: 'dismiss' } as never);
   });
 
   afterEach(() => open.mockRestore());
@@ -70,7 +73,7 @@ describe('opening a timeline row in Maps', () => {
     await fireEvent.press(screen.getByLabelText('Open this stop in Maps'));
 
     await waitFor(() => expect(open).toHaveBeenCalled());
-    expect(open.mock.calls[0][0]).toContain('ll=0.000719,0.000000');
+    expect(open.mock.calls[0][0]).toContain('query=0.000719,0.000000');
   });
 
   it('draws the way a journey went, rather than pinning a point on it', async () => {
@@ -82,8 +85,8 @@ describe('opening a timeline row in Maps', () => {
 
     await waitFor(() => expect(open).toHaveBeenCalled());
     const [url] = open.mock.calls[0] as [string];
-    expect(url).toContain('saddr=0.000000,0.000000');
-    expect(url).toContain('daddr=0.000808,0.000000');
+    expect(url).toContain('origin=0.000000,0.000000');
+    expect(url).toContain('destination=0.000808,0.000000');
   });
 
   it('offers nothing for a stop with an unusable position', async () => {

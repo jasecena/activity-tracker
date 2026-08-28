@@ -103,6 +103,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // and a build that links one the config does not mention is the kind of
     // drift that costs a release.
     '@react-native-community/datetimepicker',
+    // The in-app browser: `SFSafariViewController` on iOS. Declared for the same
+    // reason as the picker above — `expo-doctor` wants a native module's plugin
+    // named, and a build linking one the config does not mention is the drift
+    // that costs a release.
+    //
+    // It writes no Info.plist key and asks for no permission. What it is *for*
+    // is that a map or the planner opens without leaving the app, so coming
+    // back is a Done button rather than the app switcher.
+    'expo-web-browser',
     [
       'expo-splash-screen',
       {

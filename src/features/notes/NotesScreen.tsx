@@ -266,7 +266,7 @@ export function NotesScreen({
           ...(plans && plannerUrl
             ? [
                 {
-                  label: 'Open the planner in the browser',
+                  label: 'Open the planner',
                   icon: 'globe-outline' as const,
                   onPress: () => void openPlanner(plannerUrl),
                 },

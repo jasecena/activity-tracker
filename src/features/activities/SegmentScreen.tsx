@@ -82,7 +82,7 @@ export function SegmentScreen({
                   {
                     label: 'Open this stop in Maps',
                     icon: 'map-outline' as const,
-                    onPress: () => void showOnMap(() => openInMaps(segment.center, place?.name ?? 'Stop')),
+                    onPress: () => void showOnMap(() => openInMaps(segment.center)),
                   },
                 ]
               : []),

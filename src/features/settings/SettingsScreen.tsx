@@ -84,9 +84,9 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
  * all.** That claim stays literally true — opening a link is iOS's business and
  * this app never opens a socket for it — but somebody reading "no network
  * requests of any kind" is being told that nothing about them goes anywhere,
- * and pressing Open in Maps puts one of their coordinates into Apple's Maps
- * app. The distinction between "we sent it" and "you took it somewhere" is real
- * and is not what that sentence is understood to mean.
+ * and pressing Open in Maps puts one of their coordinates in front of Google.
+ * That it happens in a browser view rather than in this app's own code is a
+ * true distinction and not the one the sentence is understood to make.
  *
  * This paragraph has been wrong twice — once claiming captures were sealed a
  * release after they stopped being, once promising recordings were never
@@ -94,7 +94,7 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
  * the sentence did not. This is the third opportunity and it is being taken.
  */
 const HANDOFF =
-  'Separately: opening a stay or a place in Maps hands that one coordinate to the Maps app, which is Apple’s and not this one. That is you taking something somewhere rather than this app sending it, it happens only when you press the link, and nothing else about the stay goes with it.';
+  'Separately: opening a stay, a journey or the planner opens a web page inside this app — a browser view that runs on its own, which this app can neither read nor follow. A map sends Google the one coordinate and nothing else about the stay; the planner is your own machine. Both happen only when you press the link.';
 
 function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: boolean, canSendPlans: boolean): string {
   const destinations = [

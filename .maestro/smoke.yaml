@@ -180,11 +180,11 @@ appId: ${APP_ID}
 # it is drawn from a setting — an empty address hides it — and a header action
 # that silently stopped rendering is precisely what Jest cannot tell from one
 # that is there.
-- assertVisible: 'Open the planner in the browser'
+- assertVisible: 'Open the planner'
 - tapOn: 'Notes, 0 entries'
 # And it is gone again on the diary, which is the half worth proving: the icon
 # is conditional, so a version that always drew it would pass the line above.
-- assertNotVisible: 'Open the planner in the browser'
+- assertNotVisible: 'Open the planner'
 - assertVisible: 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'
 
 # The gallery's own gestures and panels cannot be reached here: `clearState`

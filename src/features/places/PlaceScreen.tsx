@@ -29,8 +29,8 @@ interface PlaceScreenProps {
  * reads as a dead button rather than as an error — and a dead button is the
  * thing somebody presses four more times.
  */
-async function showOnMap(at: Parameters<typeof openInMaps>[0], label: string) {
-  const outcome = await openInMaps(at, label);
+async function showOnMap(at: Parameters<typeof openInMaps>[0]) {
+  const outcome = await openInMaps(at);
   if (outcome.ok) return;
   Alert.alert(
     'Could not open Maps',
@@ -86,7 +86,7 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
                 {
                   label: `Open ${place.name} in Maps`,
                   icon: 'map-outline' as const,
-                  onPress: () => void showOnMap(place, place.name),
+                  onPress: () => void showOnMap(place),
                 },
               ]
             : []),
@@ -146,12 +146,7 @@ export function PlaceScreen({ place, allSegments, tzOffsetMinutes, onBack, onRen
                     accessibilityRole="button"
                     accessibilityLabel={`Open the stay on ${formatDayTitle(visit.startedAt, tzOffsetMinutes)} in Maps`}
                     hitSlop={8}
-                    onPress={() =>
-                      void showOnMap(
-                        visit.center,
-                        `${place.name} · ${formatDayTitle(visit.startedAt, tzOffsetMinutes)}`,
-                      )
-                    }
+                    onPress={() => void showOnMap(visit.center)}
                   >
                     {/* **The offset is the reason this link is per visit rather
                         than one for the whole page.** Every row here shares the

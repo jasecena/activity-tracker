@@ -1,18 +1,23 @@
 import type { LatLon } from './types';
 
 /**
- * A link that opens one coordinate in the Maps app.
+ * A link that opens one coordinate on a map.
  *
  * **Pure, and here rather than beside the `Linking` call, because the awkward
  * part is the string.** Handing a URL to iOS is one line and cannot fail
  * usefully; deciding what that URL says — how many decimal places, what happens
- * to a NaN, what a Persian place name does to a query string — is the part with
- * answers that can be wrong, so it lives where it can be tested on plain Node.
+ * to a NaN — is the part with answers that can be wrong, so it lives where it
+ * can be tested on plain Node.
  *
- * `https://maps.apple.com/` rather than the `maps://` scheme. Both open the
- * Maps app on a device, and the https one is also a working link anywhere else
- * — in a screenshot, in a note to somebody, on a laptop. A scheme URL in those
- * places is a dead string.
+ * **Google Maps, through the documented Maps URLs form.** `?api=1` is the
+ * contract Google publishes and undertakes to keep; the older
+ * `maps.google.com/?q=` shapes work and are specified nowhere, which is a poor
+ * foundation for a link this app builds every time it draws a list.
+ *
+ * `https://` rather than a `comgooglemaps://` scheme, and that matters more
+ * than it used to: these open in an in-app browser, which never sees an app
+ * scheme at all. It is also a working link anywhere else — in a screenshot, in
+ * a message to somebody, on a laptop — where a scheme URL is a dead string.
  */
 
 /**
@@ -40,38 +45,34 @@ function usable(value: number, limit: number): boolean {
  * drops an unusable place instead of repairing one: a caller that gets null can
  * hide the button, and a caller that gets a link can trust it.
  */
-export function mapsUrl(at: LatLon | null | undefined, label = ''): string | null {
+export function mapsUrl(at: LatLon | null | undefined): string | null {
   if (!at) return null;
   if (!usable(at.lat, 90) || !usable(at.lon, 180)) return null;
 
+  // `search` with a coordinate drops a pin on it. **There is no label**, and
+  // that is Google's API rather than an omission here: `query` takes either a
+  // place to search for or a coordinate to mark, and a name attached to a
+  // coordinate is not something the documented form expresses. The undocumented
+  // `?q=lat,lon(Name)` does it and is not specified anywhere, which is a poor
+  // thing to build on. The screen the link came from says which stay it was.
   const ll = `${at.lat.toFixed(DECIMALS)},${at.lon.toFixed(DECIMALS)}`;
-  const url = `https://maps.apple.com/?ll=${ll}`;
-
-  // **`q` with `ll` is what drops a pin**, rather than merely centring the map
-  // there. Without it the map opens on the right spot with nothing marked, and
-  // "where exactly was this stay" is precisely the question being asked.
-  //
-  // Encoded, because a place name here is frequently Persian and may contain
-  // anything somebody typed into a rename field — including the `&` that would
-  // otherwise end the parameter and start a new one.
-  const name = label.trim();
-  return name ? `${url}&q=${encodeURIComponent(name)}` : url;
+  return `https://www.google.com/maps/search/?api=1&query=${ll}`;
 }
 
 /**
  * A link that opens the route between two points.
  *
  * **A journey is not a pin.** Opening one at its midpoint answers nothing —
- * what you want to see is where it went, and Apple Maps will draw that from a
- * start and an end. It is the Maps app's own idea of the route rather than the
- * one actually walked, which is a real difference and an acceptable one: the
- * fixes behind it are gone once the day is frozen, and this is for orienting
- * yourself rather than for evidence.
+ * what you want to see is where it went, and Google will draw that from a start
+ * and an end. It is Google's idea of the route rather than the one actually
+ * walked, which is a real difference and an acceptable one: the fixes behind it
+ * are gone once the day is frozen, and this is for orienting yourself rather
+ * than for evidence.
  *
- * `dirflg=w` asks for walking directions. Not because every journey was walked,
- * but because it is the mode that follows paths rather than roads, so a route
- * through a park comes out looking like the one you took instead of a detour
- * round it.
+ * `travelmode=walking` for the same reason a `dirflg` did before it: not
+ * because every journey was walked, but because walking follows paths rather
+ * than roads, so a route through a park comes out looking like the one you took
+ * instead of a detour round it by car.
  */
 export function directionsUrl(from: LatLon | null | undefined, to: LatLon | null | undefined): string | null {
   if (!from || !to) return null;
@@ -80,5 +81,5 @@ export function directionsUrl(from: LatLon | null | undefined, to: LatLon | null
 
   const start = `${from.lat.toFixed(DECIMALS)},${from.lon.toFixed(DECIMALS)}`;
   const end = `${to.lat.toFixed(DECIMALS)},${to.lon.toFixed(DECIMALS)}`;
-  return `https://maps.apple.com/?saddr=${start}&daddr=${end}&dirflg=w`;
+  return `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${end}&travelmode=walking`;
 }
