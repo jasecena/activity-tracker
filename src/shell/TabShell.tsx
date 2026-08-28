@@ -17,7 +17,13 @@ import { capturesOnly, type MediaItem } from '@/core/media';
 import { visitsByPlace, type Place } from '@/core/places';
 import { buildTrack, positionAt } from '@/core/replay';
 import { formatDistance, modeLabel } from '@/core/format';
-import { ACTIVITY_MODES, journeyLabelId, judgeStationaryClaim, stationaryCentre } from '@/core/segments';
+import {
+  ACTIVITY_MODES,
+  journeyLabelId,
+  judgeStationaryClaim,
+  purposeTextFor,
+  stationaryCentre,
+} from '@/core/segments';
 import type { MergeRefusal, MoveSegment, Segment, StationaryClaim, StaySegment } from '@/core/segments';
 import { SegmentScreen } from '@/features/activities/SegmentScreen';
 import { useHeartbeat } from '@/features/activities/hooks/useHeartbeat';
@@ -585,6 +591,11 @@ export function TabShell() {
               ? (purpose: string) => purposes.set(page.segment as StaySegment, purpose)
               : undefined
           }
+          // **Read from the store, not off the segment held in the stack.**
+          // That segment is a snapshot taken when the row was tapped, so it
+          // still says whatever was written before the page opened — and the
+          // field went blank the moment somebody saved into it.
+          purpose={page.segment.kind === 'stay' ? purposeTextFor(purposes.purposes, page.segment as StaySegment) : null}
         />
       );
     }

@@ -121,9 +121,25 @@ export function applyVisitPurposes(
   return segments.map((segment) => {
     if (segment.kind !== 'stay') return segment;
 
-    const found = purposesForStay(purposes, segment);
-    if (found.length === 0) return segment;
-
-    return { ...segment, purpose: found.map((one) => one.purpose).join(PURPOSE_SEPARATOR) };
+    const said = purposeTextFor(purposes, segment);
+    return said === null ? segment : { ...segment, purpose: said };
   });
+}
+
+/**
+ * What one stay's purpose reads as right now, or null where nothing was said.
+ *
+ * **Split out of `applyVisitPurposes` because a screen needs the answer for one
+ * stop without re-deriving a day to get it.** The detail page is opened with the
+ * stay it was tapped on — a snapshot, deliberately, because writing a purpose
+ * needs the range the page was opened with — and a snapshot cannot tell you what
+ * has been written since. Asking here is how the field shows what was just
+ * typed instead of what the row said when it was tapped.
+ *
+ * Null rather than an empty string, so "nothing was said" and "somebody saved a
+ * blank" stay different answers to the caller.
+ */
+export function purposeTextFor(purposes: readonly VisitPurpose[], stay: StaySegment): string | null {
+  const found = purposesForStay(purposes, stay);
+  return found.length === 0 ? null : found.map((one) => one.purpose).join(PURPOSE_SEPARATOR);
 }

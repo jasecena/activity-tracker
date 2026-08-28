@@ -26,6 +26,7 @@ export {
 export { applyJourneyLabels, journeyLabelId, labelledSegmentId, splitSegment, type JourneyLabel } from './manual';
 export {
   applyVisitPurposes,
+  purposeTextFor,
   purposeFrom,
   purposesForStay,
   visitPurposeId,

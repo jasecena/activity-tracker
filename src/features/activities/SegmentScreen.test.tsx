@@ -99,3 +99,79 @@ describe('opening a timeline row in Maps', () => {
     expect(open).not.toHaveBeenCalled();
   });
 });
+
+describe('why you were here', () => {
+  function purposeScreen(props: Partial<Parameters<typeof SegmentScreen>[0]> = {}) {
+    return (
+      <SegmentScreen
+        segment={stay()}
+        places={[]}
+        tzOffsetMinutes={0}
+        mapsEnabled={false}
+        onBack={jest.fn()}
+        onSetPurpose={jest.fn()}
+        {...props}
+      />
+    );
+  }
+
+  it('saves what was typed when the field is left', async () => {
+    const onSetPurpose = jest.fn();
+    await render(purposeScreen({ onSetPurpose }));
+
+    const field = screen.getByLabelText('Why you were here');
+    await fireEvent.changeText(field, 'Groceries');
+    await fireEvent(field, 'blur');
+
+    expect(onSetPurpose).toHaveBeenCalledWith('Groceries');
+  });
+
+  it('keeps what was typed on screen after saving it', async () => {
+    // **The bug this exists for.** The page is opened with a snapshot of the
+    // stay taken when the row was tapped, so falling back to `segment.purpose`
+    // on blur showed the value from before anything was written — the text
+    // vanished in front of somebody who had just typed it.
+    await render(purposeScreen());
+
+    const field = screen.getByLabelText('Why you were here');
+    await fireEvent.changeText(field, 'Haircut');
+    await fireEvent(field, 'blur');
+
+    expect(screen.getByLabelText('Why you were here')).toHaveDisplayValue('Haircut');
+  });
+
+  it('opens with what the store says rather than what the snapshot remembers', async () => {
+    // The stay in the page stack still carries the old text; `purpose` is read
+    // live, and it is the one that has to win.
+    await render(purposeScreen({ segment: { ...stay(), purpose: 'stale' }, purpose: 'Groceries' }));
+
+    expect(screen.getByLabelText('Why you were here')).toHaveDisplayValue('Groceries');
+  });
+
+  it('saves an emptied field, which is how a purpose is removed', async () => {
+    const onSetPurpose = jest.fn();
+    await render(purposeScreen({ purpose: 'Groceries', onSetPurpose }));
+
+    const field = screen.getByLabelText('Why you were here');
+    await fireEvent.changeText(field, '');
+    await fireEvent(field, 'blur');
+
+    expect(onSetPurpose).toHaveBeenCalledWith('');
+  });
+
+  it('writes nothing when the field was never touched', async () => {
+    // Opening a stop and leaving is not an edit, and a blur that saved anyway
+    // would rewrite a purpose every time somebody looked at one.
+    const onSetPurpose = jest.fn();
+    await render(purposeScreen({ purpose: 'Groceries', onSetPurpose }));
+
+    await fireEvent(screen.getByLabelText('Why you were here'), 'blur');
+
+    expect(onSetPurpose).not.toHaveBeenCalled();
+  });
+
+  it('offers no save button, because leaving the field is the save', async () => {
+    await render(purposeScreen());
+    expect(screen.queryByText(/^Save$/)).not.toBeOnTheScreen();
+  });
+});

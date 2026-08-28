@@ -48,6 +48,16 @@ interface SegmentScreenProps {
    * the page you are already on.
    */
   readonly onSetPurpose?: (purpose: string) => void;
+  /**
+   * What has been written about this stop, read live rather than off the
+   * segment.
+   *
+   * **The page is opened with a snapshot of the stay** — deliberately, because
+   * writing a purpose needs the range the page was opened with — and a snapshot
+   * cannot know what has been typed since. Passing the current text separately
+   * is what stops the field going blank the moment it is saved.
+   */
+  readonly purpose?: string | null;
 }
 
 /** Every field the app holds for one row of the timeline. */
@@ -60,6 +70,7 @@ export function SegmentScreen({
   onNamePlace,
   onNameJourney,
   onSetPurpose,
+  purpose,
 }: SegmentScreenProps) {
   const span = `${formatClockTime(segment.startedAt, tzOffsetMinutes)}–${formatClockTime(segment.endedAt, tzOffsetMinutes)}`;
   const elapsed = durationMs(segment);
@@ -106,7 +117,7 @@ export function SegmentScreen({
               something the app worked out; this is the only thing here that
               nobody but you could supply, and it is what you came back to this
               stop to read. */}
-          {onSetPurpose ? <Purpose value={segment.purpose} onSet={onSetPurpose} /> : null}
+          {onSetPurpose ? <Purpose value={purpose ?? segment.purpose} onSet={onSetPurpose} /> : null}
 
           <View style={styles.stats}>
             <StatTile label="Duration" value={formatDuration(elapsed)} accent={colors.stay} />
@@ -261,6 +272,26 @@ export function SegmentScreen({
  * itself — the same reason `NoteSheet` keeps nullable drafts rather than seeding
  * state in an effect.
  */
+/**
+ * One line about why you were here, saved as you leave the field.
+ *
+ * **No Save button, and the last thing typed is the answer.** There is one
+ * purpose per stop and no versions of it: leaving the field writes what is in
+ * it, emptying the field deletes it, and the undo is typing again in the place
+ * you are already standing.
+ *
+ * **Once anything is typed, the field shows that and nothing else.** It used to
+ * drop the draft on blur and fall back to the stored value, which read as the
+ * field clearing itself — the page is opened with a snapshot of the stay taken
+ * when the row was tapped, so the stored value it fell back to was the one from
+ * before anything was written. The text vanished in front of somebody who had
+ * just typed it.
+ *
+ * Keeping the draft is both the fix and the simpler rule: there is one purpose
+ * per stop and no versions of it, so what is in the field is what was meant.
+ * `value` is what the field opens with, and after that the person typing is the
+ * authority until they leave the page.
+ */
 function Purpose({ value, onSet }: { readonly value: string | null; readonly onSet: (purpose: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   const text = draft ?? value ?? '';
@@ -276,12 +307,10 @@ function Purpose({ value, onSet }: { readonly value: string | null; readonly onS
         style={styles.purposeInput}
         accessibilityLabel="Why you were here"
         multiline
+        // Saved on the way out, which is the whole of it. The effect above
+        // hands the field back to the stored value once the two agree.
         onBlur={() => {
-          if (draft === null) return;
-          onSet(draft);
-          // Back to reading whatever was stored, so the field shows the
-          // trimmed, saved version rather than the keystrokes that made it.
-          setDraft(null);
+          if (draft !== null) onSet(draft);
         }}
       />
       <Text style={styles.purposeNote}>
