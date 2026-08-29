@@ -589,10 +589,42 @@ export function TabShell() {
     return day ? positionAt(buildTrack(day.segments), item.capturedAt) : null;
   };
 
-  function renderPage(which: PagedTab) {
-    const page = stacks[which].current;
-    if (!page) return null;
+  /**
+   * Every page in a tab's stack, with only the top one showing.
+   *
+   * **The ones underneath stay mounted, hidden**, which is the same rule the
+   * tabs themselves follow and for the same reason: an unmounted screen throws
+   * away everything it knew. That did not matter while no tab went more than
+   * one page deep — the thing underneath was the tab root, which is always
+   * mounted. Settings moving under Notes made a second level real, and drawing
+   * only the top meant Settings was unmounted while Places sat over it: come
+   * back and you were at the top of a page you had scrolled halfway down.
+   *
+   * It also fixes what the swipe reveals. `SwipeBackPage` slides the top page
+   * off whatever is behind it, and behind it was nothing.
+   */
+  function renderStack(which: PagedTab) {
+    const stack = stacks[which].stack;
+    if (stack.length === 0) return null;
 
+    return stack.map((page, index) => {
+      const top = index === stack.length - 1;
+      const body = <View style={[styles.screen, !top && styles.hidden]}>{renderPage(which, page)}</View>;
+      // Only the top page swipes. A page underneath is not the one being
+      // dismissed, and wrapping it would put a gesture handler behind another.
+      return top ? (
+        <SwipeBackPage key={index} onBack={stacks[which].pop}>
+          {body}
+        </SwipeBackPage>
+      ) : (
+        <View key={index} style={styles.pageLayer}>
+          {body}
+        </View>
+      );
+    });
+  }
+
+  function renderPage(which: PagedTab, page: Page) {
     const back = stacks[which].pop;
 
     if (page.kind === 'segment') {
@@ -763,9 +795,7 @@ export function TabShell() {
             onMerge={mergeStretch}
             onUnmerge={(claim: StationaryClaim) => stationary.forget(claim.id)}
           />
-          {stacks.replay.current ? (
-            <SwipeBackPage onBack={stacks.replay.pop}>{renderPage('replay')}</SwipeBackPage>
-          ) : null}
+          {renderStack('replay')}
         </View>
 
         <View style={[styles.screen, tab !== 'gallery' && styles.hidden]}>
@@ -794,9 +824,7 @@ export function TabShell() {
             onOpenNote={(note) => setWritingNote({ kind: 'edit', note })}
             onBackToNote={cameFromNote ? backToNote : undefined}
           />
-          {stacks.gallery.current ? (
-            <SwipeBackPage onBack={stacks.gallery.pop}>{renderPage('gallery')}</SwipeBackPage>
-          ) : null}
+          {renderStack('gallery')}
         </View>
 
         <View style={[styles.screen, tab !== 'notes' && styles.hidden]}>
@@ -838,7 +866,7 @@ export function TabShell() {
           {/* **This tab draws pages now**, which it never had to before —
               nothing had ever pushed onto its stack. Settings comes through
               here, and everything Settings opens stacks on top of it. */}
-          {stacks.notes.current ? <SwipeBackPage onBack={stacks.notes.pop}>{renderPage('notes')}</SwipeBackPage> : null}
+          {renderStack('notes')}
         </View>
       </View>
 
@@ -995,6 +1023,9 @@ const styles = StyleSheet.create({
   screen: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   // A detail page sits over its tab's root, which stays mounted underneath.
   hidden: { display: 'none' },
+  // What `SwipeBackPage` gives the top page, minus the gesture. A page below the
+  // top is still positioned over the tab root; it is simply not drawn.
+  pageLayer: { ...StyleSheet.absoluteFill, backgroundColor: colors.background },
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,

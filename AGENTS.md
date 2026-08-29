@@ -1106,6 +1106,20 @@ stacks on Notes. The page stack is an array and has always supported it; nothing
 else has needed it. It is also why the Notes tab draws a page at all, which it
 never had to before — nothing had ever been pushed onto that stack.
 
+**Every page in a stack stays mounted, with only the top one drawn**, which is
+the same rule the tabs follow and became necessary at the same moment. The shell
+used to render the top page alone; that was invisible while nothing went deeper
+than one, because what sat underneath was an always-mounted tab root. With
+Settings under Notes, opening Places unmounted Settings — so coming back put you
+at the top of a page you had scrolled halfway down. It also meant the swipe-back
+gesture slid the top page off nothing.
+
+**The smoke flow caught that and the Jest suite did not**, which is the
+distinction this file already draws twice: Jest sees a component render, Maestro
+sees whether a person can see it. The regression test added with the fix asserts
+the mechanism underneath — the screen is still in the tree — because a scroll
+position is not something Jest can observe.
+
 **"Five is the ceiling" was cited here for years and was about a control this
 app does not use.** iOS collapses a sixth tab into a "More" list in
 `UITabBarController`; the bar here is a `View` and a `TABS.map`, drawn in

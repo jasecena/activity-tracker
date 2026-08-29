@@ -300,6 +300,30 @@ describe('the shell', () => {
     expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
   });
 
+  /**
+   * **A page underneath another stays mounted, and this cost a release.**
+   *
+   * The stack drew only its top page. That was invisible while nothing went
+   * more than one deep — what sat underneath was the tab root, always mounted —
+   * and became real the moment Settings moved under Notes: opening Places
+   * unmounted Settings, so coming back put you at the top of a page you had
+   * scrolled halfway down.
+   *
+   * Jest cannot see a scroll position, which is why the smoke flow caught it
+   * and this did not. What it can see is whether the screen still exists, which
+   * is the mechanism underneath.
+   */
+  it('keeps a page mounted while another sits over it', async () => {
+    await openOnDay();
+    await openSettings();
+    await press('Places');
+
+    expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
+    // Hidden rather than gone: `display: none`, the same way an inactive tab is
+    // kept alive behind the one showing.
+    expect(screen.queryByRole('header', { name: 'Settings', includeHiddenElements: true })).not.toBeNull();
+  });
+
   // The camera holds hardware, so it is the one screen that does not stay
   // mounted behind the others.
   it('mounts the camera only while Capture is showing', async () => {
