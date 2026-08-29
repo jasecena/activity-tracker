@@ -50,6 +50,7 @@ import { useAdoptVoiceCaptures } from '@/features/notes/hooks/useAdoptVoiceCaptu
 import { useDayNotes } from '@/features/notes/hooks/useDayNotes';
 import { useNoteThumbnails } from '@/features/notes/hooks/useNoteThumbnails';
 import { NotesScreen } from '@/features/notes/NotesScreen';
+import { PlannerScreen } from '@/features/notes/PlannerScreen';
 import { usePlanSync } from '@/features/notes/hooks/usePlanSync';
 import { planQueueLine } from '@/core/plans';
 import { ReplayScreen } from '@/features/replay/ReplayScreen';
@@ -85,7 +86,10 @@ type Page =
   | { readonly kind: 'journeys' }
   | { readonly kind: 'data' }
   | { readonly kind: 'diagnostics' }
-  | { readonly kind: 'credentials' };
+  | { readonly kind: 'credentials' }
+  // A page under Notes rather than a sixth tab: iOS collapses a sixth into a
+  // "More" list, and five is the ceiling this shell has always been built to.
+  | { readonly kind: 'planner' };
 
 /**
  * What the note sheet is open for.
@@ -599,6 +603,9 @@ export function TabShell() {
         />
       );
     }
+    if (page.kind === 'planner') {
+      return <PlannerScreen url={settings.settings.plannerUrl} onBack={back} />;
+    }
     if (page.kind === 'alldays') {
       return (
         <HistoryScreen
@@ -780,6 +787,7 @@ export function TabShell() {
             planNote={planNote}
             planSend={planSend}
             plannerUrl={settings.settings.plannerUrl}
+            onOpenPlanner={() => stacks.notes.push({ kind: 'planner' })}
           />
         </View>
 

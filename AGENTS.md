@@ -1071,8 +1071,21 @@ file that touches a native one.
 The exception is a native module that _is_ a view, or a hook over a native
 object a service cannot build and hand over: `expo-camera` in `CaptureScreen`,
 `expo-maps` in `MapCanvas`, `@react-native-community/datetimepicker` in
-`NoteSheet`, `expo-audio`'s player in `components/VoiceNotePlayer` and its
-recorder in `features/notes/hooks/useVoiceNote`. One file each, and that is the rule — the point of the boundary
+`NoteSheet`, `react-native-webview` in `features/notes/PlannerScreen`,
+`expo-audio`'s player in `components/VoiceNotePlayer` and its recorder in
+`features/notes/hooks/useVoiceNote`.
+
+**The planner is drawn in a `WKWebView`, and that is a different thing from the
+sheet the maps use.** `SFSafariViewController` runs out of process: a separate
+browser this app can neither read nor steer. A `WKWebView` is _in_ this process
+and the app is therefore capable of injecting script into the page, reading what
+is on it and choosing where it may go. What makes the capability unused is
+written down in that file and asserted in its tests: **nothing is injected, no
+message handler exists, and the view may only be the planner's own origin** —
+anything navigating elsewhere is refused and handed to the system browser, which
+is what stops a link in a page opening inside an app that holds a diary. The
+Settings paragraph says all of this, because "inside the app" is what somebody
+reads and it means something different from the maps. One file each, and that is the rule — the point of the boundary
 is that there is a single place to look, not that the import lives in a
 particular directory.
 

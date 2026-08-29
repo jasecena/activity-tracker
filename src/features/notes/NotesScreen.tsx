@@ -16,7 +16,6 @@ import {
 import { confirmDestructive } from '@/components/confirmDestructive';
 import { NoteRow } from '@/components/NoteRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { openPlanner } from '@/services/openMap';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 import { NoteKindSwitch } from './components/NoteKindSwitch';
@@ -106,6 +105,8 @@ interface NotesScreenProps {
    * control: an icon that opens nothing is worse than no icon.
    */
   readonly plannerUrl?: string;
+  /** Opens the planner as a page inside the app. Absent means the icon is not drawn. */
+  readonly onOpenPlanner?: () => void;
   readonly planSend?: {
     readonly waiting: number;
     readonly busy: boolean;
@@ -147,6 +148,7 @@ export function NotesScreen({
   thumbFor,
   planNote,
   plannerUrl = '',
+  onOpenPlanner,
   planSend,
 }: NotesScreenProps) {
   /**
@@ -263,12 +265,12 @@ export function NotesScreen({
           // The planner reads plans and nothing else — it has never seen the
           // diary — so an icon offering it from the notes list would be
           // pointing at a page about something the reader is not looking at.
-          ...(plans && plannerUrl
+          ...(plans && plannerUrl && onOpenPlanner
             ? [
                 {
                   label: 'Open the planner',
                   icon: 'globe-outline' as const,
-                  onPress: () => void openPlanner(plannerUrl),
+                  onPress: onOpenPlanner,
                 },
               ]
             : []),

@@ -94,7 +94,7 @@ const RETENTION_CHOICES: readonly { readonly label: string; readonly days: numbe
  * the sentence did not. This is the third opportunity and it is being taken.
  */
 const HANDOFF =
-  'Separately: opening a stay, a journey or the planner opens a web page inside this app — a browser view that runs on its own, which this app can neither read nor follow. A map sends Google the one coordinate and nothing else about the stay; the planner is your own machine. Both happen only when you press the link.';
+  'Separately, and neither of these is a request this app makes: opening a stay or a journey shows a map in a browser view that runs on its own, which this app can neither read nor follow — Google gets the one coordinate and nothing else about the stay. The planner is different: it is drawn inside the app, in the app\u2019s own view, on your machine over the VPN. Nothing is injected into that page and nothing is read off it, and it may only ever show the planner \u2014 a link leading anywhere else opens in the browser instead. Both happen only when you press something.';
 
 function networkNote(mapsEnabled: boolean, canTranscribe: boolean, canBackUp: boolean, canSendPlans: boolean): string {
   const destinations = [
