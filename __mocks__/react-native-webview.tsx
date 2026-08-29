@@ -22,6 +22,8 @@ interface Props extends ViewProps {
   readonly onShouldStartLoadWithRequest?: (event: WebViewNavigation) => boolean;
   readonly onLoadStart?: () => void;
   readonly onLoadEnd?: () => void;
+  readonly onError?: () => void;
+  readonly onHttpError?: () => void;
   readonly injectedJavaScript?: string;
   readonly onMessage?: unknown;
 }
@@ -41,7 +43,13 @@ export const WebView = forwardRef<WebViewHandle, Props>(function WebView(props, 
       // Handed through so a test can ask what the view would do with a
       // navigation without pretending to be WebKit.
 
-      {...({ allow: props.onShouldStartLoadWithRequest, injected: props.injectedJavaScript } as any)}
+      {...({
+        allow: props.onShouldStartLoadWithRequest,
+        injected: props.injectedJavaScript,
+        // So a test can make the page fail to arrive without a network.
+        fail: props.onError,
+        failHttp: props.onHttpError,
+      } as any)}
       style={props.style}
     />
   );

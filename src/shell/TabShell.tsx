@@ -67,7 +67,7 @@ import { colors, spacing } from '@/theme/tokens';
 import { SwipeBackPage } from './SwipeBackPage';
 import { usePageStack } from './usePageStack';
 
-type Tab = 'replay' | 'capture' | 'gallery' | 'notes' | 'settings';
+type Tab = 'planner' | 'replay' | 'capture' | 'gallery' | 'notes' | 'settings';
 
 /**
  * The tabs that can have a detail page over them.
@@ -75,7 +75,7 @@ type Tab = 'replay' | 'capture' | 'gallery' | 'notes' | 'settings';
  * Capture is not one. It is a viewfinder and a shutter, and the list it used to
  * carry — the one route it had to a detail page — belongs to Media now.
  */
-type PagedTab = Exclude<Tab, 'capture'>;
+type PagedTab = Exclude<Tab, 'capture' | 'planner'>;
 
 /** Pages that can sit above a tab's root. */
 type Page =
@@ -86,10 +86,7 @@ type Page =
   | { readonly kind: 'journeys' }
   | { readonly kind: 'data' }
   | { readonly kind: 'diagnostics' }
-  | { readonly kind: 'credentials' }
-  // A page under Notes rather than a sixth tab: iOS collapses a sixth into a
-  // "More" list, and five is the ceiling this shell has always been built to.
-  | { readonly kind: 'planner' };
+  | { readonly kind: 'credentials' };
 
 /**
  * What the note sheet is open for.
@@ -118,6 +115,15 @@ type NoteTarget =
   | { readonly kind: 'edit'; readonly note: DayNote };
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  // **First, and what the app opens on.** It is the machine at home's own page:
+  // what was made of everything said into this phone, which is the question
+  // somebody has when they pick it up. Everything else here is recording; this
+  // is the reading.
+  //
+  // It is also the only tab that can fail to draw at all — it is on a VPN, and
+  // the machine is a computer in a house. A first failure moves to Day, which
+  // is what the app opened on before and works everywhere.
+  { key: 'planner', label: 'Planner', icon: 'list-outline' },
   { key: 'replay', label: 'Day', icon: 'today-outline' },
   // Capture in the middle, where a thumb reaches without moving the phone. It
   // is the only tab that is a thing you *do* rather than a thing you read, and
@@ -184,7 +190,7 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
  * and hoisting means one copy rather than several that might drift.
  */
 export function TabShell() {
-  const [tab, setTab] = useState<Tab>('replay');
+  const [tab, setTab] = useState<Tab>('planner');
   const [naming, setNaming] = useState<StaySegment | null>(null);
   const [namingJourney, setNamingJourney] = useState<MoveSegment | null>(null);
   /**
@@ -455,7 +461,9 @@ export function TabShell() {
     setCameFromNote(null);
     if (!alreadyHere) return;
 
-    if (key !== 'capture') stacks[key].reset();
+    // Capture and Planner have no pages above them: one is a viewfinder, the
+    // other is somebody else's web page with its own back gesture.
+    if (key !== 'capture' && key !== 'planner') stacks[key].reset();
     if (key === 'replay') setReplayDayKey(null);
   };
 
@@ -603,9 +611,6 @@ export function TabShell() {
         />
       );
     }
-    if (page.kind === 'planner') {
-      return <PlannerScreen url={settings.settings.plannerUrl} onBack={back} />;
-    }
     if (page.kind === 'alldays') {
       return (
         <HistoryScreen
@@ -693,6 +698,24 @@ export function TabShell() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.screens}>
+        {/* **Mounted only while it is showing**, unlike every other tab here.
+            The rest stay alive so a switch cannot throw away a running
+            recording or a timeline just derived; this one holds a web page on a
+            machine that may be asleep, and keeping it loaded behind five other
+            screens is a request nobody asked for and a page going stale. It is
+            also the one screen with nothing of its own to lose. */}
+        <View style={[styles.screen, tab !== 'planner' && styles.hidden]}>
+          {tab === 'planner' ? (
+            <PlannerScreen
+              url={settings.settings.plannerUrl}
+              // Landing on a WebKit error because the phone is not on the VPN
+              // is the app being unhelpful at the exact moment it opens. Day is
+              // what it opened on before and works everywhere.
+              onUnreachable={() => setTab('replay')}
+            />
+          ) : null}
+        </View>
+
         <View style={[styles.screen, tab !== 'capture' && styles.hidden]}>
           <CaptureScreen media={media} visible={tab === 'capture'} />
         </View>
@@ -787,7 +810,9 @@ export function TabShell() {
             planNote={planNote}
             planSend={planSend}
             plannerUrl={settings.settings.plannerUrl}
-            onOpenPlanner={() => stacks.notes.push({ kind: 'planner' })}
+            // The planner is the first tab now, so the icon goes there rather
+            // than opening a second copy of the same page over this one.
+            onOpenPlanner={() => setTab('planner')}
           />
         </View>
 

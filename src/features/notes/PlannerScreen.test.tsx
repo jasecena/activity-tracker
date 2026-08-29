@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { PlannerScreen } from './PlannerScreen';
 
@@ -14,8 +14,9 @@ import { PlannerScreen } from './PlannerScreen';
 
 const HOME = 'https://tracker.triplec.ai';
 
-async function show(url = HOME) {
-  return await render(<PlannerScreen url={url} onBack={jest.fn()} />);
+async function show(url = HOME, onUnreachable = jest.fn()) {
+  const rendered = await render(<PlannerScreen url={url} onUnreachable={onUnreachable} />);
+  return { ...rendered, onUnreachable };
 }
 
 function allowFn() {
@@ -74,5 +75,61 @@ describe('the embedded planner', () => {
     // words — but a blank screen with no explanation is the state worth naming.
     await show();
     expect(screen.getByText('Reaching the planner…')).toBeOnTheScreen();
+  });
+});
+
+describe('when it does not arrive', () => {
+  /**
+   * The planner is the first tab, so this is what the app opens on — and it is
+   * on a VPN, on a machine that is a computer in a house. Not loading is an
+   * ordinary state rather than an error.
+   */
+  it('moves you to the Day screen the first time it fails', async () => {
+    // Landing on a WebKit error because the phone is not on the VPN is the app
+    // being unhelpful at the exact moment it opens.
+    const { onUnreachable } = await show();
+
+    await act(async () => screen.getByTestId('web-view').props.fail());
+
+    expect(onUnreachable).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not move you again when you came back on purpose', async () => {
+    // Being thrown to another tab after pressing reload here is the app
+    // overruling you, which is worse than showing why the page is empty.
+    const { onUnreachable } = await show();
+
+    await act(async () => screen.getByTestId('web-view').props.fail());
+    await act(async () => screen.getByTestId('web-view').props.fail());
+
+    expect(onUnreachable).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a server error as not arriving', async () => {
+    // A 502 from the proxy looks identical on screen to a page that never came.
+    const { onUnreachable } = await show();
+
+    await act(async () => screen.getByTestId('web-view').props.failHttp());
+
+    expect(onUnreachable).toHaveBeenCalled();
+  });
+
+  it('says what is likely wrong without claiming to know', async () => {
+    await show();
+
+    await act(async () => screen.getByTestId('web-view').props.fail());
+
+    expect(screen.getByText('The planner is not answering')).toBeOnTheScreen();
+    expect(screen.getByText(/computer in a house/)).toBeOnTheScreen();
+    expect(screen.getByText('Try again')).toBeOnTheScreen();
+  });
+
+  it('clears the failure when you try again', async () => {
+    await show();
+    await act(async () => screen.getByTestId('web-view').props.fail());
+
+    await fireEvent.press(screen.getByText('Try again'));
+
+    expect(screen.queryByText('The planner is not answering')).not.toBeOnTheScreen();
   });
 });

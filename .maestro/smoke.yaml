@@ -38,6 +38,17 @@ appId: ${APP_ID}
 - launchApp:
     clearState: true
 
+# **The app opens on the Planner, which is the first tab.** It is a web page on
+# a machine over the VPN, and a simulator has neither — so what is asserted is
+# that the tab exists, draws its own header, and steps aside cleanly. Not
+# loading is the ordinary state here and the flow proves the app survives it
+# rather than proving the page arrives.
+- assertVisible: 'Planner tab'
+- assertVisible: 'Reload the planner'
+# Everything below is about the rest of the app, so step off it. Day is where
+# the app used to open and where the flow has always started.
+- tapOn: 'Day tab'
+
 # --- Launched, and rendering a fresh install ------------------------------
 #
 # The header is a bare Text with `accessibilityRole="header"`, so it is exposed
@@ -180,11 +191,7 @@ appId: ${APP_ID}
 # it is drawn from a setting — an empty address hides it — and a header action
 # that silently stopped rendering is precisely what Jest cannot tell from one
 # that is there.
-- assertVisible: 'Open the planner'
 - tapOn: 'Notes, 0 entries'
-# And it is gone again on the diary, which is the half worth proving: the icon
-# is conditional, so a version that always drew it would pass the line above.
-- assertNotVisible: 'Open the planner'
 - assertVisible: 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'
 
 # The gallery's own gestures and panels cannot be reached here: `clearState`

@@ -1089,9 +1089,26 @@ reads and it means something different from the maps. One file each, and that is
 is that there is a single place to look, not that the import lives in a
 particular directory.
 
-**No navigation library.** Five tabs — Day, Capture, Media, Notes, Settings — and
-one level of detail below each. **Five is the ceiling**: iOS collapses a sixth
-into a "More" list, which is why Places is a page under Settings. Capture and Media take the two middle slots: one is
+**No navigation library.** Six tabs — Planner, Day, Capture, Media, Notes,
+Settings — and one level of detail below most of them.
+
+**"Five is the ceiling" was cited here for years and was about a control this
+app does not use.** iOS collapses a sixth tab into a "More" list in
+`UITabBarController`; the bar here is a `View` and a `TABS.map`, drawn in
+`TabShell`, so nothing collapses anything. What is actually finite is width —
+six labels on the narrowest phone is tight and seven would not fit — which is
+still why Places is a page under Settings rather than a tab. The old sentence
+was a real constraint quoted from the wrong place, and it had been shaping
+decisions on its own.
+
+**Planner is first and is what the app opens on.** It is the machine at home's
+own page: what was made of everything said into this phone, which is the
+question somebody has when they pick it up. Everything else in the app is
+recording; that tab is the reading. It is also the only tab that can fail to
+draw at all — a page on a VPN, on a computer in a house — so a first failure
+moves to Day, which is what the app opened on before and works everywhere. A
+second one stays put and says why: being moved off a page you deliberately
+opened is worse than seeing it empty. Capture and Media take the two middle slots: one is
 the only tab that is an action rather than a view, the other the only one you
 open to _look_ at something rather than read it.
 

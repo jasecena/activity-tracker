@@ -92,6 +92,21 @@ async function press(label: string) {
  * rendered until the heading is pressed. Reading the day starts with opening
  * it, and so does asserting about it.
  */
+/**
+ * Open the app on the Day screen.
+ *
+ * **The Planner is the first tab now and the app opens on it**, so nearly every
+ * test in this file — all of which are about what the rest of the shell does —
+ * has to step off it first. Tabs are hidden with `display: none` rather than
+ * unmounted, which is what makes them invisible to a query as well as to a
+ * reader.
+ */
+async function openOnDay() {
+  const rendered = await render(<TabShell />);
+  await press('Day tab');
+  return rendered;
+}
+
 async function openTimeline() {
   await act(async () => {
     fireEvent.press(screen.getByLabelText(/^TIMELINE/));
@@ -99,20 +114,32 @@ async function openTimeline() {
 }
 
 describe('the shell', () => {
-  it('opens on today', async () => {
+  it('opens on the planner, which is the first tab', async () => {
+    // What the machine at home made of everything said into this phone, which
+    // is the question somebody has when they pick it up. Everything else here
+    // is recording; that tab is the reading.
+    //
+    // Rendered directly rather than through `openOnDay`, since what is being
+    // asserted is where the app lands before anything is pressed.
     await render(<TabShell />);
 
+    expect(await screen.findByLabelText('Planner tab')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Reload the planner')).toBeOnTheScreen();
+  });
+
+  it('reaches today in one press', async () => {
+    await openOnDay();
+
     expect(await screen.findByLabelText(/^Today\. Choose another day$/)).toBeOnTheScreen();
-    expect(screen.getByLabelText('Day tab')).toBeOnTheScreen();
   });
 
   it('offers to start tracking when it is off, which it is on a fresh install', async () => {
-    await render(<TabShell />);
+    await openOnDay();
     expect(await screen.findByText('Tracking is off')).toBeOnTheScreen();
   });
 
   it('says so plainly when there is nothing recorded yet', async () => {
-    await render(<TabShell />);
+    await openOnDay();
     await screen.findByLabelText(/^TIMELINE/);
     await openTimeline();
 
@@ -133,7 +160,7 @@ describe('the shell', () => {
    * registry is asserted where that player lives.
    */
   it('silences whatever was playing when the tab changes', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     const stop = jest.fn();
     takeAudioFocus(stop);
@@ -143,7 +170,7 @@ describe('the shell', () => {
   });
 
   it('leaves playback alone while you stay on the same tab', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     const stop = jest.fn();
     takeAudioFocus(stop);
@@ -157,7 +184,7 @@ describe('the shell', () => {
   });
 
   it('shows every tab and switches between them', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     // Capture has no header to find: it is a viewfinder filling the screen with
     // the shutter under your thumb, so the shutter is what proves it is up.
@@ -178,7 +205,7 @@ describe('the shell', () => {
   // They are the same screen now, and the list of days is a page under it.
   it('reaches every day from the day view, and comes back', async () => {
     await seedAWalk();
-    await render(<TabShell />);
+    await openOnDay();
 
     // The date is the way in — the calendar button is gone, because an icon
     // beside a date was the same thing twice.
@@ -194,18 +221,20 @@ describe('the shell', () => {
   // accident and nothing would notice. Capture and Media are the two thumb
   // slots; Settings stays last, where nobody reaches for it by mistake.
   it('keeps the two doing-something tabs under the thumb', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     const labels = screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel);
-    // Five is the ceiling: iOS collapses a sixth into a "More" list, which is
-    // why Places is a page under Settings rather than a tab of its own.
-    expect(labels).toEqual(['Day tab', 'Capture tab', 'Media tab', 'Notes tab', 'Settings tab']);
+    // Six, and the bar is drawn here rather than by UIKit — the "iOS collapses a
+    // sixth into More" rule this used to cite is about `UITabBar` and has never
+    // applied to it. What still applies is width, which is why Places stays a
+    // page under Settings rather than becoming a seventh.
+    expect(labels).toEqual(['Planner tab', 'Day tab', 'Capture tab', 'Media tab', 'Notes tab', 'Settings tab']);
   });
 
   // Places lost its tab to Replay and Capture; it is a reference list you
   // consult rather than somewhere you glance several times a day.
   it('reaches Places through Settings and comes back', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Places');
@@ -226,7 +255,7 @@ describe('the shell', () => {
    * pinning: what a second press does, not how fast a finger has to be.
    */
   it('goes back to the root of a tab when it is pressed twice', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Places');
@@ -242,7 +271,7 @@ describe('the shell', () => {
   // Moving between tabs is not asking to go home. Two presses on two different
   // tabs is somebody looking around.
   it('leaves a page open when the two presses are on different tabs', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Places');
@@ -256,7 +285,7 @@ describe('the shell', () => {
   // The camera holds hardware, so it is the one screen that does not stay
   // mounted behind the others.
   it('mounts the camera only while Capture is showing', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     expect(screen.queryByLabelText('Camera preview', { includeHiddenElements: true })).not.toBeOnTheScreen();
 
@@ -270,7 +299,7 @@ describe('the shell', () => {
   // Every screen stays mounted so switching tabs cannot throw away a running
   // recording or a timeline that was just derived.
   it('keeps every screen mounted while only one is visible', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
 
@@ -284,7 +313,7 @@ describe('the shell', () => {
 
   it('shows a journey the fold produced from real fixes', async () => {
     await seedAWalk();
-    await render(<TabShell />);
+    await openOnDay();
 
     await screen.findByLabelText(/^TIMELINE/);
     await openTimeline();
@@ -293,7 +322,7 @@ describe('the shell', () => {
   });
 
   it('offers the battery presets in Settings', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
 
@@ -303,7 +332,7 @@ describe('the shell', () => {
   });
 
   it('tells you how to name a place before you have named any', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Places');
@@ -311,7 +340,7 @@ describe('the shell', () => {
   });
 
   it('sorts places by time, visits or name', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Places');
@@ -333,7 +362,7 @@ describe('a nearly-flat battery', () => {
   });
 
   it('says it has dropped to Battery saver, and keeps your choice selected', async () => {
-    await render(<TabShell />);
+    await openOnDay();
     await press('Settings tab');
 
     // Comfortably charged: nothing to say.
@@ -351,7 +380,7 @@ describe('a nearly-flat battery', () => {
   // Hysteresis, end to end: 22% is between the two thresholds, so a phone
   // recovering from 15% is still saving there and only stops above 25%.
   it('holds on until the charge is genuinely back', async () => {
-    await render(<TabShell />);
+    await openOnDay();
     await press('Settings tab');
 
     await act(async () => {
@@ -369,7 +398,7 @@ describe('a nearly-flat battery', () => {
   });
 
   it('does nothing at all on a charger', async () => {
-    await render(<TabShell />);
+    await openOnDay();
     await press('Settings tab');
 
     await act(async () => {
@@ -382,7 +411,7 @@ describe('a nearly-flat battery', () => {
 
 describe('naming a place', () => {
   it('opens the picker from a stay and can be dismissed', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     // A recording with no fixes produces a move, not a stay, so there is
     // nothing nameable on a fresh install — the picker is unreachable, which is
@@ -397,7 +426,7 @@ describe('naming a place', () => {
 
 describe('raw data and export', () => {
   it('is reachable from Settings and says what is stored', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Raw data and export');
@@ -414,7 +443,7 @@ describe('raw data and export', () => {
   // asking the store, and a button disabled on a stale count is worse than one
   // that produces an empty file.
   it('offers all three exports, disabled while there is nothing to export', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Raw data and export');
@@ -431,7 +460,7 @@ describe('raw data and export', () => {
   // Said before the button is used, not after: an export is the one copy the
   // app's encryption does not cover.
   it('warns that an exported file is plaintext', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Raw data and export');
@@ -440,7 +469,7 @@ describe('raw data and export', () => {
   });
 
   it('goes back to Settings', async () => {
-    await render(<TabShell />);
+    await openOnDay();
 
     await press('Settings tab');
     await press('Raw data and export');
@@ -453,7 +482,7 @@ describe('raw data and export', () => {
 describe('naming a journey', () => {
   it('names one from its page, and the name reaches the timeline', async () => {
     await seedAWalk();
-    await render(<TabShell />);
+    await openOnDay();
 
     await screen.findByLabelText(/^TIMELINE/);
     await openTimeline();
@@ -477,7 +506,7 @@ describe('naming a journey', () => {
   // for the same row — a stop has no mode to correct.
   it('offers naming a journey only on a journey', async () => {
     await seedAWalk();
-    await render(<TabShell />);
+    await openOnDay();
 
     await screen.findByLabelText(/^TIMELINE/);
     await openTimeline();
@@ -493,7 +522,7 @@ describe('naming a journey', () => {
 describe('a segment page', () => {
   it('opens from a journey and shows what is stored', async () => {
     await seedAWalk();
-    await render(<TabShell />);
+    await openOnDay();
 
     await screen.findByLabelText(/^TIMELINE/);
     await openTimeline();
