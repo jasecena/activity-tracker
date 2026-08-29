@@ -592,16 +592,28 @@ export function TabShell() {
   /**
    * Every page in a tab's stack, with only the top one showing.
    *
-   * **The ones underneath stay mounted, hidden**, which is the same rule the
-   * tabs themselves follow and for the same reason: an unmounted screen throws
-   * away everything it knew. That did not matter while no tab went more than
-   * one page deep — the thing underneath was the tab root, which is always
-   * mounted. Settings moving under Notes made a second level real, and drawing
-   * only the top meant Settings was unmounted while Places sat over it: come
-   * back and you were at the top of a page you had scrolled halfway down.
+   * **The ones underneath stay mounted and laid out**, covered rather than
+   * hidden. Both halves were learned the hard way and in that order.
    *
-   * It also fixes what the swipe reveals. `SwipeBackPage` slides the top page
-   * off whatever is behind it, and behind it was nothing.
+   * Drawing only the top page unmounted everything below it, which did not
+   * matter while nothing went deeper than one — what sat underneath was the tab
+   * root, always mounted. Settings moving under Notes made a second level real:
+   * open Places over Settings and Settings was gone, so Back put you at the top
+   * of a page you had scrolled halfway down.
+   *
+   * Keeping it mounted but `display: none` did not fix it. That takes the view
+   * out of layout entirely, and iOS gives a `ScrollView` coming back into
+   * layout a fresh offset — so the page was still at the top, now for a second
+   * reason. The smoke test failed identically twice and said so.
+   *
+   * So nothing below the top is hidden at all. The top page is opaque and fills
+   * the screen, which is what a navigation stack has always relied on, and
+   * `SwipeBackPage` sliding it away reveals the page underneath rather than
+   * nothing.
+   *
+   * What *is* taken away is accessibility: a covered page is not something a
+   * screen reader should read out, and two Back buttons in the tree is how a UI
+   * test taps the wrong one.
    */
   function renderStack(which: PagedTab) {
     const stack = stacks[which].stack;
@@ -609,7 +621,7 @@ export function TabShell() {
 
     return stack.map((page, index) => {
       const top = index === stack.length - 1;
-      const body = <View style={[styles.screen, !top && styles.hidden]}>{renderPage(which, page)}</View>;
+      const body = <View style={styles.screen}>{renderPage(which, page)}</View>;
       // Only the top page swipes. A page underneath is not the one being
       // dismissed, and wrapping it would put a gesture handler behind another.
       return top ? (
@@ -617,7 +629,15 @@ export function TabShell() {
           {body}
         </SwipeBackPage>
       ) : (
-        <View key={index} style={styles.pageLayer}>
+        <View
+          key={index}
+          style={styles.pageLayer}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          // Nothing underneath is touchable either: the page over it is opaque,
+          // so a press landing there would be a press on something invisible.
+          pointerEvents="none"
+        >
           {body}
         </View>
       );

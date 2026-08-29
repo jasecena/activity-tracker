@@ -1106,13 +1106,24 @@ stacks on Notes. The page stack is an array and has always supported it; nothing
 else has needed it. It is also why the Notes tab draws a page at all, which it
 never had to before — nothing had ever been pushed onto that stack.
 
-**Every page in a stack stays mounted, with only the top one drawn**, which is
-the same rule the tabs follow and became necessary at the same moment. The shell
-used to render the top page alone; that was invisible while nothing went deeper
-than one, because what sat underneath was an always-mounted tab root. With
-Settings under Notes, opening Places unmounted Settings — so coming back put you
-at the top of a page you had scrolled halfway down. It also meant the swipe-back
-gesture slid the top page off nothing.
+**Every page in a stack stays mounted _and laid out_, covered rather than
+hidden.** Both halves were learned from the same failing smoke test, in order.
+
+The shell used to render the top page alone. That was invisible while nothing
+went deeper than one, because what sat underneath was an always-mounted tab
+root; with Settings under Notes, opening Places unmounted Settings, so coming
+back put you at the top of a page you had scrolled halfway down. It also meant
+the swipe-back gesture slid the top page off nothing.
+
+Keeping it mounted but `display: none` **did not fix it**, and the smoke test
+failed identically a second time. That style takes the view out of layout
+altogether, and a `ScrollView` returning to layout gets a fresh offset — the
+page was still at the top, now for a different reason. So nothing below the top
+is hidden: the top page is opaque and fills the screen, which is what a
+navigation stack has always relied on. What is taken away from a covered page is
+its accessibility (`accessibilityElementsHidden`) and its touches, because a
+screen reader should not read a page nobody can see and two Back buttons in the
+tree is how a UI test taps the wrong one.
 
 **The smoke flow caught that and the Jest suite did not**, which is the
 distinction this file already draws twice: Jest sees a component render, Maestro
