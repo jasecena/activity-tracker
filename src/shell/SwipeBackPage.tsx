@@ -6,6 +6,21 @@ import { colors } from '@/theme/tokens';
 interface SwipeBackPageProps {
   readonly children: ReactNode;
   readonly onBack: () => void;
+  /**
+   * Whether this page is the one on top, and so the one a swipe dismisses.
+   *
+   * **A prop rather than a different wrapper, and that distinction cost three
+   * releases.** A page underneath another must not answer the gesture — but
+   * wrapping it in something else instead means React sees a different element
+   * type at the same position and unmounts the subtree to build the new one.
+   * The page is rebuilt from nothing, and a `ScrollView` rebuilt from nothing
+   * is a page scrolled back to the top: open Places over Settings, come back,
+   * and you are at the top of a list you had scrolled halfway down.
+   *
+   * Every page in a stack is wrapped in this, always. What changes is whether
+   * it listens.
+   */
+  readonly active?: boolean;
 }
 
 /**
@@ -62,7 +77,7 @@ export function shouldGoBack(dx: number, vx: number, width: number): boolean {
  * matters here more than in most apps — opening a day is exactly when the fold
  * is running.
  */
-export function SwipeBackPage({ children, onBack }: SwipeBackPageProps) {
+export function SwipeBackPage({ children, onBack, active = true }: SwipeBackPageProps) {
   const width = Dimensions.get('window').width;
 
   // Lazy state rather than the usual `useRef(new Animated.Value(0)).current`.
@@ -79,6 +94,7 @@ export function SwipeBackPage({ children, onBack }: SwipeBackPageProps) {
         // tap on anything within the edge strip.
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (event, gesture) =>
+          active &&
           beganAtEdge(event.nativeEvent.pageX, gesture.dx) &&
           gesture.dx > 8 &&
           gesture.dx > Math.abs(gesture.dy) * DIRECTION_RATIO,
@@ -119,7 +135,7 @@ export function SwipeBackPage({ children, onBack }: SwipeBackPageProps) {
           Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 14 }).start();
         },
       }),
-    [onBack, translateX, width],
+    [active, onBack, translateX, width],
   );
 
   return (

@@ -621,25 +621,27 @@ export function TabShell() {
 
     return stack.map((page, index) => {
       const top = index === stack.length - 1;
-      const body = <View style={styles.screen}>{renderPage(which, page)}</View>;
-      // Only the top page swipes. A page underneath is not the one being
-      // dismissed, and wrapping it would put a gesture handler behind another.
-      return top ? (
-        <SwipeBackPage key={index} onBack={stacks[which].pop}>
-          {body}
+      // **The same wrapper for every page, always.** Only the top one listens
+      // for the gesture, but that is a prop rather than a different element:
+      // changing the element type at a position is what makes React unmount the
+      // subtree, and a page rebuilt from nothing is a page scrolled back to the
+      // top. That is what shipped, twice, and what the smoke test kept
+      // catching.
+      return (
+        <SwipeBackPage key={index} active={top} onBack={stacks[which].pop}>
+          <View
+            style={styles.screen}
+            // A covered page is not something a screen reader should read out,
+            // and two Back buttons in the tree is how a UI test taps the wrong
+            // one. Its touches go too — the page over it is opaque, so a press
+            // landing there would be a press on something invisible.
+            accessibilityElementsHidden={!top}
+            importantForAccessibility={top ? 'auto' : 'no-hide-descendants'}
+            pointerEvents={top ? 'auto' : 'none'}
+          >
+            {renderPage(which, page)}
+          </View>
         </SwipeBackPage>
-      ) : (
-        <View
-          key={index}
-          style={styles.pageLayer}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          // Nothing underneath is touchable either: the page over it is opaque,
-          // so a press landing there would be a press on something invisible.
-          pointerEvents="none"
-        >
-          {body}
-        </View>
       );
     });
   }
@@ -1056,9 +1058,6 @@ const styles = StyleSheet.create({
   screen: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   // A detail page sits over its tab's root, which stays mounted underneath.
   hidden: { display: 'none' },
-  // What `SwipeBackPage` gives the top page, minus the gesture. A page below the
-  // top is still positioned over the tab root; it is simply not drawn.
-  pageLayer: { ...StyleSheet.absoluteFill, backgroundColor: colors.background },
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
