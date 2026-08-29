@@ -781,13 +781,26 @@ export function TabShell() {
             screens is a request nobody asked for and a page going stale. It is
             also the one screen with nothing of its own to lose. */}
         <View style={[styles.screen, tab !== 'planner' && styles.hidden]}>
-          {tab === 'planner' ? (
+          {/* **Not until this app's own stores have finished loading.**
+              Mounting a `WKWebView` and starting a network request is real work
+              at the exact moment the diary, the timeline and the settings are
+              being read off disk and decrypted — and when the host is
+              unreachable it is work that ends in nothing after a long timeout.
+              The Day screen was still saying "Reading…" seconds in, which is
+              how the smoke test found it: this tab made every other one slower
+              to become usable.
+
+              A web page can wait for a store. A store cannot wait for a web
+              page. */}
+          {tab === 'planner' && timeline.ready ? (
             <PlannerScreen
               url={settings.settings.plannerUrl}
-              // Landing on a WebKit error because the phone is not on the VPN
-              // is the app being unhelpful at the exact moment it opens. Day is
-              // what it opened on before and works everywhere.
-              onUnreachable={() => setTab('replay')}
+              // **Only if it is still the tab in front of you.** The failure
+              // arrives whenever the network gives up, which can be a minute
+              // later — by then you may be three screens into Settings, and
+              // being thrown to Day because a page you have left did not load
+              // is the app overruling you.
+              onUnreachable={() => setTab((showing) => (showing === 'planner' ? 'replay' : showing))}
             />
           ) : null}
         </View>
