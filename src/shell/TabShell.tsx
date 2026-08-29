@@ -833,10 +833,6 @@ export function TabShell() {
             thumbFor={noteThumbs.uriFor}
             planNote={planNote}
             planSend={planSend}
-            plannerUrl={settings.settings.plannerUrl}
-            // The planner is the first tab now, so the icon goes there rather
-            // than opening a second copy of the same page over this one.
-            onOpenPlanner={() => setTab('planner')}
             onOpenSettings={() => stacks.notes.push({ kind: 'settings' })}
           />
           {/* **This tab draws pages now**, which it never had to before —

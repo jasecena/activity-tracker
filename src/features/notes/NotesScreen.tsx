@@ -97,24 +97,6 @@ interface NotesScreenProps {
    * rather than disabled when no bucket is configured: `planNote` already says
    * to add one, and a dead control says it worse.
    */
-  /**
-   * Where the planner is, or empty.
-   *
-   * **A setting rather than a constant**, because it is one machine on one VPN
-   * and the address is the owner's rather than the app's. Empty hides the
-   * control: an icon that opens nothing is worse than no icon.
-   */
-  readonly plannerUrl?: string;
-  /** Opens the planner as a page inside the app. Absent means the icon is not drawn. */
-  readonly onOpenPlanner?: () => void;
-  /**
-   * Opens Settings, which is no longer a tab.
-   *
-   * **Top left, where a phone puts the thing that is not about this page.** A
-   * tab is for somewhere you go several times a day; Settings is somewhere you
-   * go twice and then not for a month, and it was taking a sixth of the bar
-   * from the things that are actually used.
-   */
   readonly onOpenSettings?: () => void;
   readonly planSend?: {
     readonly waiting: number;
@@ -156,8 +138,6 @@ export function NotesScreen({
   onForget,
   thumbFor,
   planNote,
-  plannerUrl = '',
-  onOpenPlanner,
   onOpenSettings,
   planSend,
 }: NotesScreenProps) {
@@ -270,6 +250,12 @@ export function NotesScreen({
         // The switch below already carries both counts, so the subtitle says
         // what the list on screen is *for* instead of repeating the arithmetic.
         subtitle={plans ? 'Things you want to happen' : "Everything you've written"}
+        // **Two controls and one of each kind.** Settings on the left, because it
+        // is the thing that is *not* about this page; the pen on the right,
+        // where a thumb is, because it is. The globe that used to sit between
+        // them went when the planner became the first tab — an icon pointing at
+        // a tab in the bar below it is a second door to a room you are standing
+        // outside of.
         leading={
           onOpenSettings ? { label: 'Settings', icon: 'settings-outline' as const, onPress: onOpenSettings } : undefined
         }
@@ -278,15 +264,6 @@ export function NotesScreen({
           // The planner reads plans and nothing else — it has never seen the
           // diary — so an icon offering it from the notes list would be
           // pointing at a page about something the reader is not looking at.
-          ...(plans && plannerUrl && onOpenPlanner
-            ? [
-                {
-                  label: 'Open the planner',
-                  icon: 'globe-outline' as const,
-                  onPress: onOpenPlanner,
-                },
-              ]
-            : []),
           {
             label: plans ? 'Write a plan' : 'Write a note',
             icon: 'create-outline' as const,
