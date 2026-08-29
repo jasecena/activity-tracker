@@ -185,12 +185,6 @@ appId: ${APP_ID}
 # The empty line is per list rather than shared: the diary's says to write
 # something, and this one says what a plan is for.
 - assertVisible: 'No plans yet. Tap the microphone to say what you want to happen.'
-# **The way to the planner, and it is on this list only.** The machine at home
-# reads plans and has never seen the diary, so an icon offering it from the
-# notes list would point at a page about something else. Asserted here because
-# it is drawn from a setting — an empty address hides it — and a header action
-# that silently stopped rendering is precisely what Jest cannot tell from one
-# that is there.
 - tapOn: 'Notes, 0 entries'
 - assertVisible: 'Nothing written yet. Tap the microphone to say something, or the pen to write it.'
 
@@ -200,7 +194,11 @@ appId: ${APP_ID}
 # (`verticalIntent.test.ts`, `MediaGalleryScreen.test.tsx`). What this proves is
 # the tab mounts expo-video and expo-audio without a native module missing.
 
-- tapOn: 'Settings tab'
+# **Settings is not a tab any more.** It is a gear at the top left of the Notes
+# header, opening a page above it — a tab is for somewhere you go several times a
+# day, and this is somewhere you go twice and then not for a month. The flow is
+# already on Notes from the section above, so this is one press.
+- tapOn: 'Settings'
 - assertVisible: 'Settings'
 - assertVisible: 'Track my day'
 # Each preset row is one collapsed element labelled "<name>. <detail>", built in

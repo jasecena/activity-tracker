@@ -107,6 +107,18 @@ async function openOnDay() {
   return rendered;
 }
 
+/**
+ * Reach Settings, which is no longer a tab.
+ *
+ * A gear at the top left of the Notes header, opening a page above it. Pressed
+ * twice in a row it would push twice, so the tests that walk in and out of it
+ * go through here rather than pressing a label directly.
+ */
+async function openSettings() {
+  await press('Notes tab');
+  await press('Settings');
+}
+
 async function openTimeline() {
   await act(async () => {
     fireEvent.press(screen.getByLabelText(/^TIMELINE/));
@@ -194,7 +206,7 @@ describe('the shell', () => {
     await press('Media tab');
     expect(screen.getByRole('header', { name: 'Media' })).toBeOnTheScreen();
 
-    await press('Settings tab');
+    await openSettings();
     expect(screen.getByText('Track my day')).toBeOnTheScreen();
 
     await press('Day tab');
@@ -228,7 +240,10 @@ describe('the shell', () => {
     // sixth into More" rule this used to cite is about `UITabBar` and has never
     // applied to it. What still applies is width, which is why Places stays a
     // page under Settings rather than becoming a seventh.
-    expect(labels).toEqual(['Planner tab', 'Day tab', 'Capture tab', 'Media tab', 'Notes tab', 'Settings tab']);
+    // Five, and Settings is not among them: it is a gear at the top left of
+    // Notes. A tab is for somewhere you go several times a day, and Settings is
+    // somewhere you go twice and then not for a month.
+    expect(labels).toEqual(['Planner tab', 'Day tab', 'Capture tab', 'Media tab', 'Notes tab']);
   });
 
   // Places lost its tab to Replay and Capture; it is a reference list you
@@ -236,7 +251,7 @@ describe('the shell', () => {
   it('reaches Places through Settings and comes back', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Places');
 
     expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
@@ -257,12 +272,12 @@ describe('the shell', () => {
   it('goes back to the root of a tab when it is pressed twice', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Places');
     expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
 
-    await press('Settings tab');
-    await press('Settings tab');
+    await openSettings();
+    await openSettings();
 
     expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
     expect(screen.queryByRole('header', { name: 'Places' })).not.toBeOnTheScreen();
@@ -273,11 +288,14 @@ describe('the shell', () => {
   it('leaves a page open when the two presses are on different tabs', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Places');
 
     await press('Day tab');
-    await press('Settings tab');
+    // Back to the tab, not back through the gear: the stack already holds
+    // Settings and Places, and pressing a tab you are not on only switches to
+    // it. Pressing the gear again would push a second Settings onto the pile.
+    await press('Notes tab');
 
     expect(screen.getByRole('header', { name: 'Places' })).toBeOnTheScreen();
   });
@@ -301,7 +319,7 @@ describe('the shell', () => {
   it('keeps every screen mounted while only one is visible', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
 
     expect(screen.getByRole('header', { name: 'Settings' })).toBeOnTheScreen();
     // The day view is hidden from the accessibility tree — `display: none` —
@@ -324,7 +342,7 @@ describe('the shell', () => {
   it('offers the battery presets in Settings', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
 
     expect(screen.getByText('Balanced')).toBeOnTheScreen();
     expect(screen.getByText('Battery saver')).toBeOnTheScreen();
@@ -334,7 +352,7 @@ describe('the shell', () => {
   it('tells you how to name a place before you have named any', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Places');
     expect(screen.getByText(/Nothing named yet\. Tap a stay on Today to give it a name/)).toBeOnTheScreen();
   });
@@ -342,7 +360,7 @@ describe('the shell', () => {
   it('sorts places by time, visits or name', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Places');
     await press('Sort by Visits');
     await press('Sort by Name');
@@ -363,7 +381,7 @@ describe('a nearly-flat battery', () => {
 
   it('says it has dropped to Battery saver, and keeps your choice selected', async () => {
     await openOnDay();
-    await press('Settings tab');
+    await openSettings();
 
     // Comfortably charged: nothing to say.
     expect(screen.queryByText('Running on Battery saver')).not.toBeOnTheScreen();
@@ -381,7 +399,7 @@ describe('a nearly-flat battery', () => {
   // recovering from 15% is still saving there and only stops above 25%.
   it('holds on until the charge is genuinely back', async () => {
     await openOnDay();
-    await press('Settings tab');
+    await openSettings();
 
     await act(async () => {
       battery.__setPower({ level: 0.15 });
@@ -399,7 +417,7 @@ describe('a nearly-flat battery', () => {
 
   it('does nothing at all on a charger', async () => {
     await openOnDay();
-    await press('Settings tab');
+    await openSettings();
 
     await act(async () => {
       battery.__setPower({ level: 0.05, state: battery.BatteryState.CHARGING });
@@ -428,7 +446,7 @@ describe('raw data and export', () => {
   it('is reachable from Settings and says what is stored', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Raw data and export');
 
     expect(await screen.findByRole('header', { name: 'Raw data' })).toBeOnTheScreen();
@@ -445,7 +463,7 @@ describe('raw data and export', () => {
   it('offers all three exports, disabled while there is nothing to export', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Raw data and export');
 
     // Raw fixes is not among them. It reads the archive as well as the live
@@ -462,7 +480,7 @@ describe('raw data and export', () => {
   it('warns that an exported file is plaintext', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Raw data and export');
 
     expect(screen.getByText(/An exported file is plain text/)).toBeOnTheScreen();
@@ -471,7 +489,7 @@ describe('raw data and export', () => {
   it('goes back to Settings', async () => {
     await openOnDay();
 
-    await press('Settings tab');
+    await openSettings();
     await press('Raw data and export');
     await press('Back');
 

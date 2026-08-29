@@ -86,7 +86,12 @@ type Page =
   | { readonly kind: 'journeys' }
   | { readonly kind: 'data' }
   | { readonly kind: 'diagnostics' }
-  | { readonly kind: 'credentials' };
+  | { readonly kind: 'credentials' }
+  // Settings stopped being a tab: it is a gear on the Notes header and a page
+  // above it. Its own pages stack on top of that, so Notes is the one tab in
+  // this app two levels deep — which the stack has always supported and nothing
+  // else has needed.
+  | { readonly kind: 'settings' };
 
 /**
  * What the note sheet is open for.
@@ -132,9 +137,7 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   { key: 'gallery', label: 'Media', icon: 'images-outline' },
   // **The diary is a tab now, not a section of the Day screen.** A note used to
   // be filed under the day it was about and reached by walking to that day,
-  // which the backlog already called "fine for a week and not for a year". Five
-  // tabs is the ceiling: iOS collapses a sixth into a "More" list, which is why
-  // Places stays a page under Settings.
+  // which the backlog already called "fine for a week and not for a year".
   //
   // **A pencil on a page, after `book-outline` and `journal-outline` were both
   // tried and both read wrong.** A book is something you read, and this is the
@@ -153,7 +156,14 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   // mean writing, and a tab bar saying "this is where you write" above a button
   // saying "write" is consistent rather than duplicated.
   { key: 'notes', label: 'Notes', icon: 'create-outline' },
-  { key: 'settings', label: 'Settings', icon: 'settings-outline' },
+  // **Settings is not here any more.** It is a gear at the top left of the
+  // Notes tab and a page above it. A tab is for somewhere you go several times
+  // a day; Settings is somewhere you go twice and then not for a month, and it
+  // was taking a sixth of the bar from the things that are used.
+  //
+  // Its own pages — Places, Journeys, Data, Credentials, Diagnostics — stack on
+  // top of it, so Notes is the one tab in this app two levels deep. The stack
+  // is an array and has always supported it; nothing else has needed it.
 ];
 
 /**
@@ -611,6 +621,20 @@ export function TabShell() {
         />
       );
     }
+    if (page.kind === 'settings') {
+      return (
+        <SettingsScreen
+          settings={settings}
+          rejected={timeline.rejected}
+          onBack={back}
+          onOpenData={() => stacks.notes.push({ kind: 'data' })}
+          onOpenPlaces={() => stacks.notes.push({ kind: 'places' })}
+          onOpenJourneys={() => stacks.notes.push({ kind: 'journeys' })}
+          onOpenCredentials={() => stacks.notes.push({ kind: 'credentials' })}
+          onOpenDiagnostics={() => stacks.notes.push({ kind: 'diagnostics' })}
+        />
+      );
+    }
     if (page.kind === 'alldays') {
       return (
         <HistoryScreen
@@ -813,22 +837,12 @@ export function TabShell() {
             // The planner is the first tab now, so the icon goes there rather
             // than opening a second copy of the same page over this one.
             onOpenPlanner={() => setTab('planner')}
+            onOpenSettings={() => stacks.notes.push({ kind: 'settings' })}
           />
-        </View>
-
-        <View style={[styles.screen, tab !== 'settings' && styles.hidden]}>
-          <SettingsScreen
-            settings={settings}
-            rejected={timeline.rejected}
-            onOpenData={() => stacks.settings.push({ kind: 'data' })}
-            onOpenPlaces={() => stacks.settings.push({ kind: 'places' })}
-            onOpenJourneys={() => stacks.settings.push({ kind: 'journeys' })}
-            onOpenCredentials={() => stacks.settings.push({ kind: 'credentials' })}
-            onOpenDiagnostics={() => stacks.settings.push({ kind: 'diagnostics' })}
-          />
-          {stacks.settings.current ? (
-            <SwipeBackPage onBack={stacks.settings.pop}>{renderPage('settings')}</SwipeBackPage>
-          ) : null}
+          {/* **This tab draws pages now**, which it never had to before —
+              nothing had ever pushed onto its stack. Settings comes through
+              here, and everything Settings opens stacks on top of it. */}
+          {stacks.notes.current ? <SwipeBackPage onBack={stacks.notes.pop}>{renderPage('notes')}</SwipeBackPage> : null}
         </View>
       </View>
 

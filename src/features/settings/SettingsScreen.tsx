@@ -8,6 +8,14 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 import type { UseSettings } from './hooks/useSettings';
 
 interface SettingsScreenProps {
+  /**
+   * Supplied now that Settings is a page rather than a tab root.
+   *
+   * It is reached from the gear at the top left of Notes: a tab is for
+   * somewhere you go several times a day, and this is somewhere you go twice
+   * and then not for a month.
+   */
+  readonly onBack?: () => void;
   readonly settings: UseSettings;
   readonly rejected: Readonly<Record<RejectionReason, number>> | null;
   readonly onOpenData: () => void;
@@ -146,6 +154,7 @@ export function SettingsScreen({
   onOpenJourneys,
   onOpenDiagnostics,
   onOpenCredentials,
+  onBack,
 }: SettingsScreenProps) {
   const { settings: values } = settings;
 
@@ -173,7 +182,7 @@ export function SettingsScreen({
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Settings" />
+      <ScreenHeader title="Settings" onBack={onBack} />
 
       {/* **The keyboard would otherwise cover the field being typed into.**
           Eight text fields live down this page — the transcription key, and the

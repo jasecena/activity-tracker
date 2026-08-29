@@ -1089,8 +1089,22 @@ reads and it means something different from the maps. One file each, and that is
 is that there is a single place to look, not that the import lives in a
 particular directory.
 
-**No navigation library.** Six tabs — Planner, Day, Capture, Media, Notes,
-Settings — and one level of detail below most of them.
+**No navigation library.** Five tabs — Planner, Day, Capture, Media, Notes —
+and one level of detail below most of them.
+
+**Settings is not a tab.** It is a gear at the top left of the Notes header,
+opening a page above it. A tab is for somewhere you go several times a day;
+Settings is somewhere you go twice and then not for a month, and as a tab it was
+taking a fifth of the bar from the things that are actually used. The top left is
+where a phone puts the control that is _not_ about the page you are on — the
+same slot a back button uses, because a screen has one or the other and never
+both.
+
+That makes Notes **the one tab in this app two levels deep**: Places, Named
+journeys, Raw data, Credentials and Diagnostics stack on top of Settings, which
+stacks on Notes. The page stack is an array and has always supported it; nothing
+else has needed it. It is also why the Notes tab draws a page at all, which it
+never had to before — nothing had ever been pushed onto that stack.
 
 **"Five is the ceiling" was cited here for years and was about a control this
 app does not use.** iOS collapses a sixth tab into a "More" list in

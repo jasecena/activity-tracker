@@ -107,6 +107,15 @@ interface NotesScreenProps {
   readonly plannerUrl?: string;
   /** Opens the planner as a page inside the app. Absent means the icon is not drawn. */
   readonly onOpenPlanner?: () => void;
+  /**
+   * Opens Settings, which is no longer a tab.
+   *
+   * **Top left, where a phone puts the thing that is not about this page.** A
+   * tab is for somewhere you go several times a day; Settings is somewhere you
+   * go twice and then not for a month, and it was taking a sixth of the bar
+   * from the things that are actually used.
+   */
+  readonly onOpenSettings?: () => void;
   readonly planSend?: {
     readonly waiting: number;
     readonly busy: boolean;
@@ -149,6 +158,7 @@ export function NotesScreen({
   planNote,
   plannerUrl = '',
   onOpenPlanner,
+  onOpenSettings,
   planSend,
 }: NotesScreenProps) {
   /**
@@ -260,6 +270,9 @@ export function NotesScreen({
         // The switch below already carries both counts, so the subtitle says
         // what the list on screen is *for* instead of repeating the arithmetic.
         subtitle={plans ? 'Things you want to happen' : "Everything you've written"}
+        leading={
+          onOpenSettings ? { label: 'Settings', icon: 'settings-outline' as const, onPress: onOpenSettings } : undefined
+        }
         actions={[
           // **Only on the Plans list, because that is what the page shows.**
           // The planner reads plans and nothing else — it has never seen the
