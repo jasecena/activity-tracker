@@ -94,7 +94,7 @@ jobs:
       # version X, but running version Y" — which is what #3 and #4 both did.
       # Bump them together, in one commit, or not at all.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: javascript-typescript
           queries: security-extended
